@@ -1022,15 +1022,8 @@ extend class FCW_Platform
 	}
 
 	//============================
-	//
-	// ACS utility (4 functions)
-	//
+	// Move (ACS utility)
 	//============================
-	static void SetTravelTarget (int platTid, int spotTid)
-	{
-		
-	}
-
 	static void Move (int platTid, double offX, double offY, double offZ, int newTime, double offAng = 0., double offPi = 0., double offRo = 0.)
 	{
 		let it = level.CreateActorIterator(platTid, "FCW_Platform");
@@ -1053,7 +1046,10 @@ extend class FCW_Platform
 		}
 	}
 
-	static void MoveToPos (int platTid, double newX, double newY, double newZ, int newTime, double offAng = 0., double offPi = 0., double offRo = 0.)
+	//============================
+	// MoveTo (ACS utility)
+	//============================
+	static void MoveTo (int platTid, double newX, double newY, double newZ, int newTime, double offAng = 0., double offPi = 0., double offRo = 0.)
 	{
 		vector3 newPos = (newX, newY, newZ);
 		let it = level.CreateActorIterator(platTid, "FCW_Platform");
@@ -1076,6 +1072,42 @@ extend class FCW_Platform
 		}
 	}
 
+	//============================
+	// MoveToSpot (ACS utility)
+	//============================
+	static void MoveToSpot (int platTid, int spotTid, int newTime)
+	{
+		let it = level.CreateActorIterator(spotTid);
+		Actor spot = it.Next();
+		if (spot == null)
+			return; //No spot? Nothing to do
+
+		it = level.CreateActorIterator(platTid, "FCW_Platform");
+		FCW_Platform plat;
+		while ((plat = FCW_Platform(it.Next())) != null)
+		{
+			plat.currNode = null;
+			plat.prevNode = null;
+			plat.pPrev = plat.pCurr = plat.pos;
+			plat.pNext = plat.pNextNext = plat.pos + level.Vec3Diff(plat.pos, spot.pos); //Make it portal aware
+			plat.pPrevAngs = plat.pCurrAngs = (
+				Normalize180(plat.angle),
+				Normalize180(plat.pitch),
+				Normalize180(plat.roll));
+			plat.pNextAngs = plat.pNextNextAngs = plat.pCurrAngs + (
+				DeltaAngle(plat.pCurrAngs.x, spot.angle),
+				DeltaAngle(plat.pCurrAngs.y, spot.pitch),
+				DeltaAngle(plat.pCurrAngs.z, spot.roll));
+			plat.time = 0.;
+			plat.holdTime = 0;
+			plat.UpdateTimeAdvance(newTime);
+			plat.bActive = true;
+		}
+	}
+
+	//============================
+	// IsMoving (ACS utility)
+	//============================
 	static bool IsMoving (int platTid)
 	{
 		let it = level.CreateActorIterator(platTid, "FCW_Platform");
@@ -1083,6 +1115,9 @@ extend class FCW_Platform
 		return (plat != null && plat.HasMoved());
 	}
 
+	//============================
+	// IsBlocked (ACS utility)
+	//============================
 	static bool IsBlocked (int platTid)
 	{
 		let it = level.CreateActorIterator(platTid, "FCW_Platform");
