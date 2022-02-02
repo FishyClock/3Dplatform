@@ -1,0 +1,12 @@
+DoomEdNums
+{
+	//Testmap material
+	15500 = TESTMooPlatform
+	15501 = TESTFloaty
+	15502 = TESTFlyingDoor
+}
+
+map TEST01 "Pretending To Be a Build Engine Map: Take Two!"
+{
+	UsePlayerStartZ
+}

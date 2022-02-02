@@ -1,0 +1,30 @@
+Model TESTMooPlatform
+{
+	USEACTORPITCH
+	USEACTORROLL
+
+	Path "models"
+	Model 0 "MooPlatform.obj"
+	Offset 0 0 -32
+	FrameIndex MODL A 0 0
+}
+
+Model TESTFloaty
+{
+	USEACTORPITCH
+	USEACTORROLL
+
+	Path "models"
+	Model 0 "Floaty.obj"
+	FrameIndex MODL A 0 0
+}
+
+Model TESTFlyingDoor
+{
+	USEACTORPITCH
+	USEACTORROLL
+
+	Path "models"
+	Model 0 "FlyingDoor.obj"
+	FrameIndex MODL A 0 0
+}
