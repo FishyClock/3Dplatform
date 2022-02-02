@@ -257,9 +257,9 @@ extend class FCW_Platform
 	}
 
 	//============================
-	// UpdateInterpolationCoordinates
+	// SetInterpolationCoordinates
 	//============================
-	private void UpdateInterpolationCoordinates ()
+	private void SetInterpolationCoordinates ()
 	{
 		if (prevNode != null)
 		{
@@ -748,7 +748,7 @@ extend class FCW_Platform
 				holdTime = 0;
 				bJustStepped = true;
 				bActive = true;
-				UpdateInterpolationCoordinates();
+				SetInterpolationCoordinates();
 				UpdateTimeAdvance(currNode.args[ARG_NODE_TRAVELTIME]);
 
 				//Don't fling away any riders if the pitch/roll difference is too great
@@ -818,6 +818,7 @@ extend class FCW_Platform
 			newPos.z = MaybeSplerp(pPrev.z, pCurr.z, pNext.z, pNextNext.z);
 		}
 
+		let oldPGroup = curSector.portalGroup;
 		bPlatInMove = true; //Temporarily don't clip against riders
 		SetZ(newPos.z);
 		bool moved = TryMove(newPos.xy, 1); //We need TryMove() for portal crossing
@@ -847,11 +848,11 @@ extend class FCW_Platform
 			}
 		}
 		bPlatInMove = false;
-		if (!moved) //Blocked by geometry or another platform?
+		if (!moved) //Blocked by geometry?
 		{
 			if ((args[ARG_PLAT_OPTIONS] & OPT_PLAT_IGNOREGEO) != 0)
 			{
-				SetOrigin(newPos, true);
+				SetOrigin(level.Vec3Offset(pos, newPos - pos), true);
 			}
 			else
 			{
@@ -859,6 +860,17 @@ extend class FCW_Platform
 				SetZ(oldPos.z);
 				return false;
 			}
+		}
+
+		if (curSector.portalGroup != oldPGroup && pos != newPos) //Crossed a portal?
+		{
+			//Offset the coordinates
+			vector3 offset = pos - newPos;
+			pPrev += offset;
+			pCurr += offset;
+			pNext += offset;
+			pNextNext += offset;
+			newPos = pos;
 		}
 
 		if ((args[ARG_FOLL_OPTIONS] & (OPT_FOLL_ANGLE | OPT_FOLL_PITCH)) != 0 ||
@@ -872,11 +884,11 @@ extend class FCW_Platform
 					dpos.y = pNext.y - pCurr.y;
 					dpos.z = pNext.z - pCurr.z;
 				}
-				else if (time > 0) //Spline
+				else if (time > 0.) //Spline
 				{
 					dpos = newPos - dpos;
 				}
-				else //Spline but with time == 0
+				else //Spline but with time == 0.
 				{
 					dpos = newPos;
 					time += timeAdvance;
@@ -895,7 +907,7 @@ extend class FCW_Platform
 				if ((args[ARG_FOLL_OPTIONS] & OPT_FOLL_PITCH) != 0)
 				{
 					double dist = dpos.xy.Length();
-					pitch = dist != 0 ? VectorAngle(dist, -dpos.z) : 0.;
+					pitch = (dist != 0.) ? VectorAngle(dist, -dpos.z) : 0.;
 				}
 				//Adjust roll
 				if ((args[ARG_PLAT_OPTIONS] & OPT_PLAT_ROLL) != 0)
@@ -933,7 +945,6 @@ extend class FCW_Platform
 				}
 			}
 		}
-
 		return true;
 	}
 
@@ -969,7 +980,6 @@ extend class FCW_Platform
 		if (holdTime > level.mapTime)
 			return;
 
-		let oldPGroup = curSector.portalGroup;
 		if ((!searched && !GetNewRiders(false, false)) || !Interpolate())
 			return;
 
@@ -1006,18 +1016,13 @@ extend class FCW_Platform
 					SetOrigin(currNode.pos, false);
 					MoveRiders(true);
 				}
+				SetInterpolationCoordinates();
 			}
 
 			if (currNode == null || currNode.next == null)
 				Deactivate(self);
 			else if ((args[ARG_FOLL_OPTIONS] & OPT_FOLL_LINEAR) == 0 && currNode.next.next == null)
 				Deactivate(self);
-
-			UpdateInterpolationCoordinates();
-		}
-		else if (curSector.portalGroup != oldPGroup) //Crossed a portal?
-		{
-			UpdateInterpolationCoordinates();
 		}
 	}
 
