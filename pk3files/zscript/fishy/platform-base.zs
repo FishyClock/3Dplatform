@@ -257,9 +257,9 @@ extend class FCW_Platform
 	}
 
 	//============================
-	// UpdateInterpolationCoordinates
+	// SetInterpolationCoordinates
 	//============================
-	private void UpdateInterpolationCoordinates ()
+	private void SetInterpolationCoordinates ()
 	{
 		if (prevNode != null)
 		{
@@ -748,7 +748,7 @@ extend class FCW_Platform
 				holdTime = 0;
 				bJustStepped = true;
 				bActive = true;
-				UpdateInterpolationCoordinates();
+				SetInterpolationCoordinates();
 				UpdateTimeAdvance(currNode.args[ARG_NODE_TRAVELTIME]);
 
 				//Don't fling away any riders if the pitch/roll difference is too great
@@ -818,6 +818,7 @@ extend class FCW_Platform
 			newPos.z = MaybeSplerp(pPrev.z, pCurr.z, pNext.z, pNextNext.z);
 		}
 
+		let oldPGroup = curSector.portalGroup;
 		bPlatInMove = true; //Temporarily don't clip against riders
 		SetZ(newPos.z);
 		bool moved = TryMove(newPos.xy, 1); //We need TryMove() for portal crossing
@@ -847,11 +848,11 @@ extend class FCW_Platform
 			}
 		}
 		bPlatInMove = false;
-		if (!moved) //Blocked by geometry or another platform?
+		if (!moved) //Blocked by geometry?
 		{
 			if ((args[ARG_PLAT_OPTIONS] & OPT_PLAT_IGNOREGEO) != 0)
 			{
-				SetOrigin(newPos, true);
+				SetOrigin(level.Vec3Offset(pos, newPos - pos), true);
 			}
 			else
 			{
@@ -859,6 +860,17 @@ extend class FCW_Platform
 				SetZ(oldPos.z);
 				return false;
 			}
+		}
+
+		if (curSector.portalGroup != oldPGroup && pos != newPos) //Crossed a portal?
+		{
+			//Offset the coordinates
+			vector3 offset = pos - newPos;
+			pPrev += offset;
+			pCurr += offset;
+			pNext += offset;
+			pNextNext += offset;
+			newPos = pos;
 		}
 
 		if ((args[ARG_FOLL_OPTIONS] & (OPT_FOLL_ANGLE | OPT_FOLL_PITCH)) != 0 ||
@@ -872,11 +884,11 @@ extend class FCW_Platform
 					dpos.y = pNext.y - pCurr.y;
 					dpos.z = pNext.z - pCurr.z;
 				}
-				else if (time > 0) //Spline
+				else if (time > 0.) //Spline
 				{
 					dpos = newPos - dpos;
 				}
-				else //Spline but with time == 0
+				else //Spline but with time == 0.
 				{
 					dpos = newPos;
 					time += timeAdvance;
@@ -895,7 +907,7 @@ extend class FCW_Platform
 				if ((args[ARG_FOLL_OPTIONS] & OPT_FOLL_PITCH) != 0)
 				{
 					double dist = dpos.xy.Length();
-					pitch = dist != 0 ? VectorAngle(dist, -dpos.z) : 0.;
+					pitch = (dist != 0.) ? VectorAngle(dist, -dpos.z) : 0.;
 				}
 				//Adjust roll
 				if ((args[ARG_PLAT_OPTIONS] & OPT_PLAT_ROLL) != 0)
@@ -933,7 +945,6 @@ extend class FCW_Platform
 				}
 			}
 		}
-
 		return true;
 	}
 
@@ -969,7 +980,6 @@ extend class FCW_Platform
 		if (holdTime > level.mapTime)
 			return;
 
-		let oldPGroup = curSector.portalGroup;
 		if ((!searched && !GetNewRiders(false, false)) || !Interpolate())
 			return;
 
@@ -1006,31 +1016,19 @@ extend class FCW_Platform
 					SetOrigin(currNode.pos, false);
 					MoveRiders(true);
 				}
+				SetInterpolationCoordinates();
 			}
 
 			if (currNode == null || currNode.next == null)
 				Deactivate(self);
 			else if ((args[ARG_FOLL_OPTIONS] & OPT_FOLL_LINEAR) == 0 && currNode.next.next == null)
 				Deactivate(self);
-
-			UpdateInterpolationCoordinates();
-		}
-		else if (curSector.portalGroup != oldPGroup) //Crossed a portal?
-		{
-			UpdateInterpolationCoordinates();
 		}
 	}
 
 	//============================
-	//
-	// ACS utility (4 functions)
-	//
+	// Move (ACS utility)
 	//============================
-	static void SetTravelTarget (int platTid, int spotTid)
-	{
-		
-	}
-
 	static void Move (int platTid, double offX, double offY, double offZ, int newTime, double offAng = 0., double offPi = 0., double offRo = 0.)
 	{
 		let it = level.CreateActorIterator(platTid, "FCW_Platform");
@@ -1053,7 +1051,10 @@ extend class FCW_Platform
 		}
 	}
 
-	static void MoveToPos (int platTid, double newX, double newY, double newZ, int newTime, double offAng = 0., double offPi = 0., double offRo = 0.)
+	//============================
+	// MoveTo (ACS utility)
+	//============================
+	static void MoveTo (int platTid, double newX, double newY, double newZ, int newTime, double offAng = 0., double offPi = 0., double offRo = 0.)
 	{
 		vector3 newPos = (newX, newY, newZ);
 		let it = level.CreateActorIterator(platTid, "FCW_Platform");
@@ -1076,6 +1077,42 @@ extend class FCW_Platform
 		}
 	}
 
+	//============================
+	// MoveToSpot (ACS utility)
+	//============================
+	static void MoveToSpot (int platTid, int spotTid, int newTime)
+	{
+		let it = level.CreateActorIterator(spotTid);
+		Actor spot = it.Next();
+		if (spot == null)
+			return; //No spot? Nothing to do
+
+		it = level.CreateActorIterator(platTid, "FCW_Platform");
+		FCW_Platform plat;
+		while ((plat = FCW_Platform(it.Next())) != null)
+		{
+			plat.currNode = null;
+			plat.prevNode = null;
+			plat.pPrev = plat.pCurr = plat.pos;
+			plat.pNext = plat.pNextNext = plat.pos + level.Vec3Diff(plat.pos, spot.pos); //Make it portal aware
+			plat.pPrevAngs = plat.pCurrAngs = (
+				Normalize180(plat.angle),
+				Normalize180(plat.pitch),
+				Normalize180(plat.roll));
+			plat.pNextAngs = plat.pNextNextAngs = plat.pCurrAngs + (
+				DeltaAngle(plat.pCurrAngs.x, spot.angle),
+				DeltaAngle(plat.pCurrAngs.y, spot.pitch),
+				DeltaAngle(plat.pCurrAngs.z, spot.roll));
+			plat.time = 0.;
+			plat.holdTime = 0;
+			plat.UpdateTimeAdvance(newTime);
+			plat.bActive = true;
+		}
+	}
+
+	//============================
+	// IsMoving (ACS utility)
+	//============================
 	static bool IsMoving (int platTid)
 	{
 		let it = level.CreateActorIterator(platTid, "FCW_Platform");
@@ -1083,6 +1120,9 @@ extend class FCW_Platform
 		return (plat != null && plat.HasMoved());
 	}
 
+	//============================
+	// IsBlocked (ACS utility)
+	//============================
 	static bool IsBlocked (int platTid)
 	{
 		let it = level.CreateActorIterator(platTid, "FCW_Platform");
