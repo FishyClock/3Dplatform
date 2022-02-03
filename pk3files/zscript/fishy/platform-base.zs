@@ -1,4 +1,4 @@
-/****************************************************************************
+/******************************************************************************
 
  MIT License
 
@@ -22,7 +22,7 @@
  OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
  SOFTWARE.
 
-***************************************************************************/
+******************************************************************************/
 
 class FCW_Platform : PathFollower abstract
 {
@@ -76,6 +76,8 @@ extend class FCW_Platform
 		OPT_PLAT_STARTACTIVE = 16,
 
 		//"PathFollower" args (that we check)
+		ARG_FOLL_TID = 0,
+		ARG_FOLL_HITID = 1,
 		ARG_FOLL_OPTIONS = 2,
 
 		//"PathFollower" options/bit flags (that we check)
@@ -132,8 +134,12 @@ extend class FCW_Platform
 	//============================
 	override void PostBeginPlay ()
 	{
-		Super.PostBeginPlay();
 		riders.Clear();
+
+		//Don't print errors if the platform isn't supposed to
+		//look for anything.
+		if (args[ARG_FOLL_TID] != 0 || args[ARG_FOLL_HITID] != 0)
+			Super.PostBeginPlay();
 
 		//PathFollower stores its first acquired node in 'target'
 		//and the "previous" node in 'lastEnemy'.
@@ -159,14 +165,6 @@ extend class FCW_Platform
 			return false;
 
 		return true;
-	}
-
-	//============================
-	// HasMoved
-	//============================
-	private bool HasMoved ()
-	{
-		return (pos != oldPos || angle != oldAngle || pitch != oldPitch || roll != oldRoll);
 	}
 
 	//============================
@@ -225,9 +223,9 @@ extend class FCW_Platform
 	}
 
 	//============================
-	// UpdateTimeAdvance
+	// SetTimeAdvance
 	//============================
-	private void UpdateTimeAdvance (int newTime)
+	private void SetTimeAdvance (int newTime)
 	{
 		int flags = args[ARG_PLAT_OPTIONS];
 		if ((flags & OPT_PLAT_TIMEINTICS) != 0)
@@ -241,9 +239,9 @@ extend class FCW_Platform
 	}
 
 	//============================
-	// UpdateHoldTime
+	// SetHoldTime
 	//============================
-	private void UpdateHoldTime (int newTime)
+	private void SetHoldTime (int newTime)
 	{
 		int flags = args[ARG_PLAT_OPTIONS];
 		if ((flags & OPT_PLAT_TIMEINTICS) != 0)
@@ -306,7 +304,7 @@ extend class FCW_Platform
 	//============================
 	// GetNewRiders
 	//============================
-	private bool GetNewRiders (bool ignoreObs, bool getAll)
+	private bool GetNewRiders (bool ignoreObs, bool laxZCheck)
 	{
 		//In addition to fetching riders, this is where corpses get crushed, too. (Items won't get destroyed.)
 		//Returns false if blocked by actors.
@@ -347,8 +345,8 @@ extend class FCW_Platform
 			double blockDist = radius + mo.radius;
 			if (abs(it.position.x - mo.pos.x) < blockDist && abs(it.position.y - mo.pos.y) < blockDist)
 			{
-				//'getAll' makes anything above our 'top' legit
-				if (mo.pos.z >= top && (getAll || mo.pos.z <= top + 1.)) //On top of us?
+				//'laxZCheck' makes anything above our 'top' legit
+				if (mo.pos.z >= top && (laxZCheck || mo.pos.z <= top + 1.)) //On top of us?
 				{
 					if (canCarry && !oldRider)
 						onTopOfMe.Push(mo);
@@ -384,7 +382,6 @@ extend class FCW_Platform
 							{
 								for (int i = 0; i < corpses.Size(); ++i)
 									corpses[i].Grind(false);
-								bPlatBlocked = true;
 								return false; //Try again in the next tic
 							}
 							else continue;
@@ -448,10 +445,6 @@ extend class FCW_Platform
 	private bool MoveRiders (bool ignoreObs)
 	{
 		//Returns false if a blocked rider would block the platform's movement
-
-		//Do nothing if platform hasn't moved
-		if (!HasMoved())
-			return true;
 
 		//The goal is to move all riders as if they were one entity.
 		//The only things that should block any of them are
@@ -574,7 +567,6 @@ extend class FCW_Platform
 
 				if (blocked)
 				{
-					bPlatBlocked = true;
 					PushObstacle(mo, level.Vec3Diff(oldPos, pos));
 					for (i = 0; i < riders.Size(); ++i)
 						riders[i].A_ChangeLinkFlags(addToBmap); //Handle those that didn't get the chance to move
@@ -598,15 +590,17 @@ extend class FCW_Platform
 	//============================
 	// HandleOldRiders
 	//============================
-	private bool HandleOldRiders ()
+	private void HandleOldRiders ()
 	{
 		//The main purpose of this is to keep walkers away from platform's edge.
 		//The AI's native handling of trying not to fall off of other actors
 		//just isn't good enough.
-		//Returns true if it called GetNewRiders().
 
-		bool didSearch = false;
-		bool hasMoved = (bPlatBlocked || HasMoved());
+		bool hasMoved = (bPlatBlocked ||
+			pos != oldPos ||
+			angle != oldAngle ||
+			pitch != oldPitch ||
+			roll != oldRoll);
 		vector2 pushForce = (0., 0.);
 		bool piPush = ((args[ARG_FOLL_OPTIONS] & OPT_FOLL_PITCH) != 0);
 		bool roPush = ((args[ARG_PLAT_OPTIONS] & OPT_PLAT_ROLL) != 0);
@@ -616,10 +610,8 @@ extend class FCW_Platform
 		if (!hasMoved && (level.mapTime & 7) == 0)
 		{
 			if ((piPush || roPush) && (level.mapTime & 31) == 0)
-			{
 				GetNewRiders(true, false); //Get something to push off
-				didSearch = true;
-			}
+
 			if (piPush && riders.Size() > 0)
 			{
 				pitch = Normalize180(pitch);
@@ -686,13 +678,13 @@ extend class FCW_Platform
 			mo.vel.xy += pushForce;
 			if (!mo.bIsMonster || mo.bNoGravity || mo.bFloat || mo.speed == 0) //Is not a walking monster?
 			{
-				if (!hasMoved && !piPush && !roPush)
+				if (!hasMoved && pushForce == (0., 0.))
 					riders.Delete(i--);
 				continue;
 			}
 			if (mo.bDropoff || mo.bJumpDown) //Is supposed to fall off of tall drops or jump down?
 			{
-				if (!hasMoved && !piPush && !roPush)
+				if (!hasMoved && pushForce == (0., 0.))
 					riders.Delete(i--);
 				continue;
 			}
@@ -701,7 +693,7 @@ extend class FCW_Platform
 			if (mo.tics != 1 && mo.tics != 0)
 				continue; //Don't bother if it's not about to change states
 
-			if (piPush || roPush)
+			if (pushForce != (0., 0.))
 				continue; //Not if we're pushing it
 
 			if (mo.pos.z > top + 1.)
@@ -722,56 +714,6 @@ extend class FCW_Platform
 			mo.moveDir = int(mo.AngleTo(self) / 45) & 7;
 			if (mo.moveCount < 1)
 				mo.moveCount = 1;
-		}
-
-		return didSearch;
-	}
-
-	//============================
-	// Activate (override)
-	//============================
-	override void Activate (Actor activator)
-	{
-		if (!bActive)
-		{
-			currNode = firstNode;
-			prevNode = firstPrevNode;
-
-			if (currNode != null)
-			{
-				NewNode(); //Interpolation specials get called here
-				if (bDestroyed)
-					return; //Abort if we got Thing_Remove()'d
-				GetNewRiders(true, true);
-				SetOrigin(currNode.pos, false);
-				time = 0.;
-				holdTime = 0;
-				bJustStepped = true;
-				bActive = true;
-				SetInterpolationCoordinates();
-				UpdateTimeAdvance(currNode.args[ARG_NODE_TRAVELTIME]);
-
-				//Don't fling away any riders if the pitch/roll difference is too great
-				bool faceMove = ((args[ARG_FOLL_OPTIONS] & OPT_FOLL_FACEMOVE) != 0);
-				if ((args[ARG_FOLL_OPTIONS] & OPT_FOLL_PITCH) != 0)
-				{
-					if (faceMove && currNode.next != null)
-					{
-						let savedAng = angle;
-						A_Face(currNode.next, 0., 0.);
-						angle = savedAng;
-						oldPitch = pitch;
-					}
-					else
-					{
-						pitch = oldPitch = currNode.pitch;
-					}
-				}
-				if ((args[ARG_PLAT_OPTIONS] & OPT_PLAT_ROLL) != 0)
-					roll = oldRoll = (faceMove) ? 0. : currNode.roll;
-
-				MoveRiders(true);
-			}
 		}
 	}
 
@@ -799,8 +741,12 @@ extend class FCW_Platform
 		//A heavily modified version of the
 		//original function from PathFollower.
 
+		if (!GetNewRiders(false, false))
+		{
+			bPlatBlocked = true;
+			return false;
+		}
 		Vector3 dpos = (0., 0., 0.);
-
 		if ((args[ARG_FOLL_OPTIONS] & OPT_FOLL_FACEMOVE) != 0 && time > 0)
 			dpos = pos;
 
@@ -848,7 +794,7 @@ extend class FCW_Platform
 			}
 		}
 		bPlatInMove = false;
-		if (!moved) //Blocked by geometry?
+		if (!moved) //Blocked by geometry or another platform?
 		{
 			if ((args[ARG_PLAT_OPTIONS] & OPT_PLAT_IGNOREGEO) != 0)
 			{
@@ -860,17 +806,6 @@ extend class FCW_Platform
 				SetZ(oldPos.z);
 				return false;
 			}
-		}
-
-		if (curSector.portalGroup != oldPGroup && pos != newPos) //Crossed a portal?
-		{
-			//Offset the coordinates
-			vector3 offset = pos - newPos;
-			pPrev += offset;
-			pCurr += offset;
-			pNext += offset;
-			pNextNext += offset;
-			newPos = pos;
 		}
 
 		if ((args[ARG_FOLL_OPTIONS] & (OPT_FOLL_ANGLE | OPT_FOLL_PITCH)) != 0 ||
@@ -897,6 +832,7 @@ extend class FCW_Platform
 					newPos.z = MaybeSplerp(pPrev.z, pCurr.z, pNext.z, pNextNext.z);
 					time -= timeAdvance;
 					dpos = newPos - dpos;
+					newPos -= dpos;
 				}
 
 				//Adjust angle
@@ -945,7 +881,76 @@ extend class FCW_Platform
 				}
 			}
 		}
+
+		if (!MoveRiders(false))
+		{
+			bPlatBlocked = true;
+			SetOrigin(oldPos, true);
+			angle = oldAngle;
+			pitch = oldPitch;
+			roll = oldRoll;
+			return false;
+		}
+
+		if (curSector.portalGroup != oldPGroup && pos != newPos) //Crossed a portal?
+		{
+			//Offset the coordinates
+			vector3 offset = pos - newPos;
+			pPrev += offset;
+			pCurr += offset;
+			pNext += offset;
+			pNextNext += offset;
+		}
 		return true;
+	}
+
+	//============================
+	// Activate (override)
+	//============================
+	override void Activate (Actor activator)
+	{
+		if (!bActive)
+		{
+			currNode = firstNode;
+			prevNode = firstPrevNode;
+
+			if (currNode != null)
+			{
+				NewNode(); //Interpolation specials get called here
+				if (bDestroyed || currNode == null || currNode.bDestroyed)
+					return; //Abort if we got Thing_Remove()'d
+
+				GetNewRiders(true, true);
+				SetOrigin(currNode.pos, false);
+				time = 0.;
+				holdTime = 0;
+				bJustStepped = true;
+				bActive = true;
+				SetInterpolationCoordinates();
+				SetTimeAdvance(currNode.args[ARG_NODE_TRAVELTIME]);
+
+				//Don't fling away any riders if the pitch/roll difference is too great
+				bool faceMove = ((args[ARG_FOLL_OPTIONS] & OPT_FOLL_FACEMOVE) != 0);
+				if ((args[ARG_FOLL_OPTIONS] & OPT_FOLL_PITCH) != 0)
+				{
+					if (faceMove && currNode.next != null)
+					{
+						let savedAng = angle;
+						A_Face(currNode.next, 0., 0.);
+						angle = savedAng;
+						oldPitch = pitch;
+					}
+					else
+					{
+						pitch = oldPitch = currNode.pitch;
+					}
+				}
+				if ((args[ARG_PLAT_OPTIONS] & OPT_PLAT_ROLL) != 0)
+					roll = oldRoll = (faceMove) ? 0. : currNode.roll;
+
+				MoveRiders(true);
+			}
+		}
 	}
 
 	//============================
@@ -960,7 +965,7 @@ extend class FCW_Platform
 				return; //Freed itself
 		}
 
-		bool searched = HandleOldRiders();
+		HandleOldRiders();
 		bPlatBlocked = false;
 		oldPos = pos;
 		oldAngle = angle;
@@ -974,23 +979,14 @@ extend class FCW_Platform
 		{
 			bJustStepped = false;
 			if (currNode != null)
-				UpdateHoldTime(currNode.args[ARG_NODE_HOLDTIME]);
+				SetHoldTime(currNode.args[ARG_NODE_HOLDTIME]);
 		}
 
 		if (holdTime > level.mapTime)
 			return;
 
-		if ((!searched && !GetNewRiders(false, false)) || !Interpolate())
+		if (!Interpolate())
 			return;
-
-		if (!MoveRiders(false))
-		{
-			SetOrigin(oldPos, true);
-			angle = oldAngle;
-			pitch = oldPitch;
-			roll = oldRoll;
-			return;
-		}
 
 		time += timeAdvance;
 		if (time > 1.)
@@ -1004,16 +1000,17 @@ extend class FCW_Platform
 			if (currNode != null)
 			{
 				NewNode(); //Interpolation specials get called here
-				if (bDestroyed)
+				if (bDestroyed || currNode == null || currNode.bDestroyed)
 					return; //Abort if we got Thing_Remove()'d
-				UpdateTimeAdvance(currNode.args[ARG_NODE_TRAVELTIME]);
+
+				SetTimeAdvance(currNode.args[ARG_NODE_TRAVELTIME]);
 				if (pos != currNode.pos)
 				{
 					oldPos = pos;
 					oldAngle = angle;
 					oldPitch = pitch;
 					oldRoll = roll;
-					SetOrigin(currNode.pos, false);
+					SetOrigin(currNode.pos, true);
 					MoveRiders(true);
 				}
 				SetInterpolationCoordinates();
@@ -1035,7 +1032,7 @@ extend class FCW_Platform
 		FCW_Platform plat;
 		while ((plat = FCW_Platform(it.Next())) != null)
 		{
-			plat.currNode = null;
+			plat.currNode = null; //Deactivate when done moving
 			plat.prevNode = null;
 			plat.pPrev = plat.pCurr = plat.pos;
 			plat.pNext = plat.pNextNext = plat.Vec3Offset(offX, offY, offZ);
@@ -1046,7 +1043,7 @@ extend class FCW_Platform
 			plat.pNextAngs = plat.pNextNextAngs = plat.pCurrAngs + (offAng, offPi, offRo);
 			plat.time = 0.;
 			plat.holdTime = 0;
-			plat.UpdateTimeAdvance(newTime);
+			plat.SetTimeAdvance(newTime);
 			plat.bActive = true;
 		}
 	}
@@ -1061,7 +1058,7 @@ extend class FCW_Platform
 		FCW_Platform plat;
 		while ((plat = FCW_Platform(it.Next())) != null)
 		{
-			plat.currNode = null;
+			plat.currNode = null; //Deactivate when done moving
 			plat.prevNode = null;
 			plat.pPrev = plat.pCurr = plat.pos;
 			plat.pNext = plat.pNextNext = plat.pos + level.Vec3Diff(plat.pos, newPos); //Make it portal aware
@@ -1072,7 +1069,7 @@ extend class FCW_Platform
 			plat.pNextAngs = plat.pNextNextAngs = plat.pCurrAngs + (offAng, offPi, offRo);
 			plat.time = 0.;
 			plat.holdTime = 0;
-			plat.UpdateTimeAdvance(newTime);
+			plat.SetTimeAdvance(newTime);
 			plat.bActive = true;
 		}
 	}
@@ -1091,7 +1088,7 @@ extend class FCW_Platform
 		FCW_Platform plat;
 		while ((plat = FCW_Platform(it.Next())) != null)
 		{
-			plat.currNode = null;
+			plat.currNode = null; //Deactivate when done moving
 			plat.prevNode = null;
 			plat.pPrev = plat.pCurr = plat.pos;
 			plat.pNext = plat.pNextNext = plat.pos + level.Vec3Diff(plat.pos, spot.pos); //Make it portal aware
@@ -1105,7 +1102,7 @@ extend class FCW_Platform
 				DeltaAngle(plat.pCurrAngs.z, spot.roll));
 			plat.time = 0.;
 			plat.holdTime = 0;
-			plat.UpdateTimeAdvance(newTime);
+			plat.SetTimeAdvance(newTime);
 			plat.bActive = true;
 		}
 	}
@@ -1117,7 +1114,11 @@ extend class FCW_Platform
 	{
 		let it = level.CreateActorIterator(platTid, "FCW_Platform");
 		let plat = FCW_Platform(it.Next());
-		return (plat != null && plat.HasMoved());
+		return (plat != null && (
+			plat.pos != plat.oldPos ||
+			plat.angle != plat.oldAngle ||
+			plat.pitch != plat.oldPitch ||
+			plat.roll != plat.oldRoll));
 	}
 
 	//============================
