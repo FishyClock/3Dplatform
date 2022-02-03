@@ -362,7 +362,8 @@ extend class FCW_Platform
 					}
 					else if (CollisionFlagChecks(self, mo) && self.CanCollideWith(mo, false) && mo.CanCollideWith(self, true))
 					{
-						//Could 'mo' ride us, too?
+						//Try to correct 'mo' Z so it can ride us, too.
+						//But only if its 'maxStepHeight' allows it.
 						bool blocked = true;
 						let moOldZ = mo.pos.z;
 						if (!(mo is "FCW_Platform") && top - mo.pos.z <= mo.maxStepHeight)
@@ -400,14 +401,22 @@ extend class FCW_Platform
 		for (int i = 0; i < corpses.Size(); ++i)
 			corpses[i].Grind(false);
 
-		//Do NOT take other platforms' riders!
+		//Do NOT take other platforms' riders! Unless...
 		for (int iPlat = 0; iPlat < otherPlats.Size(); ++iPlat)
 		{
 			let plat = otherPlats[iPlat];
+			bool myTopIsHigher = (top > plat.pos.z + plat.height);
+
 			for (int i = 0; i < onTopOfMe.Size(); ++i)
 			{
-				if (plat.riders.Find(onTopOfMe[i]) < plat.riders.Size())
-					onTopOfMe.Delete(i--);
+				let index = plat.riders.Find(onTopOfMe[i]);
+				if (index < plat.riders.Size())
+				{
+					if (myTopIsHigher)
+						plat.riders.Delete(index); //Steal it!
+					else
+						onTopOfMe.Delete(i--);
+				}
 			}
 			for (int i = 0; i < miscResults.Size(); ++i)
 			{
