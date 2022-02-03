@@ -382,7 +382,6 @@ extend class FCW_Platform
 							{
 								for (int i = 0; i < corpses.Size(); ++i)
 									corpses[i].Grind(false);
-								bPlatBlocked = true;
 								return false; //Try again in the next tic
 							}
 							else continue;
@@ -568,7 +567,6 @@ extend class FCW_Platform
 
 				if (blocked)
 				{
-					bPlatBlocked = true;
 					PushObstacle(mo, level.Vec3Diff(oldPos, pos));
 					for (i = 0; i < riders.Size(); ++i)
 						riders[i].A_ChangeLinkFlags(addToBmap); //Handle those that didn't get the chance to move
@@ -744,8 +742,10 @@ extend class FCW_Platform
 		//original function from PathFollower.
 
 		if (!GetNewRiders(false, false))
+		{
+			bPlatBlocked = true;
 			return false;
-
+		}
 		Vector3 dpos = (0., 0., 0.);
 		if ((args[ARG_FOLL_OPTIONS] & OPT_FOLL_FACEMOVE) != 0 && time > 0)
 			dpos = pos;
@@ -884,6 +884,7 @@ extend class FCW_Platform
 
 		if (!MoveRiders(false))
 		{
+			bPlatBlocked = true;
 			SetOrigin(oldPos, true);
 			angle = oldAngle;
 			pitch = oldPitch;
