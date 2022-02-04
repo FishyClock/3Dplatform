@@ -188,6 +188,19 @@ extend class FCW_Platform
 	}
 
 	//============================
+	// CrushObstacle
+	//============================
+	private void CrushObstacle (Actor victim)
+	{
+		int crushDamage = args[ARG_PLAT_CRUSHDMG];
+		if (crushDamage <= 0 || (level.mapTime & 3) != 0) //Only crush every 4th tic to allow victim's pain sound to be heard
+			return;
+
+		int doneDamage = victim.DamageMobj(null, null, crushDamage, 'Crush');
+		victim.TraceBleed((doneDamage > 0) ? doneDamage : crushDamage, self);
+	}
+
+	//============================
 	// PushObstacle
 	//============================
 	private void PushObstacle (Actor pushed, vector3 pushForce)
@@ -206,8 +219,7 @@ extend class FCW_Platform
 		}
 		pushed.vel += pushForce;
 
-		int crushDamage = args[ARG_PLAT_CRUSHDMG];
-		if (crushDamage <= 0 || (level.mapTime & 3) != 0)
+		if (args[ARG_PLAT_CRUSHDMG] <= 0)
 			return;
 
 		let oldZ = pushed.pos.z;
@@ -216,10 +228,7 @@ extend class FCW_Platform
 		pushed.SetZ(oldZ);
 
 		if (!fits)
-		{
-			int doneDamage = pushed.DamageMobj(null, null, crushDamage, 'Crush');
-			pushed.TraceBleed((doneDamage > 0) ? doneDamage : crushDamage, self);
-		}
+			CrushObstacle(pushed);
 	}
 
 	//============================
@@ -307,7 +316,7 @@ extend class FCW_Platform
 	private bool GetNewRiders (bool ignoreObs, bool laxZCheck)
 	{
 		//In addition to fetching riders, this is where corpses get crushed, too. (Items won't get destroyed.)
-		//Returns false if blocked by actors.
+		//Returns false if an actor is completely stuck inside platform.
 
 		double top = pos.z + height;
 		Array<Actor> miscResults; //The actors on top of the riders (We'll move those, too)
@@ -320,8 +329,11 @@ extend class FCW_Platform
 
 		//Three things to do here when iterating:
 		//1) Gather eligible riders.
-		//2) Push obstacles (actors) out of the way, potentially inflicting "crush" damage if they can't be moved.
-		//3) If said obstacles are corpses, grind them.
+		//2) Damage any non-platform actors that are stuck inside platform (and can't be placed on top of platform)
+		//3) If said actors are corpses, "grind" them instead.
+
+		//NOTE: Only one live actor can get damaged per tic and makes this function return false.
+		//While all detected corpses will be grinded in one go and won't stop the gathering process.
 		let it = BlockThingsIterator.Create(self);
 		while (it.Next())
 		{
@@ -341,7 +353,7 @@ extend class FCW_Platform
 			if (mo is "FCW_Platform")
 				otherPlats.Push(FCW_Platform(mo));
 
-			//Check XY
+			//Check XY overlap
 			double blockDist = radius + mo.radius;
 			if (abs(it.position.x - mo.pos.x) < blockDist && abs(it.position.y - mo.pos.y) < blockDist)
 			{
@@ -377,7 +389,7 @@ extend class FCW_Platform
 							{
 								mo.SetZ(moOldZ);
 								if (!ignoreObs)
-									PushObstacle(mo, level.Vec3Diff(oldPos, pos));
+									CrushObstacle(mo);
 							}
 							if (!ignoreObs)
 							{
@@ -927,7 +939,7 @@ extend class FCW_Platform
 			{
 				NewNode(); //Interpolation specials get called here
 				if (bDestroyed || currNode == null || currNode.bDestroyed)
-					return; //Abort if we got Thing_Remove()'d
+					return; //Abort if we or the node got Thing_Remove()'d
 
 				GetNewRiders(true, true);
 				SetOrigin(currNode.pos, false);
@@ -1009,20 +1021,22 @@ extend class FCW_Platform
 			if (currNode != null)
 			{
 				NewNode(); //Interpolation specials get called here
-				if (bDestroyed || currNode == null || currNode.bDestroyed)
+				if (bDestroyed)
 					return; //Abort if we got Thing_Remove()'d
 
-				SetTimeAdvance(currNode.args[ARG_NODE_TRAVELTIME]);
-				if (pos != currNode.pos)
+				if (currNode == null || currNode.bDestroyed)
 				{
-					oldPos = pos;
-					oldAngle = angle;
-					oldPitch = pitch;
-					oldRoll = roll;
-					SetOrigin(currNode.pos, true);
-					MoveRiders(true);
+					Deactivate(self);
+					return; //Our node got Thing_Remove()'d
 				}
+				oldPos = pos;
+				oldAngle = angle;
+				oldPitch = pitch;
+				oldRoll = roll;
+				SetOrigin(currNode.pos, true);
+				MoveRiders(true);
 				SetInterpolationCoordinates();
+				SetTimeAdvance(currNode.args[ARG_NODE_TRAVELTIME]);
 			}
 
 			if (currNode == null || currNode.next == null)
