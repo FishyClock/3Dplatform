@@ -683,7 +683,8 @@ extend class FCW_Platform
 			}
 			//(End of sanity checks)
 
-			if (mo.pos.z < top - 1.) //Is below us or stuck in us?
+			//'floorZ' can be the top of a 3D floor that's right below an actor.
+			if (mo.pos.z < top - 1. || mo.floorZ > top + 1.) //Is below us or stuck in us or there's a 3D floor between us?
 			{
 				riders.Delete(i--);
 				continue;
