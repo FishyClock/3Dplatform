@@ -463,7 +463,7 @@ extend class FCW_Platform
 	//============================
 	// MoveRiders
 	//============================
-	private bool MoveRiders (bool ignoreObs)
+	private bool MoveRiders (bool ignoreObs, bool teleMove)
 	{
 		//Returns false if a blocked rider would block the platform's movement
 
@@ -519,7 +519,8 @@ extend class FCW_Platform
 			//a problem if 'moNewPos' is already through a portal from the platform's
 			//perspective. What it wants/needs is a offsetted position from 'mo' assuming
 			//no portals have been crossed yet.
-			moNewPos = mo.pos + level.Vec3Diff(mo.pos, moNewPos);
+			if (!teleMove)
+				moNewPos = mo.pos + level.Vec3Diff(mo.pos, moNewPos);
 
 			//Handle z discrepancy
 			if (moNewPos.z < top && moNewPos.z + mo.height >= top)
@@ -527,8 +528,17 @@ extend class FCW_Platform
 
 			let moOldNoDropoff = mo.bNoDropoff;
 			mo.bNoDropoff = false;
-			mo.SetZ(moNewPos.z);
-			bool moved = mo.TryMove(moNewPos.xy, 1);
+			bool moved;
+			if (teleMove)
+			{
+				mo.SetOrigin(moNewPos, false);
+				moved = mo.CheckMove(moNewPos.xy);
+			}
+			else
+			{
+				mo.SetZ(moNewPos.z);
+				moved = mo.TryMove(moNewPos.xy, 1);
+			}
 
 			//Take into account riders getting Thing_Remove()'d
 			//when they activate lines.
@@ -549,7 +559,7 @@ extend class FCW_Platform
 			}
 			else
 			{
-				mo.SetZ(moOldPos.z);
+				mo.SetOrigin(moOldPos, true);
 
 				//This rider will be 'solid' for the others
 				mo.A_ChangeLinkFlags(addToBmap);
@@ -904,7 +914,7 @@ extend class FCW_Platform
 			}
 		}
 
-		if (!MoveRiders(false))
+		if (!MoveRiders(false, false))
 		{
 			bPlatBlocked = true;
 			SetOrigin(oldPos, true);
@@ -970,7 +980,7 @@ extend class FCW_Platform
 				if ((args[ARG_PLAT_OPTIONS] & OPT_PLAT_ROLL) != 0)
 					roll = oldRoll = (faceMove) ? 0. : currNode.roll;
 
-				MoveRiders(true);
+				MoveRiders(true, true);
 			}
 		}
 	}
@@ -1035,7 +1045,7 @@ extend class FCW_Platform
 				oldPitch = pitch;
 				oldRoll = roll;
 				SetOrigin(currNode.pos, true);
-				MoveRiders(true);
+				MoveRiders(true, false);
 				SetInterpolationCoordinates();
 				SetTimeAdvance(currNode.args[ARG_NODE_TRAVELTIME]);
 			}
