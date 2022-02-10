@@ -989,7 +989,7 @@ extend class FCW_Platform
 
 		//Precaution against Thing_Remove() shenanigans.
 		//If a special holder gets removed/destroyed
-		//during interation then the iterator gets
+		//during iteration then the iterator gets
 		//messed up. Gather all specials before
 		//calling them.
 		Array<int> specList;
