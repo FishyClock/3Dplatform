@@ -980,6 +980,41 @@ extend class FCW_Platform
 	}
 
 	//============================
+	// CallNodeSpecials
+	//============================
+	private void CallNodeSpecials ()
+	{
+		let it = level.CreateActorIterator(currNode.tid, "InterpolationSpecial");
+		Actor spec;
+
+		//Precaution against Thing_Remove() shenanigans.
+		//If a special holder gets removed/destroyed
+		//during interation then the iterator gets
+		//messed up. Gather all specials before
+		//calling them.
+		Array<int> specList;
+		while ((spec = it.Next()) != null)
+		{
+			if (spec.special == 0)
+				continue;
+			specList.Push(spec.special);
+			for (int i = 0; i < 5; ++i)
+				specList.Push(spec.args[i]);
+		}
+
+		for (int i = 0; i < specList.Size(); i += 6)
+			level.ExecuteSpecial(specList[i], null, null, false, specList[i+1], specList[i+2], specList[i+3], specList[i+4], specList[i+5]);
+	}
+
+	//============================
+	// Deactivate (override)
+	//============================
+	override void Deactivate (Actor activator)
+	{
+		bDormant = true;
+	}
+
+	//============================
 	// Activate (override)
 	//============================
 	override void Activate (Actor activator)
@@ -991,7 +1026,7 @@ extend class FCW_Platform
 
 			if (currNode != null)
 			{
-				NewNode(); //Interpolation specials get called here
+				CallNodeSpecials();
 				if (bDestroyed || currNode == null || currNode.bDestroyed)
 					return; //Abort if we or the node got Thing_Remove()'d
 
@@ -1033,7 +1068,7 @@ extend class FCW_Platform
 	//============================
 	override void Tick ()
 	{
-		//Advance states (PathFollower doesn't do this)
+		//Advance states
 		if (tics != -1 && --tics <= 0)
 		{
 			if (!SetState(curState.nextState))
@@ -1074,7 +1109,7 @@ extend class FCW_Platform
 
 			if (currNode != null)
 			{
-				NewNode(); //Interpolation specials get called here
+				CallNodeSpecials();
 				if (bDestroyed)
 					return; //Abort if we got Thing_Remove()'d
 
