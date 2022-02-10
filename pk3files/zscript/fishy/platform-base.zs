@@ -24,7 +24,7 @@
 
 ******************************************************************************/
 
-class FCW_Platform : PathFollower abstract
+class FCW_Platform : Actor abstract
 {
 	Default
 	{
@@ -33,16 +33,18 @@ class FCW_Platform : PathFollower abstract
 		//https://zdoom.org/wiki/Editor_keys
 		//https://zdoom.org/wiki/Making_configurable_actors_in_DECORATE
 
-		//$Arg3 Platform Options
-		//$Arg3Type 12
+		//$Arg0 Target
+		//$Arg0Type 14
+
+		//$Arg1 Options
+		//$Arg1Type 12
 		//Yes, this enum definition has to be on one line
-		//$Arg3Enum {1 = "Use point roll"; 2 = "Don't clip against geometry and other platforms"; 4 = "Travel/Hold time in tics (not octics)"; 8 = "Travel/Hold time in seconds (not octics)"; 16 = "Start active";}
-		//$Arg3Tooltip Flags 4 and 8 are mutually exclusive.\n(4 takes precedence over 8.)
+		//$Arg1Enum {1 = "Linear path"; 2 = "Use target angle"; 4 = "Use target pitch"; 8 = "Use target roll"; 16 = "Face movement direction"; 32 = "Don't clip against geometry and other platforms"; 64 = "Travel/Hold time in tics (not octics)"; 128 = "Travel/Hold time in seconds (not octics)"; 256 = "Start active";}
+		//$Arg1Tooltip Flags 64 and 128 are mutually exclusive.\n(64 takes precedence over 128.)
 
-		//$Arg4 Crush Damage
-		//$Arg4Tooltip The damage is applied once per 4 tics.
+		//$Arg2 Crush Damage
+		//$Arg2Tooltip The damage is applied once per 4 tics.
 
-		ClearFlags;
 		+ACTLIKEBRIDGE;
 		+NOGRAVITY;
 		+CANPASS;
@@ -64,45 +66,39 @@ extend class FCW_Platform
 {
 	enum ArgValues
 	{
-		//Args unique to "FCW_Platform"
-		ARG_PLAT_OPTIONS = 3,
-		ARG_PLAT_CRUSHDMG = 4,
+		ARG_TARGET		= 0,
+		ARG_OPTIONS		= 1,
+		ARG_CRUSHDMG	= 2,
 
-		//Options/bit flags unique to "FCW_Platform"
-		OPT_PLAT_ROLL = 1,
-		OPT_PLAT_IGNOREGEO = 2,
-		OPT_PLAT_TIMEINTICS = 4,
-		OPT_PLAT_TIMEINSECS = 8,
-		OPT_PLAT_STARTACTIVE = 16,
-
-		//"PathFollower" args (that we check)
-		ARG_FOLL_TID = 0,
-		ARG_FOLL_HITID = 1,
-		ARG_FOLL_OPTIONS = 2,
-
-		//"PathFollower" options/bit flags (that we check)
-		OPT_FOLL_LINEAR = 1,
-		OPT_FOLL_ANGLE = 2,
-		OPT_FOLL_PITCH = 4,
-		OPT_FOLL_FACEMOVE = 8,
+		OPTFLAG_LINEAR			= 1,
+		OPTFLAG_ANGLE			= 2,
+		OPTFLAG_PITCH			= 4,
+		OPTFLAG_ROLL			= 8,
+		OPTFLAG_FACEMOVE		= 16,
+		OPTFLAG_IGNOREGEO		= 32,
+		OPTFLAG_TIMEINTICS		= 64,
+		OPTFLAG_TIMEINSECS		= 128,
+		OPTFLAG_STARTACTIVE		= 256,
 
 		//"InterpolationPoint" args (that we check)
-		ARG_NODE_TRAVELTIME = 1,
-		ARG_NODE_HOLDTIME = 2,
+		NODEARG_TRAVELTIME	= 1,
+		NODEARG_HOLDTIME	= 2,
 	};
 
 	vector3 oldPos;
 	double oldAngle;
 	double oldPitch;
 	double oldRoll;
-	double timeAdvance;
+	double time, timeAdvance;
+	int holdTime;
+	bool bJustStepped;
 	bool bPlatBlocked; //Only useful for ACS. (See utility functions below.)
 	bool bPlatInMove; //No collision between a platform and its riders during said platform's move.
+	InterpolationPoint currNode, firstNode;
+	InterpolationPoint prevNode, firstPrevNode;
 	Array<Actor> riders;
-	InterpolationPoint firstNode;
-	InterpolationPoint firstPrevNode;
 
-	//Unlike other PathFollower classes, our interpolations are done with
+	//Unlike PathFollower classes, our interpolations are done with
 	//vector3 coordinates rather than checking InterpolationPoint positions.
 	//This is done for 2 reasons:
 	//1) Making it portal aware.
@@ -120,11 +116,13 @@ extend class FCW_Platform
 		oldAngle = angle;
 		oldPitch = pitch;
 		oldRoll = roll;
-		timeAdvance = 0.;
+		time = timeAdvance = 0.;
+		holdTime = 0;
+		bJustStepped = false;
 		bPlatBlocked = false;
 		bPlatInMove = false;
-		firstNode = null;
-		firstPrevNode = null;
+		currNode = firstNode = null;
+		prevNode = firstPrevNode = null;
 		pCurr = pPrev = pNext = pNextNext = (0., 0., 0.);
 		pCurrAngs = pPrevAngs = pNextAngs = pNextNextAngs = (0., 0., 0.);
 	}
@@ -134,22 +132,51 @@ extend class FCW_Platform
 	//============================
 	override void PostBeginPlay ()
 	{
+		bDormant = true;
 		riders.Clear();
 
-		//Don't print errors if the platform isn't supposed to
-		//look for anything.
-		if (args[ARG_FOLL_TID] != 0 || args[ARG_FOLL_HITID] != 0)
-			Super.PostBeginPlay();
+		//Find first node of path
+		let it = level.CreateActorIterator(args[ARG_TARGET], "InterpolationPoint");
+		firstNode = InterpolationPoint(it.Next());
 
-		//PathFollower stores its first acquired node in 'target'
-		//and the "previous" node in 'lastEnemy'.
-		//But that's unsafe because getting shot makes the platform
-		//switch targets which is a problem if it gets activated
-		//multiple times.
-		firstNode = InterpolationPoint(target);
-		firstPrevNode = InterpolationPoint(lastEnemy);
+		if (firstNode == null)
+		{
+			if (args[ARG_TARGET] != 0) //Make no fuss if we're not supposed to look for a path
+				Console.Printf("\ckFCW_Platform " .. tid .. ": Can't find interpolation point " .. args[ARG_TARGET]);
+			return;
+		}
 
-		if ((args[ARG_PLAT_OPTIONS] & OPT_PLAT_STARTACTIVE) != 0)
+		//Verify the path has enough nodes
+		firstNode.FormChain();
+		if ((args[ARG_OPTIONS] & OPTFLAG_LINEAR) != 0)
+		{
+			if (firstNode.next == null) //Linear path; need 2 nodes
+			{
+				Console.Printf("\ckFCW_Platform " .. tid .. ": Path needs at least 2 nodes");
+				return;
+			}
+		}
+		else //Spline path; need 4 nodes
+		{
+			if (firstNode.next == null ||
+				firstNode.next.next == null ||
+				firstNode.next.next.next == null)
+			{
+				Console.Printf("\ckFCW_Platform " .. tid .. ": Path needs at least 4 nodes");
+				return;
+			}
+
+			//If the first node is in a loop, we can start there.
+			//Otherwise, we need to start at the second node in the path.
+			firstPrevNode = firstNode.ScanForLoop();
+			if (firstPrevNode == null || firstPrevNode.next != firstNode)
+			{
+				firstPrevNode = firstNode;
+				firstNode = firstNode.next;
+			}
+		}
+
+		if ((args[ARG_OPTIONS] & OPTFLAG_STARTACTIVE) != 0)
 			Activate(self);
 	}
 
@@ -158,7 +185,7 @@ extend class FCW_Platform
 	//============================
 	override bool CanCollideWith(Actor other, bool passive)
 	{
-		if ((args[ARG_PLAT_OPTIONS] & OPT_PLAT_IGNOREGEO) != 0 && other is "FCW_Platform")
+		if ((args[ARG_OPTIONS] & OPTFLAG_IGNOREGEO) != 0 && other is "FCW_Platform")
 			return false;
 
 		if (bPlatInMove && riders.Find(other) < riders.Size())
@@ -192,7 +219,7 @@ extend class FCW_Platform
 	//============================
 	private void CrushObstacle (Actor victim)
 	{
-		int crushDamage = args[ARG_PLAT_CRUSHDMG];
+		int crushDamage = args[ARG_CRUSHDMG];
 		if (crushDamage <= 0 || (level.mapTime & 3) != 0) //Only crush every 4th tic to allow victim's pain sound to be heard
 			return;
 
@@ -219,7 +246,7 @@ extend class FCW_Platform
 		}
 		pushed.vel += pushForce;
 
-		if (args[ARG_PLAT_CRUSHDMG] <= 0)
+		if (args[ARG_CRUSHDMG] <= 0)
 			return;
 
 		let oldZ = pushed.pos.z;
@@ -236,11 +263,11 @@ extend class FCW_Platform
 	//============================
 	private void SetTimeAdvance (int newTime)
 	{
-		int flags = args[ARG_PLAT_OPTIONS];
-		if ((flags & OPT_PLAT_TIMEINTICS) != 0)
+		int flags = args[ARG_OPTIONS];
+		if ((flags & OPTFLAG_TIMEINTICS) != 0)
 			timeAdvance = 1. / max(1, newTime); //Interpret 'newTime' as tics
 
-		else if ((flags & OPT_PLAT_TIMEINSECS) != 0)
+		else if ((flags & OPTFLAG_TIMEINSECS) != 0)
 			timeAdvance = 1. / (max(1, newTime) * TICRATE); //Interpret 'newTime' as seconds
 
 		else
@@ -252,11 +279,11 @@ extend class FCW_Platform
 	//============================
 	private void SetHoldTime (int newTime)
 	{
-		int flags = args[ARG_PLAT_OPTIONS];
-		if ((flags & OPT_PLAT_TIMEINTICS) != 0)
+		int flags = args[ARG_OPTIONS];
+		if ((flags & OPTFLAG_TIMEINTICS) != 0)
 			holdTime = level.mapTime + newTime; //Interpret 'newTime' as tics
 
-		else if ((flags & OPT_PLAT_TIMEINSECS) != 0)
+		else if ((flags & OPTFLAG_TIMEINSECS) != 0)
 			holdTime = level.mapTime + newTime * TICRATE; //Interpret 'newTime' as seconds
 
 		else
@@ -633,8 +660,8 @@ extend class FCW_Platform
 			pitch != oldPitch ||
 			roll != oldRoll);
 		vector2 pushForce = (0., 0.);
-		bool piPush = ((args[ARG_FOLL_OPTIONS] & OPT_FOLL_PITCH) != 0);
-		bool roPush = ((args[ARG_PLAT_OPTIONS] & OPT_PLAT_ROLL) != 0);
+		bool piPush = ((args[ARG_OPTIONS] & OPTFLAG_PITCH) != 0);
+		bool roPush = ((args[ARG_OPTIONS] & OPTFLAG_ROLL) != 0);
 
 		//If we're not moving and we interpolate our pitch/roll,
 		//and our pitch/roll is currently steep, then push things off of us.
@@ -754,7 +781,7 @@ extend class FCW_Platform
 	//============================
 	private double MaybeLerp (double p1, double p2)
 	{
-		return (p1 == p2) ? p1 : Lerp(p1, p2);
+		return (p1 == p2) ? p1 : (p1 + time * (p2 - p1));
 	}
 
 	//============================
@@ -762,13 +789,30 @@ extend class FCW_Platform
 	//============================
 	private double MaybeSplerp (double p1, double p2, double p3, double p4)
 	{
-		return (p2 == p3) ? p2 : Splerp(p1, p2, p3, p4);
+		if (p2 == p3)
+			return p2;
+
+		//Note: this was copy-pasted from PathFollower's Splerp() function
+
+		// Interpolate between p2 and p3 along a Catmull-Rom spline
+		// http://research.microsoft.com/~hollasch/cgindex/curves/catmull-rom.html
+		//
+		// Note: the above link doesn't seem to work so here's an alternative. -FishyClockwork
+		// https://en.wikipedia.org/wiki/Cubic_Hermite_spline#Catmull%E2%80%93Rom_spline
+		double t = time;
+		double res = 2*p2;
+		res += (p3 - p1) * time;
+		t *= time;
+		res += (2*p1 - 5*p2 + 4*p3 - p4) * t;
+		t *= time;
+		res += (3*p2 - 3*p3 + p4 - p1) * t;
+		return 0.5 * res;
 	}
 
 	//============================
-	// Interpolate (override)
+	// Interpolate
 	//============================
-	override bool Interpolate ()
+	private bool Interpolate ()
 	{
 		//A heavily modified version of the
 		//original function from PathFollower.
@@ -779,11 +823,11 @@ extend class FCW_Platform
 			return false;
 		}
 		Vector3 dpos = (0., 0., 0.);
-		if ((args[ARG_FOLL_OPTIONS] & OPT_FOLL_FACEMOVE) != 0 && time > 0)
+		if ((args[ARG_OPTIONS] & OPTFLAG_FACEMOVE) != 0 && time > 0)
 			dpos = pos;
 
 		vector3 newPos;
-		if ((args[ARG_FOLL_OPTIONS] & OPT_FOLL_LINEAR) != 0)
+		if ((args[ARG_OPTIONS] & OPTFLAG_LINEAR) != 0)
 		{
 			newPos.x = MaybeLerp(pCurr.x, pNext.x);
 			newPos.y = MaybeLerp(pCurr.y, pNext.y);
@@ -828,7 +872,7 @@ extend class FCW_Platform
 		bPlatInMove = false;
 		if (!moved) //Blocked by geometry or another platform?
 		{
-			if ((args[ARG_PLAT_OPTIONS] & OPT_PLAT_IGNOREGEO) != 0)
+			if ((args[ARG_OPTIONS] & OPTFLAG_IGNOREGEO) != 0)
 			{
 				SetOrigin(level.Vec3Offset(pos, newPos - pos), true);
 			}
@@ -840,12 +884,11 @@ extend class FCW_Platform
 			}
 		}
 
-		if ((args[ARG_FOLL_OPTIONS] & (OPT_FOLL_ANGLE | OPT_FOLL_PITCH)) != 0 ||
-			(args[ARG_PLAT_OPTIONS] & OPT_PLAT_ROLL) != 0)
+		if ((args[ARG_OPTIONS] & (OPTFLAG_ANGLE | OPTFLAG_PITCH | OPTFLAG_ROLL)) != 0)
 		{
-			if ((args[ARG_FOLL_OPTIONS] & OPT_FOLL_FACEMOVE) != 0)
+			if ((args[ARG_OPTIONS] & OPTFLAG_FACEMOVE) != 0)
 			{
-				if ((args[ARG_FOLL_OPTIONS] & OPT_FOLL_LINEAR) != 0)
+				if ((args[ARG_OPTIONS] & OPTFLAG_LINEAR) != 0)
 				{
 					dpos.x = pNext.x - pCurr.x;
 					dpos.y = pNext.y - pCurr.y;
@@ -868,47 +911,47 @@ extend class FCW_Platform
 				}
 
 				//Adjust angle
-				if ((args[ARG_FOLL_OPTIONS] & OPT_FOLL_ANGLE) != 0)
+				if ((args[ARG_OPTIONS] & OPTFLAG_ANGLE) != 0)
 					angle = VectorAngle(dpos.x, dpos.y);
 
 				//Adjust pitch
-				if ((args[ARG_FOLL_OPTIONS] & OPT_FOLL_PITCH) != 0)
+				if ((args[ARG_OPTIONS] & OPTFLAG_PITCH) != 0)
 				{
 					double dist = dpos.xy.Length();
 					pitch = (dist != 0.) ? VectorAngle(dist, -dpos.z) : 0.;
 				}
 				//Adjust roll
-				if ((args[ARG_PLAT_OPTIONS] & OPT_PLAT_ROLL) != 0)
+				if ((args[ARG_OPTIONS] & OPTFLAG_ROLL) != 0)
 					roll = 0.;
 			}
 			else
 			{
-				if ((args[ARG_FOLL_OPTIONS] & OPT_FOLL_LINEAR) != 0)
+				if ((args[ARG_OPTIONS] & OPTFLAG_LINEAR) != 0)
 				{
 					//Interpolate angle
-					if ((args[ARG_FOLL_OPTIONS] & OPT_FOLL_ANGLE) != 0)
+					if ((args[ARG_OPTIONS] & OPTFLAG_ANGLE) != 0)
 						angle = MaybeLerp(pCurrAngs.x, pNextAngs.x);
 
 					//Interpolate pitch
-					if ((args[ARG_FOLL_OPTIONS] & OPT_FOLL_PITCH) != 0)
+					if ((args[ARG_OPTIONS] & OPTFLAG_PITCH) != 0)
 						pitch = MaybeLerp(pCurrAngs.y, pNextAngs.y);
 
 					//Interpolate roll
-					if ((args[ARG_PLAT_OPTIONS] & OPT_PLAT_ROLL) != 0)
+					if ((args[ARG_OPTIONS] & OPTFLAG_ROLL) != 0)
 						roll = MaybeLerp(pCurrAngs.z, pNextAngs.z);
 				}
 				else //Spline
 				{
 					//Interpolate angle
-					if ((args[ARG_FOLL_OPTIONS] & OPT_FOLL_ANGLE) != 0)
+					if ((args[ARG_OPTIONS] & OPTFLAG_ANGLE) != 0)
 						angle = MaybeSplerp(pPrevAngs.x, pCurrAngs.x, pNextAngs.x, pNextNextAngs.x);
 
 					//Interpolate pitch
-					if ((args[ARG_FOLL_OPTIONS] & OPT_FOLL_PITCH) != 0)
+					if ((args[ARG_OPTIONS] & OPTFLAG_PITCH) != 0)
 						pitch = MaybeSplerp(pPrevAngs.y, pCurrAngs.y, pNextAngs.y, pNextNextAngs.y);
 
 					//Interpolate roll
-					if ((args[ARG_PLAT_OPTIONS] & OPT_PLAT_ROLL) != 0)
+					if ((args[ARG_OPTIONS] & OPTFLAG_ROLL) != 0)
 						roll = MaybeSplerp(pPrevAngs.z, pCurrAngs.z, pNextAngs.z, pNextNextAngs.z);
 				}
 			}
@@ -941,7 +984,7 @@ extend class FCW_Platform
 	//============================
 	override void Activate (Actor activator)
 	{
-		if (!bActive)
+		if (bDormant)
 		{
 			currNode = firstNode;
 			prevNode = firstPrevNode;
@@ -957,13 +1000,13 @@ extend class FCW_Platform
 				time = 0.;
 				holdTime = 0;
 				bJustStepped = true;
-				bActive = true;
+				bDormant = false;
 				SetInterpolationCoordinates();
-				SetTimeAdvance(currNode.args[ARG_NODE_TRAVELTIME]);
+				SetTimeAdvance(currNode.args[NODEARG_TRAVELTIME]);
 
 				//Don't fling away any riders if the pitch/roll difference is too great
-				bool faceMove = ((args[ARG_FOLL_OPTIONS] & OPT_FOLL_FACEMOVE) != 0);
-				if ((args[ARG_FOLL_OPTIONS] & OPT_FOLL_PITCH) != 0)
+				bool faceMove = ((args[ARG_OPTIONS] & OPTFLAG_FACEMOVE) != 0);
+				if ((args[ARG_OPTIONS] & OPTFLAG_PITCH) != 0)
 				{
 					if (faceMove && currNode.next != null)
 					{
@@ -977,7 +1020,7 @@ extend class FCW_Platform
 						pitch = oldPitch = currNode.pitch;
 					}
 				}
-				if ((args[ARG_PLAT_OPTIONS] & OPT_PLAT_ROLL) != 0)
+				if ((args[ARG_OPTIONS] & OPTFLAG_ROLL) != 0)
 					roll = oldRoll = (faceMove) ? 0. : currNode.roll;
 
 				MoveRiders(true, true);
@@ -1004,14 +1047,14 @@ extend class FCW_Platform
 		oldPitch = pitch;
 		oldRoll = roll;
 
-		if (!bActive)
+		if (bDormant)
 			return;
 
 		if (bJustStepped)
 		{
 			bJustStepped = false;
 			if (currNode != null)
-				SetHoldTime(currNode.args[ARG_NODE_HOLDTIME]);
+				SetHoldTime(currNode.args[NODEARG_HOLDTIME]);
 		}
 
 		if (holdTime > level.mapTime)
@@ -1047,12 +1090,12 @@ extend class FCW_Platform
 				SetOrigin(currNode.pos, true);
 				MoveRiders(true, false);
 				SetInterpolationCoordinates();
-				SetTimeAdvance(currNode.args[ARG_NODE_TRAVELTIME]);
+				SetTimeAdvance(currNode.args[NODEARG_TRAVELTIME]);
 			}
 
 			if (currNode == null || currNode.next == null)
 				Deactivate(self);
-			else if ((args[ARG_FOLL_OPTIONS] & OPT_FOLL_LINEAR) == 0 && currNode.next.next == null)
+			else if ((args[ARG_OPTIONS] & OPTFLAG_LINEAR) == 0 && currNode.next.next == null)
 				Deactivate(self);
 		}
 	}
@@ -1078,7 +1121,7 @@ extend class FCW_Platform
 			plat.time = 0.;
 			plat.holdTime = 0;
 			plat.SetTimeAdvance(newTime);
-			plat.bActive = true;
+			plat.bDormant = false;
 		}
 	}
 
@@ -1104,7 +1147,7 @@ extend class FCW_Platform
 			plat.time = 0.;
 			plat.holdTime = 0;
 			plat.SetTimeAdvance(newTime);
-			plat.bActive = true;
+			plat.bDormant = false;
 		}
 	}
 
@@ -1137,7 +1180,7 @@ extend class FCW_Platform
 			plat.time = 0.;
 			plat.holdTime = 0;
 			plat.SetTimeAdvance(newTime);
-			plat.bActive = true;
+			plat.bDormant = false;
 		}
 	}
 
