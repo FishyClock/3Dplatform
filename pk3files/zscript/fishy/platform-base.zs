@@ -1118,12 +1118,6 @@ extend class FCW_Platform
 					Deactivate(self);
 					return; //Our node got Thing_Remove()'d
 				}
-				oldPos = pos;
-				oldAngle = angle;
-				oldPitch = pitch;
-				oldRoll = roll;
-				SetOrigin(currNode.pos, true);
-				MoveRiders(true, false);
 				SetInterpolationCoordinates();
 				SetTimeAdvance(currNode.args[NODEARG_TRAVELTIME]);
 			}
