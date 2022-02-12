@@ -89,7 +89,7 @@ extend class FCW_Platform
 	double oldAngle;
 	double oldPitch;
 	double oldRoll;
-	double time, timeAdvance;
+	double time, timeFrac;
 	int holdTime;
 	bool bJustStepped;
 	bool bPlatBlocked; //Only useful for ACS. (See utility functions below.)
@@ -116,7 +116,7 @@ extend class FCW_Platform
 		oldAngle = angle;
 		oldPitch = pitch;
 		oldRoll = roll;
-		time = timeAdvance = 0.;
+		time = timeFrac = 0.;
 		holdTime = 0;
 		bJustStepped = false;
 		bPlatBlocked = false;
@@ -259,19 +259,19 @@ extend class FCW_Platform
 	}
 
 	//============================
-	// SetTimeAdvance
+	// SetTimeFraction
 	//============================
-	private void SetTimeAdvance (int newTime)
+	private void SetTimeFraction (int newTime)
 	{
 		int flags = args[ARG_OPTIONS];
 		if ((flags & OPTFLAG_TIMEINTICS) != 0)
-			timeAdvance = 1. / max(1, newTime); //Interpret 'newTime' as tics
+			timeFrac = 1. / max(1, newTime); //Interpret 'newTime' as tics
 
 		else if ((flags & OPTFLAG_TIMEINSECS) != 0)
-			timeAdvance = 1. / (max(1, newTime) * TICRATE); //Interpret 'newTime' as seconds
+			timeFrac = 1. / (max(1, newTime) * TICRATE); //Interpret 'newTime' as seconds
 
 		else
-			timeAdvance = 8. / (max(1, newTime) * TICRATE); //Interpret 'newTime' as octics
+			timeFrac = 8. / (max(1, newTime) * TICRATE); //Interpret 'newTime' as octics
 	}
 
 	//============================
@@ -279,6 +279,9 @@ extend class FCW_Platform
 	//============================
 	private void SetHoldTime (int newTime)
 	{
+		if (newTime <= 0)
+			return;
+
 		int flags = args[ARG_OPTIONS];
 		if ((flags & OPTFLAG_TIMEINTICS) != 0)
 			holdTime = level.mapTime + newTime; //Interpret 'newTime' as tics
@@ -297,7 +300,7 @@ extend class FCW_Platform
 	{
 		if (prevNode != null)
 		{
-			pPrev = pos + level.Vec3Diff(pos, prevNode.pos); //Make it portal aware
+			pPrev = pos + Vec3To(prevNode); //Make it portal aware
 			pPrevAngs = (
 				Normalize180(prevNode.angle),
 				Normalize180(prevNode.pitch),
@@ -305,7 +308,7 @@ extend class FCW_Platform
 		}
 		if (currNode != null)
 		{
-			pCurr = pos + level.Vec3Diff(pos, currNode.pos); //Ditto
+			pCurr = pos + Vec3To(currNode); //Ditto
 			if (prevNode == null)
 				pCurrAngs = (
 				Normalize180(currNode.angle),
@@ -319,7 +322,7 @@ extend class FCW_Platform
 
 			if (currNode.next != null)
 			{
-				pNext = pos + level.Vec3Diff(pos, currNode.next.pos); //Ditto
+				pNext = pos + Vec3To(currNode.next); //Ditto
 				pNextAngs = pCurrAngs + (
 				DeltaAngle(pCurrAngs.x, currNode.next.angle),
 				DeltaAngle(pCurrAngs.y, currNode.next.pitch),
@@ -327,7 +330,7 @@ extend class FCW_Platform
 
 				if (currNode.next.next != null)
 				{
-					pNextNext = pos + level.Vec3Diff(pos, currNode.next.next.pos); //Ditto
+					pNextNext = pos + Vec3To(currNode.next.next); //Ditto
 					pNextNextAngs = pNextAngs + (
 					DeltaAngle(pNextAngs.x, currNode.next.next.angle),
 					DeltaAngle(pNextAngs.y, currNode.next.next.pitch),
@@ -792,12 +795,12 @@ extend class FCW_Platform
 		if (p2 == p3)
 			return p2;
 
-		//Note: this was copy-pasted from PathFollower's Splerp() function
-
+		// NOTE: this was copy-pasted from PathFollower's Splerp() function
+		//
 		// Interpolate between p2 and p3 along a Catmull-Rom spline
 		// http://research.microsoft.com/~hollasch/cgindex/curves/catmull-rom.html
 		//
-		// Note: the above link doesn't seem to work so here's an alternative. -FishyClockwork
+		// NOTE: the above link doesn't seem to work so here's an alternative. -FishyClockwork
 		// https://en.wikipedia.org/wiki/Cubic_Hermite_spline#Catmull%E2%80%93Rom_spline
 		double t = time;
 		double res = 2*p2;
@@ -823,7 +826,7 @@ extend class FCW_Platform
 			return false;
 		}
 		Vector3 dpos = (0., 0., 0.);
-		if ((args[ARG_OPTIONS] & OPTFLAG_FACEMOVE) != 0 && time > 0)
+		if ((args[ARG_OPTIONS] & OPTFLAG_FACEMOVE) != 0 && time > 0.)
 			dpos = pos;
 
 		vector3 newPos;
@@ -898,14 +901,14 @@ extend class FCW_Platform
 				{
 					dpos = newPos - dpos;
 				}
-				else //Spline but with time == 0.
-				{
+				else if ((args[ARG_OPTIONS] & (OPTFLAG_ANGLE | OPTFLAG_PITCH)) != 0)
+				{	//Spline but with time == 0.
 					dpos = newPos;
-					time += timeAdvance;
+					time = timeFrac;
 					newPos.x = MaybeSplerp(pPrev.x, pCurr.x, pNext.x, pNextNext.x);
 					newPos.y = MaybeSplerp(pPrev.y, pCurr.y, pNext.y, pNextNext.y);
 					newPos.z = MaybeSplerp(pPrev.z, pCurr.z, pNext.z, pNextNext.z);
-					time -= timeAdvance;
+					time = 0.;
 					dpos = newPos - dpos;
 					newPos -= dpos;
 				}
@@ -1037,7 +1040,7 @@ extend class FCW_Platform
 				bJustStepped = true;
 				bDormant = false;
 				SetInterpolationCoordinates();
-				SetTimeAdvance(currNode.args[NODEARG_TRAVELTIME]);
+				SetTimeFraction(currNode.args[NODEARG_TRAVELTIME]);
 
 				//Don't fling away any riders if the pitch/roll difference is too great
 				bool faceMove = ((args[ARG_OPTIONS] & OPTFLAG_FACEMOVE) != 0);
@@ -1098,7 +1101,7 @@ extend class FCW_Platform
 		if (!Interpolate())
 			return;
 
-		time += timeAdvance;
+		time += timeFrac;
 		if (time > 1.)
 		{
 			time -= 1.;
@@ -1119,7 +1122,7 @@ extend class FCW_Platform
 					return; //Our node got Thing_Remove()'d
 				}
 				SetInterpolationCoordinates();
-				SetTimeAdvance(currNode.args[NODEARG_TRAVELTIME]);
+				SetTimeFraction(currNode.args[NODEARG_TRAVELTIME]);
 			}
 
 			if (currNode == null || currNode.next == null)
@@ -1149,7 +1152,7 @@ extend class FCW_Platform
 			plat.pNextAngs = plat.pNextNextAngs = plat.pCurrAngs + (offAng, offPi, offRo);
 			plat.time = 0.;
 			plat.holdTime = 0;
-			plat.SetTimeAdvance(newTime);
+			plat.SetTimeFraction(newTime);
 			plat.bDormant = false;
 		}
 	}
@@ -1175,7 +1178,7 @@ extend class FCW_Platform
 			plat.pNextAngs = plat.pNextNextAngs = plat.pCurrAngs + (offAng, offPi, offRo);
 			plat.time = 0.;
 			plat.holdTime = 0;
-			plat.SetTimeAdvance(newTime);
+			plat.SetTimeFraction(newTime);
 			plat.bDormant = false;
 		}
 	}
@@ -1197,7 +1200,7 @@ extend class FCW_Platform
 			plat.currNode = null; //Deactivate when done moving
 			plat.prevNode = null;
 			plat.pPrev = plat.pCurr = plat.pos;
-			plat.pNext = plat.pNextNext = plat.pos + level.Vec3Diff(plat.pos, spot.pos); //Make it portal aware
+			plat.pNext = plat.pNextNext = plat.pos + plat.Vec3To(spot); //Make it portal aware
 			plat.pPrevAngs = plat.pCurrAngs = (
 				Normalize180(plat.angle),
 				Normalize180(plat.pitch),
@@ -1208,7 +1211,7 @@ extend class FCW_Platform
 				DeltaAngle(plat.pCurrAngs.z, spot.roll));
 			plat.time = 0.;
 			plat.holdTime = 0;
-			plat.SetTimeAdvance(newTime);
+			plat.SetTimeFraction(newTime);
 			plat.bDormant = false;
 		}
 	}
