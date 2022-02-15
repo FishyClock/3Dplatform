@@ -35,12 +35,13 @@ class FCW_Platform : Actor abstract
 
 		//$Arg0 Target
 		//$Arg0Type 14
+		//$Arg0Tooltip Must be a interpolation point (path) or another platform (to mirror).
 
 		//$Arg1 Options
 		//$Arg1Type 12
 		//Yes, this enum definition has to be on one line
 		//$Arg1Enum {1 = "Linear path"; 2 = "Use target angle"; 4 = "Use target pitch"; 8 = "Use target roll"; 16 = "Face movement direction"; 32 = "Don't clip against geometry and other platforms"; 64 = "Travel/Hold time in tics (not octics)"; 128 = "Travel/Hold time in seconds (not octics)"; 256 = "Start active";}
-		//$Arg1Tooltip Flags 64 and 128 are mutually exclusive.\n(64 takes precedence over 128.)
+		//$Arg1Tooltip Flags 64 and 128 are mutually exclusive.\n(64 takes precedence over 128.)\nNOTE: When mirroring another platform, only flags 2, 4 and 8 have any effect.
 
 		//$Arg2 Crush Damage
 		//$Arg2Tooltip The damage is applied once per 4 tics.
@@ -91,12 +92,14 @@ extend class FCW_Platform
 	double oldRoll;
 	double time, timeFrac;
 	int holdTime;
+	int blockedState; //0 = not blocked; 1 = blocked; 2 = blocked and waiting
 	bool bJustStepped;
-	bool bPlatBlocked; //Only useful for ACS. (See utility functions below.)
-	bool bPlatInMove; //No collision between a platform and its riders during said platform's move.
+	bool bPlatInMove; //No collision between a platform and its riders during said platform's move
 	InterpolationPoint currNode, firstNode;
 	InterpolationPoint prevNode, firstPrevNode;
 	Array<Actor> riders;
+	FCW_Platform mirror;
+	bool bPlatTeleported; //Info for platforms mirroring this one
 
 	//Unlike PathFollower classes, our interpolations are done with
 	//vector3 coordinates rather than checking InterpolationPoint positions.
@@ -118,11 +121,15 @@ extend class FCW_Platform
 		oldRoll = roll;
 		time = timeFrac = 0.;
 		holdTime = 0;
+		blockedState = 0;
 		bJustStepped = false;
-		bPlatBlocked = false;
 		bPlatInMove = false;
 		currNode = firstNode = null;
 		prevNode = firstPrevNode = null;
+		riders.Clear();
+		mirror = null;
+		bPlatTeleported = false;
+
 		pCurr = pPrev = pNext = pNextNext = (0., 0., 0.);
 		pCurrAngs = pPrevAngs = pNextAngs = pNextNextAngs = (0., 0., 0.);
 	}
@@ -133,18 +140,27 @@ extend class FCW_Platform
 	override void PostBeginPlay ()
 	{
 		bDormant = true;
-		riders.Clear();
+		if (args[ARG_TARGET] == 0)
+			return; //Print no warnings if we're not supposed to look for anything
 
-		//Find first node of path
-		let it = level.CreateActorIterator(args[ARG_TARGET], "InterpolationPoint");
-		firstNode = InterpolationPoint(it.Next());
+		let it = level.CreateActorIterator(args[ARG_TARGET]);
+		Actor mo = it.Next();
+		while (mo != null && !(mo is "InterpolationPoint") && !(mo is "FCW_Platform"))
+			mo = it.Next();
 
-		if (firstNode == null)
+		String prefix = "\ckPlatform class '" .. GetClassName() .. "' with tid " .. tid .. ":\nat position " .. pos .. ":\n";
+		if (mo == null)
 		{
-			if (args[ARG_TARGET] != 0) //Make no fuss if we're not supposed to look for a path
-				Console.Printf("\ckFCW_Platform " .. tid .. ": Can't find interpolation point " .. args[ARG_TARGET]);
+			Console.Printf(prefix .. "Can't find suitable target with tid " .. args[ARG_TARGET] .. ".\nTarget must be a interpolation point (path) or another platform (to mirror).");
 			return;
 		}
+
+		if (mo is "FCW_Platform")
+		{
+			mirror = FCW_Platform(mo);
+			return;
+		}
+		firstNode = InterpolationPoint(mo);
 
 		//Verify the path has enough nodes
 		firstNode.FormChain();
@@ -152,7 +168,7 @@ extend class FCW_Platform
 		{
 			if (firstNode.next == null) //Linear path; need 2 nodes
 			{
-				Console.Printf("\ckFCW_Platform " .. tid .. ": Path needs at least 2 nodes");
+				Console.Printf(prefix .. "Path needs at least 2 nodes.");
 				return;
 			}
 		}
@@ -162,7 +178,7 @@ extend class FCW_Platform
 				firstNode.next.next == null ||
 				firstNode.next.next.next == null)
 			{
-				Console.Printf("\ckFCW_Platform " .. tid .. ": Path needs at least 4 nodes");
+				Console.Printf(prefix .. "Path needs at least 4 nodes.");
 				return;
 			}
 
@@ -657,7 +673,7 @@ extend class FCW_Platform
 		//The AI's native handling of trying not to fall off of other actors
 		//just isn't good enough.
 
-		bool hasMoved = (bPlatBlocked ||
+		bool hasMoved = (blockedState > 0 ||
 			pos != oldPos ||
 			angle != oldAngle ||
 			pitch != oldPitch ||
@@ -795,7 +811,7 @@ extend class FCW_Platform
 		if (p2 == p3)
 			return p2;
 
-		// NOTE: this was copy-pasted from PathFollower's Splerp() function
+		// This was copy-pasted from PathFollower's Splerp() function
 		//
 		// Interpolate between p2 and p3 along a Catmull-Rom spline
 		// http://research.microsoft.com/~hollasch/cgindex/curves/catmull-rom.html
@@ -822,7 +838,7 @@ extend class FCW_Platform
 
 		if (!GetNewRiders(false, false))
 		{
-			bPlatBlocked = true;
+			blockedState = 1;
 			return false;
 		}
 		Vector3 dpos = (0., 0., 0.);
@@ -865,7 +881,7 @@ extend class FCW_Platform
 			if (!moved) //Blocked by actor that isn't a platform?
 			{
 				bPlatInMove = false;
-				bPlatBlocked = true;
+				blockedState = 1;
 				mo.SetZ(moOldZ);
 				self.SetZ(oldPos.z);
 				PushObstacle(mo, level.Vec3Diff(oldPos, newPos));
@@ -881,7 +897,7 @@ extend class FCW_Platform
 			}
 			else
 			{
-				bPlatBlocked = true;
+				blockedState = 1;
 				SetZ(oldPos.z);
 				return false;
 			}
@@ -962,7 +978,7 @@ extend class FCW_Platform
 
 		if (!MoveRiders(false, false))
 		{
-			bPlatBlocked = true;
+			blockedState = 1;
 			SetOrigin(oldPos, true);
 			angle = oldAngle;
 			pitch = oldPitch;
@@ -1035,6 +1051,7 @@ extend class FCW_Platform
 
 				GetNewRiders(true, true);
 				SetOrigin(currNode.pos, false);
+				bPlatTeleported = true;
 				time = 0.;
 				holdTime = 0;
 				bJustStepped = true;
@@ -1079,7 +1096,9 @@ extend class FCW_Platform
 		}
 
 		HandleOldRiders();
-		bPlatBlocked = false;
+		if (blockedState > 0 && --blockedState > 0)
+			return;
+		bPlatTeleported = false;
 		oldPos = pos;
 		oldAngle = angle;
 		oldPitch = pitch;
@@ -1237,6 +1256,6 @@ extend class FCW_Platform
 	{
 		let it = level.CreateActorIterator(platTid, "FCW_Platform");
 		let plat = FCW_Platform(it.Next());
-		return (plat != null && plat.bPlatBlocked);
+		return (plat != null && plat.blockedState > 0);
 	}
 }
