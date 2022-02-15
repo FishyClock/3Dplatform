@@ -35,12 +35,13 @@ class FCW_Platform : Actor abstract
 
 		//$Arg0 Target
 		//$Arg0Type 14
+		//$Arg0Tooltip Must be a interpolation point (path) or another platform (to mirror).
 
 		//$Arg1 Options
 		//$Arg1Type 12
 		//Yes, this enum definition has to be on one line
 		//$Arg1Enum {1 = "Linear path"; 2 = "Use target angle"; 4 = "Use target pitch"; 8 = "Use target roll"; 16 = "Face movement direction"; 32 = "Don't clip against geometry and other platforms"; 64 = "Travel/Hold time in tics (not octics)"; 128 = "Travel/Hold time in seconds (not octics)"; 256 = "Start active";}
-		//$Arg1Tooltip Flags 64 and 128 are mutually exclusive.\n(64 takes precedence over 128.)
+		//$Arg1Tooltip Flags 64 and 128 are mutually exclusive.\n(64 takes precedence over 128.)\nNOTE: When mirroring another platform, only flags 2, 4, 8 and 32 have any effect.
 
 		//$Arg2 Crush Damage
 		//$Arg2Tooltip The damage is applied once per 4 tics.
@@ -97,6 +98,7 @@ extend class FCW_Platform
 	InterpolationPoint currNode, firstNode;
 	InterpolationPoint prevNode, firstPrevNode;
 	Array<Actor> riders;
+	Array<FCW_Platform> mirrors;
 
 	//Unlike PathFollower classes, our interpolations are done with
 	//vector3 coordinates rather than checking InterpolationPoint positions.
@@ -123,6 +125,9 @@ extend class FCW_Platform
 		bPlatInMove = false;
 		currNode = firstNode = null;
 		prevNode = firstPrevNode = null;
+		riders.Clear();
+		mirrors.Clear();
+
 		pCurr = pPrev = pNext = pNextNext = (0., 0., 0.);
 		pCurrAngs = pPrevAngs = pNextAngs = pNextNextAngs = (0., 0., 0.);
 	}
@@ -133,18 +138,33 @@ extend class FCW_Platform
 	override void PostBeginPlay ()
 	{
 		bDormant = true;
-		riders.Clear();
+		if (args[ARG_TARGET] == 0)
+			return; //Print no warnings if we're not supposed to look for anything
 
-		//Find first node of path
-		let it = level.CreateActorIterator(args[ARG_TARGET], "InterpolationPoint");
-		firstNode = InterpolationPoint(it.Next());
+		let it = level.CreateActorIterator(args[ARG_TARGET]);
+		Actor mo = it.Next();
+		while (mo != null && !(mo is "InterpolationPoint") && !(mo is "FCW_Platform"))
+			mo = it.Next();
 
-		if (firstNode == null)
+		String prefix = "\ckPlatform class '" .. GetClassName() .. "' with tid " .. tid .. ":\nat position " .. pos .. ":\n";
+		if (mo == null)
 		{
-			if (args[ARG_TARGET] != 0) //Make no fuss if we're not supposed to look for a path
-				Console.Printf("\ckFCW_Platform " .. tid .. ": Can't find interpolation point " .. args[ARG_TARGET]);
+			Console.Printf(prefix .. "Can't find suitable target with tid " .. args[ARG_TARGET] .. ".\nTarget must be a interpolation point (path) or another platform (to mirror).");
 			return;
 		}
+
+		if (mo is "FCW_Platform")
+		{
+			let toMirror = FCW_Platform(mo);
+			toMirror.mirrors.Push(self);
+
+			//Get going if it's active
+			//and we ticked after it.
+			if (toMirror.pos != toMirror.spawnPoint)
+				MirrorMove(toMirror, true);
+			return;
+		}
+		firstNode = InterpolationPoint(mo);
 
 		//Verify the path has enough nodes
 		firstNode.FormChain();
@@ -152,7 +172,7 @@ extend class FCW_Platform
 		{
 			if (firstNode.next == null) //Linear path; need 2 nodes
 			{
-				Console.Printf("\ckFCW_Platform " .. tid .. ": Path needs at least 2 nodes");
+				Console.Printf(prefix .. "Path needs at least 2 nodes.");
 				return;
 			}
 		}
@@ -162,7 +182,7 @@ extend class FCW_Platform
 				firstNode.next.next == null ||
 				firstNode.next.next.next == null)
 			{
-				Console.Printf("\ckFCW_Platform " .. tid .. ": Path needs at least 4 nodes");
+				Console.Printf(prefix .. "Path needs at least 4 nodes.");
 				return;
 			}
 
@@ -795,7 +815,7 @@ extend class FCW_Platform
 		if (p2 == p3)
 			return p2;
 
-		// NOTE: this was copy-pasted from PathFollower's Splerp() function
+		// This was copy-pasted from PathFollower's Splerp() function
 		//
 		// Interpolate between p2 and p3 along a Catmull-Rom spline
 		// http://research.microsoft.com/~hollasch/cgindex/curves/catmull-rom.html
@@ -979,6 +999,117 @@ extend class FCW_Platform
 			pNext += offset;
 			pNextNext += offset;
 		}
+
+		for (int i = 0; i < mirrors.Size(); ++i)
+		{
+			//If one of our mirrors is blocked, pretend
+			//we're blocked too. (Our move won't be cancelled.)
+			if (!mirrors[i].MirrorMove(self, false))
+			{
+				bPlatBlocked = true;
+				return false;
+			}
+		}
+		return true;
+	}
+
+	//============================
+	// MirrorMove
+	//============================
+	private bool MirrorMove (FCW_Platform toMirror, bool teleMove)
+	{
+		bDormant = true; //Mirrors shouldn't follow a normal path
+
+		if (!GetNewRiders(teleMove, teleMove))
+		{
+			bPlatBlocked = true;
+			return false;
+		}
+
+		//The way we mirror movement is by getting the offset going
+		//from the mirror's current position to its spawn position
+		//and using that to offset from our own spawn position.
+		//So we pretty much always go in the opposite direction
+		//using our spawn position as a reference point.
+		vector3 offset = level.Vec3Diff(toMirror.pos, toMirror.spawnPoint);
+		vector3 newPos = level.Vec3Offset(spawnPoint, offset);
+		if (!teleMove)
+			newPos = pos + level.Vec3Diff(pos, newPos); //For TryMove()
+
+		if (teleMove)
+		{
+			SetOrigin(newPos, false);
+		}
+		else
+		{
+			bPlatInMove = true; //Temporarily don't clip against riders
+			SetZ(newPos.z);
+			bool moved = TryMove(newPos.xy, 1); //We need TryMove() for portal crossing
+
+			if (!moved && blockingMobj != null && !(blockingMobj is "FCW_Platform"))
+			{
+				let mo = blockingMobj;
+				let moOldZ = mo.pos.z;
+				let moNewZ = newPos.z + self.height;
+
+				//Try to set the obstacle on top of us if its 'maxStepHeight' allows it
+				if (moNewZ > moOldZ && moNewZ - moOldZ <= mo.maxStepHeight)
+				{
+					mo.SetZ(moNewZ);
+					if (mo.CheckMove(mo.pos.xy)) //Obstacle fits at new Z even before we moved?
+						moved = TryMove(newPos.xy, 1); //Try one more time
+				}
+
+				if (!moved) //Blocked by actor that isn't a platform?
+				{
+					bPlatInMove = false;
+					bPlatBlocked = true;
+					mo.SetZ(moOldZ);
+					self.SetZ(oldPos.z);
+					PushObstacle(mo, level.Vec3Diff(oldPos, newPos));
+					return false;
+				}
+			}
+			bPlatInMove = false;
+			if (!moved) //Blocked by geometry or another platform?
+			{
+				if ((args[ARG_OPTIONS] & OPTFLAG_IGNOREGEO) != 0)
+				{
+					SetOrigin(level.Vec3Offset(pos, newPos - pos), true);
+				}
+				else
+				{
+					bPlatBlocked = true;
+					SetZ(oldPos.z);
+					return false;
+				}
+			}
+		}
+
+		if ((args[ARG_OPTIONS] & OPTFLAG_ANGLE) != 0)
+		{
+			//Same offset logic as position changing
+			double delta = DeltaAngle(toMirror.angle, toMirror.spawnAngle);
+			angle = Normalize180(spawnAngle);
+			angle += DeltaAngle(angle, delta);
+		}
+
+		if ((args[ARG_OPTIONS] & OPTFLAG_PITCH) != 0)
+			pitch = Normalize180(toMirror.pitch);
+
+		if ((args[ARG_OPTIONS] & OPTFLAG_ROLL) != 0)
+			roll = Normalize180(toMirror.roll + 180.);
+
+		if (!MoveRiders(teleMove, teleMove))
+		{
+			bPlatBlocked = true;
+			SetOrigin(oldPos, true);
+			angle = oldAngle;
+			pitch = oldPitch;
+			roll = oldRoll;
+			return false;
+		}
+
 		return true;
 	}
 
@@ -1062,6 +1193,8 @@ extend class FCW_Platform
 					roll = oldRoll = (faceMove) ? 0. : currNode.roll;
 
 				MoveRiders(true, true);
+				for (int i = 0; i < mirrors.Size(); ++i)
+					mirrors[i].MirrorMove(self, true);
 			}
 		}
 	}
