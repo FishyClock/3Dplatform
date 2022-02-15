@@ -92,14 +92,12 @@ extend class FCW_Platform
 	double oldRoll;
 	double time, timeFrac;
 	int holdTime;
-	int blockedState; //0 = not blocked; 1 = blocked; 2 = blocked and waiting
 	bool bJustStepped;
-	bool bPlatInMove; //No collision between a platform and its riders during said platform's move
+	bool bPlatBlocked; //Only useful for ACS. (See utility functions below.)
+	bool bPlatInMove; //No collision between a platform and its riders during said platform's move.
 	InterpolationPoint currNode, firstNode;
 	InterpolationPoint prevNode, firstPrevNode;
 	Array<Actor> riders;
-	FCW_Platform mirror;
-	bool bPlatTeleported; //Info for platforms mirroring this one
 
 	//Unlike PathFollower classes, our interpolations are done with
 	//vector3 coordinates rather than checking InterpolationPoint positions.
@@ -121,15 +119,11 @@ extend class FCW_Platform
 		oldRoll = roll;
 		time = timeFrac = 0.;
 		holdTime = 0;
-		blockedState = 0;
 		bJustStepped = false;
+		bPlatBlocked = false;
 		bPlatInMove = false;
 		currNode = firstNode = null;
 		prevNode = firstPrevNode = null;
-		riders.Clear();
-		mirror = null;
-		bPlatTeleported = false;
-
 		pCurr = pPrev = pNext = pNextNext = (0., 0., 0.);
 		pCurrAngs = pPrevAngs = pNextAngs = pNextNextAngs = (0., 0., 0.);
 	}
@@ -673,7 +667,7 @@ extend class FCW_Platform
 		//The AI's native handling of trying not to fall off of other actors
 		//just isn't good enough.
 
-		bool hasMoved = (blockedState > 0 ||
+		bool hasMoved = (bPlatBlocked ||
 			pos != oldPos ||
 			angle != oldAngle ||
 			pitch != oldPitch ||
@@ -838,7 +832,7 @@ extend class FCW_Platform
 
 		if (!GetNewRiders(false, false))
 		{
-			blockedState = 1;
+			bPlatBlocked = true;
 			return false;
 		}
 		Vector3 dpos = (0., 0., 0.);
@@ -881,7 +875,7 @@ extend class FCW_Platform
 			if (!moved) //Blocked by actor that isn't a platform?
 			{
 				bPlatInMove = false;
-				blockedState = 1;
+				bPlatBlocked = true;
 				mo.SetZ(moOldZ);
 				self.SetZ(oldPos.z);
 				PushObstacle(mo, level.Vec3Diff(oldPos, newPos));
@@ -897,7 +891,7 @@ extend class FCW_Platform
 			}
 			else
 			{
-				blockedState = 1;
+				bPlatBlocked = true;
 				SetZ(oldPos.z);
 				return false;
 			}
@@ -978,7 +972,7 @@ extend class FCW_Platform
 
 		if (!MoveRiders(false, false))
 		{
-			blockedState = 1;
+			bPlatBlocked = true;
 			SetOrigin(oldPos, true);
 			angle = oldAngle;
 			pitch = oldPitch;
@@ -1051,7 +1045,6 @@ extend class FCW_Platform
 
 				GetNewRiders(true, true);
 				SetOrigin(currNode.pos, false);
-				bPlatTeleported = true;
 				time = 0.;
 				holdTime = 0;
 				bJustStepped = true;
@@ -1096,9 +1089,7 @@ extend class FCW_Platform
 		}
 
 		HandleOldRiders();
-		if (blockedState > 0 && --blockedState > 0)
-			return;
-		bPlatTeleported = false;
+		bPlatBlocked = false;
 		oldPos = pos;
 		oldAngle = angle;
 		oldPitch = pitch;
@@ -1256,6 +1247,6 @@ extend class FCW_Platform
 	{
 		let it = level.CreateActorIterator(platTid, "FCW_Platform");
 		let plat = FCW_Platform(it.Next());
-		return (plat != null && plat.blockedState > 0);
+		return (plat != null && plat.bPlatBlocked);
 	}
 }
