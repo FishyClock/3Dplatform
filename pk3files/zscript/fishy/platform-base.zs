@@ -41,7 +41,7 @@ class FCW_Platform : Actor abstract
 		//$Arg1Type 12
 		//Yes, this enum definition has to be on one line
 		//$Arg1Enum {1 = "Linear path"; 2 = "Use target angle"; 4 = "Use target pitch"; 8 = "Use target roll"; 16 = "Face movement direction"; 32 = "Don't clip against geometry and other platforms"; 64 = "Travel/Hold time in tics (not octics)"; 128 = "Travel/Hold time in seconds (not octics)"; 256 = "Start active";}
-		//$Arg1Tooltip Flags 64 and 128 are mutually exclusive.\n(64 takes precedence over 128.)\nNOTE: When mirroring another platform, only flags 2, 4, 8 and 32 have any effect.
+		//$Arg1Tooltip Flag 64 takes precedence over 128.\nNOTE: When mirroring another platform, only flags 2, 4, 8 and 32 have any effect.
 
 		//$Arg2 Crush Damage
 		//$Arg2Tooltip The damage is applied once per 4 tics.
@@ -1025,6 +1025,10 @@ extend class FCW_Platform
 			bPlatBlocked = true;
 			return false;
 		}
+		oldPos = pos;
+		oldAngle = angle;
+		oldPitch = pitch;
+		oldRoll = roll;
 
 		//The way we mirror movement is by getting the offset going
 		//from the mirror's current position to its spawn position
