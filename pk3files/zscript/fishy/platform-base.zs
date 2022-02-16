@@ -1094,8 +1094,7 @@ extend class FCW_Platform
 		{
 			//Same offset logic as position changing
 			double delta = DeltaAngle(toMirror.angle, toMirror.spawnAngle);
-			angle = Normalize180(spawnAngle);
-			angle += DeltaAngle(angle, delta);
+			angle = Normalize180(spawnAngle + delta);
 		}
 
 		if ((args[ARG_OPTIONS] & OPTFLAG_PITCH) != 0)
