@@ -99,6 +99,7 @@ extend class FCW_Platform
 	InterpolationPoint prevNode, firstPrevNode;
 	Array<Actor> riders;
 	Array<FCW_Platform> mirrors;
+	FCW_Platform platMaster; //Mirrors have most of their thinking done by the platform they mirror (IE their master)
 
 	//Unlike PathFollower classes, our interpolations are done with
 	//vector3 coordinates rather than checking InterpolationPoint positions.
@@ -127,6 +128,7 @@ extend class FCW_Platform
 		prevNode = firstPrevNode = null;
 		riders.Clear();
 		mirrors.Clear();
+		platMaster = null;
 
 		pCurr = pPrev = pNext = pNextNext = (0., 0., 0.);
 		pCurrAngs = pPrevAngs = pNextAngs = pNextNextAngs = (0., 0., 0.);
@@ -833,6 +835,59 @@ extend class FCW_Platform
 	}
 
 	//============================
+	// PlatTryMove
+	//============================
+	private bool PlatTryMove (vector3 newPos)
+	{
+		if (pos == newPos)
+			return true;
+
+		bPlatInMove = true; //Temporarily don't clip against riders
+		SetZ(newPos.z);
+		bool moved = TryMove(newPos.xy, 1);
+
+		if (!moved && blockingMobj != null && !(blockingMobj is "FCW_Platform"))
+		{
+			let mo = blockingMobj;
+			let moOldZ = mo.pos.z;
+			let moNewZ = newPos.z + self.height;
+
+			//Try to set the obstacle on top of us if its 'maxStepHeight' allows it
+			if (moNewZ > moOldZ && moNewZ - moOldZ <= mo.maxStepHeight)
+			{
+				mo.SetZ(moNewZ);
+				if (mo.CheckMove(mo.pos.xy)) //Obstacle fits at new Z even before we moved?
+					moved = TryMove(newPos.xy, 1); //Try one more time
+			}
+
+			if (!moved) //Blocked by actor that isn't a platform?
+			{
+				bPlatInMove = false;
+				mo.SetZ(moOldZ);
+				self.SetZ(oldPos.z);
+				PushObstacle(mo, level.Vec3Diff(pos, newPos));
+				return false;
+			}
+		}
+		bPlatInMove = false;
+
+		if (!moved) //Blocked by geometry or another platform?
+		{
+			if ((args[ARG_OPTIONS] & OPTFLAG_IGNOREGEO) != 0)
+			{
+				SetOrigin(level.Vec3Offset(pos, newPos - pos), true);
+			}
+			else
+			{
+				SetZ(oldPos.z);
+				return false;
+			}
+		}
+
+		return true;
+	}
+
+	//============================
 	// Interpolate
 	//============================
 	private bool Interpolate ()
@@ -841,10 +896,8 @@ extend class FCW_Platform
 		//original function from PathFollower.
 
 		if (!GetNewRiders(false, false))
-		{
-			bPlatBlocked = true;
 			return false;
-		}
+
 		Vector3 dpos = (0., 0., 0.);
 		if ((args[ARG_OPTIONS] & OPTFLAG_FACEMOVE) != 0 && time > 0.)
 			dpos = pos;
@@ -864,48 +917,8 @@ extend class FCW_Platform
 		}
 
 		let oldPGroup = curSector.portalGroup;
-		bPlatInMove = true; //Temporarily don't clip against riders
-		SetZ(newPos.z);
-		bool moved = TryMove(newPos.xy, 1); //We need TryMove() for portal crossing
-
-		if (!moved && blockingMobj != null && !(blockingMobj is "FCW_Platform"))
-		{
-			let mo = blockingMobj;
-			let moOldZ = mo.pos.z;
-			let moNewZ = newPos.z + self.height;
-
-			//Try to set the obstacle on top of us if its 'maxStepHeight' allows it
-			if (moNewZ > moOldZ && moNewZ - moOldZ <= mo.maxStepHeight)
-			{
-				mo.SetZ(moNewZ);
-				if (mo.CheckMove(mo.pos.xy)) //Obstacle fits at new Z even before we moved?
-					moved = TryMove(newPos.xy, 1); //Try one more time
-			}
-
-			if (!moved) //Blocked by actor that isn't a platform?
-			{
-				bPlatInMove = false;
-				bPlatBlocked = true;
-				mo.SetZ(moOldZ);
-				self.SetZ(oldPos.z);
-				PushObstacle(mo, level.Vec3Diff(oldPos, newPos));
-				return false;
-			}
-		}
-		bPlatInMove = false;
-		if (!moved) //Blocked by geometry or another platform?
-		{
-			if ((args[ARG_OPTIONS] & OPTFLAG_IGNOREGEO) != 0)
-			{
-				SetOrigin(level.Vec3Offset(pos, newPos - pos), true);
-			}
-			else
-			{
-				bPlatBlocked = true;
-				SetZ(oldPos.z);
-				return false;
-			}
-		}
+		if (!PlatTryMove(newPos))
+			return false;
 
 		if ((args[ARG_OPTIONS] & (OPTFLAG_ANGLE | OPTFLAG_PITCH | OPTFLAG_ROLL)) != 0)
 		{
@@ -982,7 +995,6 @@ extend class FCW_Platform
 
 		if (!MoveRiders(false, false))
 		{
-			bPlatBlocked = true;
 			SetOrigin(oldPos, true);
 			angle = oldAngle;
 			pitch = oldPitch;
@@ -1004,13 +1016,65 @@ extend class FCW_Platform
 		{
 			//If one of our mirrors is blocked, pretend
 			//we're blocked too. (Our move won't be cancelled.)
-			if (!mirrors[i].MirrorMove(self, false))
-			{
-				bPlatBlocked = true;
+			let m = GetMirror(i);
+			if (m == null)
+				--i; //Mirror was destroyed; array entry got deleted
+			else if (!m.MirrorMove(self, false))
 				return false;
-			}
 		}
 		return true;
+	}
+
+	//============================
+	// GetMirror
+	//============================
+	private FCW_Platform GetMirror (int index)
+	{
+		if (index >= mirrors.Size())
+			return null;
+		let m = mirrors[index];
+		if (m == null || m.bDestroyed)
+		{
+			mirrors.Delete(index);
+			return null;
+		}
+		return m;
+	}
+
+	//============================
+	// UpdateOldInfo
+	//============================
+	private void UpdateOldInfo ()
+	{
+		bPlatBlocked = false;
+		oldPos = pos;
+		oldAngle = angle;
+		oldPitch = pitch;
+		oldRoll = roll;
+		for (int i = 0; i < mirrors.Size(); ++i)
+		{
+			let m = GetMirror(i);
+			if (m == null)
+				--i; //Mirror was destroyed; array entry got deleted
+			else if (m.mirrors.Find(self) >= m.mirrors.Size()) //Avoid infinite recursion
+				m.UpdateOldInfo();
+		}
+	}
+
+	//============================
+	// MarkAsBlocked
+	//============================
+	private void MarkAsBlocked ()
+	{
+		bPlatBlocked = true;
+		for (int i = 0; i < mirrors.Size(); ++i)
+		{
+			let m = GetMirror(i);
+			if (m == null)
+				--i; //Mirror was destroyed; array entry got deleted
+			else if (m.mirrors.Find(self) >= m.mirrors.Size()) //Avoid infinite recursion
+				m.MarkAsBlocked();
+		}
 	}
 
 	//============================
@@ -1018,27 +1082,19 @@ extend class FCW_Platform
 	//============================
 	private bool MirrorMove (FCW_Platform toMirror, bool teleMove)
 	{
-		bDormant = true; //Mirrors shouldn't follow a normal path
-
+		platMaster = toMirror; //Sanity check
+		UpdateOldInfo();
 		if (!GetNewRiders(teleMove, teleMove))
-		{
-			bPlatBlocked = true;
 			return false;
-		}
-		oldPos = pos;
-		oldAngle = angle;
-		oldPitch = pitch;
-		oldRoll = roll;
 
 		//The way we mirror movement is by getting the offset going
 		//from the mirror's current position to its spawn position
-		//and using that to offset from our own spawn position.
+		//and using that to get a offseted position from
+		//our own spawn position.
 		//So we pretty much always go in the opposite direction
 		//using our spawn position as a reference point.
 		vector3 offset = level.Vec3Diff(toMirror.pos, toMirror.spawnPoint);
 		vector3 newPos = level.Vec3Offset(spawnPoint, offset);
-		if (!teleMove)
-			newPos = pos + level.Vec3Diff(pos, newPos); //For TryMove()
 
 		if (teleMove)
 		{
@@ -1046,48 +1102,9 @@ extend class FCW_Platform
 		}
 		else
 		{
-			bPlatInMove = true; //Temporarily don't clip against riders
-			SetZ(newPos.z);
-			bool moved = TryMove(newPos.xy, 1); //We need TryMove() for portal crossing
-
-			if (!moved && blockingMobj != null && !(blockingMobj is "FCW_Platform"))
-			{
-				let mo = blockingMobj;
-				let moOldZ = mo.pos.z;
-				let moNewZ = newPos.z + self.height;
-
-				//Try to set the obstacle on top of us if its 'maxStepHeight' allows it
-				if (moNewZ > moOldZ && moNewZ - moOldZ <= mo.maxStepHeight)
-				{
-					mo.SetZ(moNewZ);
-					if (mo.CheckMove(mo.pos.xy)) //Obstacle fits at new Z even before we moved?
-						moved = TryMove(newPos.xy, 1); //Try one more time
-				}
-
-				if (!moved) //Blocked by actor that isn't a platform?
-				{
-					bPlatInMove = false;
-					bPlatBlocked = true;
-					mo.SetZ(moOldZ);
-					self.SetZ(oldPos.z);
-					PushObstacle(mo, level.Vec3Diff(oldPos, newPos));
-					return false;
-				}
-			}
-			bPlatInMove = false;
-			if (!moved) //Blocked by geometry or another platform?
-			{
-				if ((args[ARG_OPTIONS] & OPTFLAG_IGNOREGEO) != 0)
-				{
-					SetOrigin(level.Vec3Offset(pos, newPos - pos), true);
-				}
-				else
-				{
-					bPlatBlocked = true;
-					SetZ(oldPos.z);
-					return false;
-				}
-			}
+			newPos = pos + level.Vec3Diff(pos, newPos); //For TryMove()
+			if (!PlatTryMove(newPos))
+				return false;
 		}
 
 		if ((args[ARG_OPTIONS] & OPTFLAG_ANGLE) != 0)
@@ -1101,11 +1118,10 @@ extend class FCW_Platform
 			pitch = Normalize180(toMirror.pitch);
 
 		if ((args[ARG_OPTIONS] & OPTFLAG_ROLL) != 0)
-			roll = Normalize180(toMirror.roll + 180.);
+			roll = -Normalize180(toMirror.roll);
 
 		if (!MoveRiders(teleMove, teleMove))
 		{
-			bPlatBlocked = true;
 			SetOrigin(oldPos, true);
 			angle = oldAngle;
 			pitch = oldPitch;
@@ -1168,6 +1184,7 @@ extend class FCW_Platform
 					return; //Abort if we or the node got Thing_Remove()'d
 
 				GetNewRiders(true, true);
+				UpdateOldInfo();
 				SetOrigin(currNode.pos, false);
 				time = 0.;
 				holdTime = 0;
@@ -1182,10 +1199,25 @@ extend class FCW_Platform
 				{
 					if (faceMove && currNode.next != null)
 					{
-						let savedAng = angle;
-						A_Face(currNode.next, 0., 0.);
-						angle = savedAng;
-						oldPitch = pitch;
+						if ((args[ARG_OPTIONS] & OPTFLAG_LINEAR) != 0)
+						{
+							let savedAng = angle;
+							A_Face(currNode.next, 0., 0.);
+							angle = savedAng;
+							oldPitch = pitch;
+						}
+						else //Spline
+						{
+							vector3 dpos;
+							time = timeFrac;
+							dpos.x = MaybeSplerp(pPrev.x, pCurr.x, pNext.x, pNextNext.x);
+							dpos.y = MaybeSplerp(pPrev.y, pCurr.y, pNext.y, pNextNext.y);
+							dpos.z = MaybeSplerp(pPrev.z, pCurr.z, pNext.z, pNextNext.z);
+							time = 0.;
+							dpos -= pos; //It's an offset
+							double dist = dpos.xy.Length();
+							pitch = (dist != 0.) ? VectorAngle(dist, -dpos.z) : 0.;
+						}
 					}
 					else
 					{
@@ -1197,7 +1229,13 @@ extend class FCW_Platform
 
 				MoveRiders(true, true);
 				for (int i = 0; i < mirrors.Size(); ++i)
-					mirrors[i].MirrorMove(self, true);
+				{
+					let m = GetMirror(i);
+					if (m == null)
+						--i; //Mirror was destroyed; array entry got deleted
+					else
+						m.MirrorMove(self, true);
+				}
 			}
 		}
 	}
@@ -1215,11 +1253,13 @@ extend class FCW_Platform
 		}
 
 		HandleOldRiders();
-		bPlatBlocked = false;
-		oldPos = pos;
-		oldAngle = angle;
-		oldPitch = pitch;
-		oldRoll = roll;
+
+		//Sanity check - most of a mirror's thinking is done by its master
+		if (platMaster != null && platMaster.mirrors.Find(self) < platMaster.mirrors.Size())
+			return;
+		platMaster = null;
+
+		UpdateOldInfo();
 
 		if (bDormant)
 			return;
@@ -1235,7 +1275,10 @@ extend class FCW_Platform
 			return;
 
 		if (!Interpolate())
+		{
+			MarkAsBlocked();
 			return;
+		}
 
 		time += timeFrac;
 		if (time > 1.)

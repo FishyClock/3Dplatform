@@ -6,6 +6,7 @@ Model TESTMooPlatform
 	Path "models"
 	Model 0 "MooPlatform.obj"
 	Offset 0 0 -32
+	AngleOffset 90
 	FrameIndex MODL A 0 0
 }
 
