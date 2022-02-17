@@ -1216,7 +1216,7 @@ extend class FCW_Platform
 							time = 0.;
 							dpos -= pos; //It's an offset
 							double dist = dpos.xy.Length();
-							pitch = (dist != 0.) ? VectorAngle(dist, -dpos.z) : 0.;
+							pitch = oldPitch = (dist != 0.) ? VectorAngle(dist, -dpos.z) : 0.;
 						}
 					}
 					else
