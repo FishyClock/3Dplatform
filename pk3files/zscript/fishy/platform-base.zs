@@ -41,7 +41,7 @@ class FCW_Platform : Actor abstract
 		//$Arg1Type 12
 		//Yes, this enum definition has to be on one line
 		//$Arg1Enum {1 = "Linear path"; 2 = "Use target angle"; 4 = "Use target pitch"; 8 = "Use target roll"; 16 = "Face movement direction"; 32 = "Don't clip against geometry and other platforms"; 64 = "Travel/Hold time in tics (not octics)"; 128 = "Travel/Hold time in seconds (not octics)"; 256 = "Start active";}
-		//$Arg1Tooltip Flag 64 takes precedence over 128.\nNOTE: When mirroring another platform, only flags 2, 4, 8 and 32 have any effect.
+		//$Arg1Tooltip Flag 64 takes precedence over flag 128.\nNOTE: When mirroring another platform, only flags 2, 4, 8 and 32 have any effect.
 
 		//$Arg2 Crush Damage
 		//$Arg2Tooltip The damage is applied once per 4 tics.
@@ -926,9 +926,7 @@ extend class FCW_Platform
 			{
 				if ((args[ARG_OPTIONS] & OPTFLAG_LINEAR) != 0)
 				{
-					dpos.x = pNext.x - pCurr.x;
-					dpos.y = pNext.y - pCurr.y;
-					dpos.z = pNext.z - pCurr.z;
+					dpos = pNext - pCurr;
 				}
 				else if (time > 0.) //Spline
 				{
@@ -1016,29 +1014,13 @@ extend class FCW_Platform
 		{
 			//If one of our mirrors is blocked, pretend
 			//we're blocked too. (Our move won't be cancelled.)
-			let m = GetMirror(i);
-			if (m == null)
-				--i; //Mirror was destroyed; array entry got deleted
+			let m = mirrors[i];
+			if (m == null || m.bDestroyed)
+				mirrors.Delete(i--);
 			else if (!m.MirrorMove(self, false))
 				return false;
 		}
 		return true;
-	}
-
-	//============================
-	// GetMirror
-	//============================
-	private FCW_Platform GetMirror (int index)
-	{
-		if (index >= mirrors.Size())
-			return null;
-		let m = mirrors[index];
-		if (m == null || m.bDestroyed)
-		{
-			mirrors.Delete(index);
-			return null;
-		}
-		return m;
 	}
 
 	//============================
@@ -1053,10 +1035,10 @@ extend class FCW_Platform
 		oldRoll = roll;
 		for (int i = 0; i < mirrors.Size(); ++i)
 		{
-			let m = GetMirror(i);
-			if (m == null)
-				--i; //Mirror was destroyed; array entry got deleted
-			else if (m.mirrors.Find(self) >= m.mirrors.Size()) //Avoid infinite recursion
+			let m = mirrors[i];
+			if (m == null || m.bDestroyed)
+				mirrors.Delete(i--);
+			else if (m.mirrors.Find(self) >= m.mirrors.Size()) //Avoid infinite recursions
 				m.UpdateOldInfo();
 		}
 	}
@@ -1069,10 +1051,10 @@ extend class FCW_Platform
 		bPlatBlocked = true;
 		for (int i = 0; i < mirrors.Size(); ++i)
 		{
-			let m = GetMirror(i);
-			if (m == null)
-				--i; //Mirror was destroyed; array entry got deleted
-			else if (m.mirrors.Find(self) >= m.mirrors.Size()) //Avoid infinite recursion
+			let m = mirrors[i];
+			if (m == null || m.bDestroyed)
+				mirrors.Delete(i--);
+			else if (m.mirrors.Find(self) >= m.mirrors.Size()) //Avoid infinite recursions
 				m.MarkAsBlocked();
 		}
 	}
@@ -1129,6 +1111,22 @@ extend class FCW_Platform
 			return false;
 		}
 
+		for (int i = 0; i < mirrors.Size(); ++i)
+		{
+			//If one of our mirrors is blocked, pretend
+			//we're blocked too. (Our move won't be cancelled.)
+			//Yes, mirrors can get mirrored, too.
+			let m = mirrors[i];
+			if (m == null || m.bDestroyed)
+			{
+				mirrors.Delete(i--);
+				continue;
+			}
+			if (m.mirrors.Find(self) < m.mirrors.Size()) //Avoid infinite recursions
+				continue;
+			if (!m.MirrorMove(self, false))
+				return false;
+		}
 		return true;
 	}
 
@@ -1199,25 +1197,22 @@ extend class FCW_Platform
 				{
 					if (faceMove && currNode.next != null)
 					{
+						vector3 dpos;
 						if ((args[ARG_OPTIONS] & OPTFLAG_LINEAR) != 0)
 						{
-							let savedAng = angle;
-							A_Face(currNode.next, 0., 0.);
-							angle = savedAng;
-							oldPitch = pitch;
+							dpos = Vec3To(currNode.next);
 						}
 						else //Spline
 						{
-							vector3 dpos;
 							time = timeFrac;
 							dpos.x = MaybeSplerp(pPrev.x, pCurr.x, pNext.x, pNextNext.x);
 							dpos.y = MaybeSplerp(pPrev.y, pCurr.y, pNext.y, pNextNext.y);
 							dpos.z = MaybeSplerp(pPrev.z, pCurr.z, pNext.z, pNextNext.z);
 							time = 0.;
 							dpos -= pos; //It's an offset
-							double dist = dpos.xy.Length();
-							pitch = oldPitch = (dist != 0.) ? VectorAngle(dist, -dpos.z) : 0.;
 						}
+						double dist = dpos.xy.Length();
+						pitch = oldPitch = (dist != 0.) ? VectorAngle(dist, -dpos.z) : 0.;
 					}
 					else
 					{
@@ -1230,9 +1225,9 @@ extend class FCW_Platform
 				MoveRiders(true, true);
 				for (int i = 0; i < mirrors.Size(); ++i)
 				{
-					let m = GetMirror(i);
-					if (m == null)
-						--i; //Mirror was destroyed; array entry got deleted
+					let m = mirrors[i];
+					if (m == null || m.bDestroyed)
+						mirrors.Delete(i--);
 					else
 						m.MirrorMove(self, true);
 				}
