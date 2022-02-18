@@ -1124,7 +1124,7 @@ extend class FCW_Platform
 			}
 			if (m.mirrors.Find(self) < m.mirrors.Size()) //Avoid infinite recursions
 				continue;
-			if (!m.MirrorMove(self, false))
+			if (!m.MirrorMove(self, teleMove))
 				return false;
 		}
 		return true;
