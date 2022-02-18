@@ -363,6 +363,42 @@ extend class FCW_Platform
 	}
 
 	//============================
+	// UpdateOldInfo
+	//============================
+	private void UpdateOldInfo ()
+	{
+		bPlatBlocked = false;
+		oldPos = pos;
+		oldAngle = angle;
+		oldPitch = pitch;
+		oldRoll = roll;
+		for (int i = 0; i < mirrors.Size(); ++i)
+		{
+			let m = mirrors[i];
+			if (m == null || m.bDestroyed)
+				mirrors.Delete(i--);
+			else if (m.mirrors.Find(self) >= m.mirrors.Size()) //Avoid infinite recursions
+				m.UpdateOldInfo();
+		}
+	}
+
+	//============================
+	// MarkAsBlocked
+	//============================
+	private void MarkAsBlocked ()
+	{
+		bPlatBlocked = true;
+		for (int i = 0; i < mirrors.Size(); ++i)
+		{
+			let m = mirrors[i];
+			if (m == null || m.bDestroyed)
+				mirrors.Delete(i--);
+			else if (m.mirrors.Find(self) >= m.mirrors.Size()) //Avoid infinite recursions
+				m.MarkAsBlocked();
+		}
+	}
+
+	//============================
 	// GetNewRiders
 	//============================
 	private bool GetNewRiders (bool ignoreObs, bool laxZCheck)
@@ -690,9 +726,9 @@ extend class FCW_Platform
 
 		//If we're not moving and we interpolate our pitch/roll,
 		//and our pitch/roll is currently steep, then push things off of us.
-		if (!hasMoved && (level.mapTime & 7) == 0)
+		if (!hasMoved && (level.mapTime & 7) == 0) //Push is applied once per 8 tics.
 		{
-			if ((piPush || roPush) && (level.mapTime & 31) == 0)
+			if ((piPush || roPush) && (level.mapTime & 63) == 0)
 				GetNewRiders(true, false); //Get something to push off
 
 			if (piPush && riders.Size() > 0)
@@ -865,7 +901,7 @@ extend class FCW_Platform
 				bPlatInMove = false;
 				mo.SetZ(moOldZ);
 				self.SetZ(oldPos.z);
-				PushObstacle(mo, level.Vec3Diff(pos, newPos));
+				PushObstacle(mo, level.Vec3Diff(oldPos, newPos));
 				return false;
 			}
 		}
@@ -895,9 +931,6 @@ extend class FCW_Platform
 		//A heavily modified version of the
 		//original function from PathFollower.
 
-		if (!GetNewRiders(false, false))
-			return false;
-
 		Vector3 dpos = (0., 0., 0.);
 		if ((args[ARG_OPTIONS] & OPTFLAG_FACEMOVE) != 0 && time > 0.)
 			dpos = pos;
@@ -914,6 +947,16 @@ extend class FCW_Platform
 			newPos.x = MaybeSplerp(pPrev.x, pCurr.x, pNext.x, pNextNext.x);
 			newPos.y = MaybeSplerp(pPrev.y, pCurr.y, pNext.y, pNextNext.y);
 			newPos.z = MaybeSplerp(pPrev.z, pCurr.z, pNext.z, pNextNext.z);
+		}
+
+		//Do a blockmap search once per tic if we're in motion.
+		//Otherwise, do (at most) two searches per 64 tics (almost 2 seconds).
+		//The first non-motion search can happen in HandleOldRiders().
+		//The second non-motion search will happen here 32 tics after the first one.
+		if (newPos != pos || ((level.mapTime + 32) & 63) == 0)
+		{
+			if (!GetNewRiders(false, false))
+				return false;
 		}
 
 		let oldPGroup = curSector.portalGroup;
@@ -1024,50 +1067,12 @@ extend class FCW_Platform
 	}
 
 	//============================
-	// UpdateOldInfo
-	//============================
-	private void UpdateOldInfo ()
-	{
-		bPlatBlocked = false;
-		oldPos = pos;
-		oldAngle = angle;
-		oldPitch = pitch;
-		oldRoll = roll;
-		for (int i = 0; i < mirrors.Size(); ++i)
-		{
-			let m = mirrors[i];
-			if (m == null || m.bDestroyed)
-				mirrors.Delete(i--);
-			else if (m.mirrors.Find(self) >= m.mirrors.Size()) //Avoid infinite recursions
-				m.UpdateOldInfo();
-		}
-	}
-
-	//============================
-	// MarkAsBlocked
-	//============================
-	private void MarkAsBlocked ()
-	{
-		bPlatBlocked = true;
-		for (int i = 0; i < mirrors.Size(); ++i)
-		{
-			let m = mirrors[i];
-			if (m == null || m.bDestroyed)
-				mirrors.Delete(i--);
-			else if (m.mirrors.Find(self) >= m.mirrors.Size()) //Avoid infinite recursions
-				m.MarkAsBlocked();
-		}
-	}
-
-	//============================
 	// MirrorMove
 	//============================
 	private bool MirrorMove (FCW_Platform toMirror, bool teleMove)
 	{
 		platMaster = toMirror; //Sanity check
 		UpdateOldInfo();
-		if (!GetNewRiders(teleMove, teleMove))
-			return false;
 
 		//The way we mirror movement is by getting the offset going
 		//from the mirror's current position to its spawn position
@@ -1077,6 +1082,16 @@ extend class FCW_Platform
 		//using our spawn position as a reference point.
 		vector3 offset = level.Vec3Diff(toMirror.pos, toMirror.spawnPoint);
 		vector3 newPos = level.Vec3Offset(spawnPoint, offset);
+
+		//Do a blockmap search once per tic if we're in motion.
+		//Otherwise, do (at most) two searches per 64 tics (almost 2 seconds).
+		//The first non-motion search can happen in HandleOldRiders().
+		//The second non-motion search will happen here 32 tics after the first one.
+		if (newPos != pos || ((level.mapTime + 32) & 63) == 0)
+		{
+			if (!GetNewRiders(false, false))
+				return false;
+		}
 
 		if (teleMove)
 		{
@@ -1315,6 +1330,15 @@ extend class FCW_Platform
 		FCW_Platform plat;
 		while ((plat = FCW_Platform(it.Next())) != null)
 		{
+			if (plat.platMaster != null)
+			{
+				//Stop mirroring
+				let mast = plat.platMaster;
+				let index = mast.mirrors.Find(plat);
+				if (index < mast.mirrors.Size())
+					mast.mirrors.Delete(index);
+			}
+			plat.platMaster = null;
 			plat.currNode = null; //Deactivate when done moving
 			plat.prevNode = null;
 			plat.pPrev = plat.pCurr = plat.pos;
@@ -1341,6 +1365,15 @@ extend class FCW_Platform
 		FCW_Platform plat;
 		while ((plat = FCW_Platform(it.Next())) != null)
 		{
+			if (plat.platMaster != null)
+			{
+				//Stop mirroring
+				let mast = plat.platMaster;
+				let index = mast.mirrors.Find(plat);
+				if (index < mast.mirrors.Size())
+					mast.mirrors.Delete(index);
+			}
+			plat.platMaster = null;
 			plat.currNode = null; //Deactivate when done moving
 			plat.prevNode = null;
 			plat.pPrev = plat.pCurr = plat.pos;
@@ -1362,6 +1395,7 @@ extend class FCW_Platform
 	//============================
 	static void MoveToSpot (int platTid, int spotTid, int newTime)
 	{
+		//This is the only place you can make a platform use any actor as a destination
 		let it = level.CreateActorIterator(spotTid);
 		Actor spot = it.Next();
 		if (spot == null)
@@ -1371,6 +1405,15 @@ extend class FCW_Platform
 		FCW_Platform plat;
 		while ((plat = FCW_Platform(it.Next())) != null)
 		{
+			if (plat.platMaster != null)
+			{
+				//Stop mirroring
+				let mast = plat.platMaster;
+				let index = mast.mirrors.Find(plat);
+				if (index < mast.mirrors.Size())
+					mast.mirrors.Delete(index);
+			}
+			plat.platMaster = null;
 			plat.currNode = null; //Deactivate when done moving
 			plat.prevNode = null;
 			plat.pPrev = plat.pCurr = plat.pos;
