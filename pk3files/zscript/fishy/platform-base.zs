@@ -157,13 +157,13 @@ extend class FCW_Platform
 
 		if (mo is "FCW_Platform")
 		{
-			let toMirror = FCW_Platform(mo);
-			toMirror.mirrors.Push(self);
+			platMaster = FCW_Platform(mo);
+			platMaster.mirrors.Push(self);
 
 			//Get going if it's active
 			//and we ticked after it.
-			if (toMirror.pos != toMirror.spawnPoint)
-				MirrorMove(toMirror, true);
+			if (platMaster.pos != platMaster.spawnPoint)
+				MirrorMove(true);
 			return;
 		}
 		firstNode = InterpolationPoint(mo);
@@ -363,6 +363,36 @@ extend class FCW_Platform
 	}
 
 	//============================
+	// CheckArrayEntries
+	//============================
+	private void CheckArrayEntries ()
+	{
+		for (int i = 0; i < riders.Size(); ++i)
+		{
+			let mo = riders[i];
+			if (mo == null || mo.bDestroyed ||
+				mo.bNoBlockmap ||
+				mo.bFloorHugger || mo.bCeilingHugger ||
+				(!mo.bCanPass && !mo.bSpecial))
+			{
+				riders.Delete(i--);
+			}
+		}
+		for (int i = 0; i < mirrors.Size(); ++i)
+		{
+			let m = mirrors[i];
+			if (m == null || m.bDestroyed)
+			{
+				mirrors.Delete(i--);
+				continue;
+			}
+			m.platMaster = self;
+			if (m.mirrors.Find(self) >= m.mirrors.Size()) //Avoid infinite recursions
+				m.CheckArrayEntries();
+		}
+	}
+
+	//============================
 	// UpdateOldInfo
 	//============================
 	private void UpdateOldInfo ()
@@ -375,9 +405,7 @@ extend class FCW_Platform
 		for (int i = 0; i < mirrors.Size(); ++i)
 		{
 			let m = mirrors[i];
-			if (m == null || m.bDestroyed)
-				mirrors.Delete(i--);
-			else if (m.mirrors.Find(self) >= m.mirrors.Size()) //Avoid infinite recursions
+			if (m.mirrors.Find(self) >= m.mirrors.Size()) //Avoid infinite recursions
 				m.UpdateOldInfo();
 		}
 	}
@@ -391,9 +419,7 @@ extend class FCW_Platform
 		for (int i = 0; i < mirrors.Size(); ++i)
 		{
 			let m = mirrors[i];
-			if (m == null || m.bDestroyed)
-				mirrors.Delete(i--);
-			else if (m.mirrors.Find(self) >= m.mirrors.Size()) //Avoid infinite recursions
+			if (m.mirrors.Find(self) >= m.mirrors.Size()) //Avoid infinite recursions
 				m.MarkAsBlocked();
 		}
 	}
@@ -555,6 +581,9 @@ extend class FCW_Platform
 	{
 		//Returns false if a blocked rider would block the platform's movement
 
+		if (riders.Size() == 0)
+			return true; //No riders? Nothing to do
+
 		//The goal is to move all riders as if they were one entity.
 		//The only things that should block any of them are
 		//non-riders and geometry.
@@ -567,20 +596,7 @@ extend class FCW_Platform
 		int addToBmap = 0, removeFromBmap = 1;
 
 		for (int i = 0; i < riders.Size(); ++i)
-		{
-			//We're making the assumption that all
-			//of them are in the blockmap at this point.
-			//If that's somehow not the case then
-			//don't touch them.
-			let mo = riders[i];
-			if (mo.bNoBlockmap)
-				riders.Delete(i--);
-			else
-				mo.A_ChangeLinkFlags(removeFromBmap);
-		}
-
-		if (riders.Size() == 0)
-			return true; //No riders? Nothing to do
+			riders[i].A_ChangeLinkFlags(removeFromBmap);
 
 		//Move our riders (platform rotation is taken into account)
 		double top = pos.z + height;
@@ -757,30 +773,6 @@ extend class FCW_Platform
 		{
 			let mo = riders[i];
 
-			//Delete entry in array if...
-			//(Sanity checks)
-			if (mo == null || mo.bDestroyed) //Rider got destroyed since last tic?
-			{
-				riders.Delete(i--);
-				continue;
-			}
-			if (mo.bNoBlockmap) //Suddenly isn't in the blockmap?
-			{
-				riders.Delete(i--);
-				continue;
-			}
-			if (!mo.bCanPass && !mo.bSpecial) //Suddenly can't be carried?
-			{
-				riders.Delete(i--);
-				continue;
-			}
-			if (mo.bFloorHugger || mo.bCeilingHugger) //Has become a floor/ceiling hugger?
-			{
-				riders.Delete(i--);
-				continue;
-			}
-			//(End of sanity checks)
-
 			//'floorZ' can be the top of a 3D floor that's right below an actor.
 			if (mo.pos.z < top - 1. || mo.floorZ > top + 1.) //Is below us or stuck in us or there's a 3D floor between us?
 			{
@@ -834,6 +826,13 @@ extend class FCW_Platform
 			mo.moveDir = int(mo.AngleTo(self) / 45) & 7;
 			if (mo.moveCount < 1)
 				mo.moveCount = 1;
+		}
+
+		for (int i = 0; i < mirrors.Size(); ++i)
+		{
+			let m = mirrors[i];
+			if (m.mirrors.Find(self) >= m.mirrors.Size()) //Avoid infinite recursions
+				m.HandleOldRiders();
 		}
 	}
 
@@ -1057,10 +1056,7 @@ extend class FCW_Platform
 		{
 			//If one of our mirrors is blocked, pretend
 			//we're blocked too. (Our move won't be cancelled.)
-			let m = mirrors[i];
-			if (m == null || m.bDestroyed)
-				mirrors.Delete(i--);
-			else if (!m.MirrorMove(self, false))
+			if (!mirrors[i].MirrorMove(false))
 				return false;
 		}
 		return true;
@@ -1069,18 +1065,15 @@ extend class FCW_Platform
 	//============================
 	// MirrorMove
 	//============================
-	private bool MirrorMove (FCW_Platform toMirror, bool teleMove)
+	private bool MirrorMove (bool teleMove)
 	{
-		platMaster = toMirror; //Sanity check
-		UpdateOldInfo();
-
 		//The way we mirror movement is by getting the offset going
 		//from the mirror's current position to its spawn position
 		//and using that to get a offseted position from
 		//our own spawn position.
 		//So we pretty much always go in the opposite direction
 		//using our spawn position as a reference point.
-		vector3 offset = level.Vec3Diff(toMirror.pos, toMirror.spawnPoint);
+		vector3 offset = level.Vec3Diff(platMaster.pos, platMaster.spawnPoint);
 		vector3 newPos = level.Vec3Offset(spawnPoint, offset);
 
 		//Do a blockmap search once per tic if we're in motion.
@@ -1107,15 +1100,15 @@ extend class FCW_Platform
 		if ((args[ARG_OPTIONS] & OPTFLAG_ANGLE) != 0)
 		{
 			//Same offset logic as position changing
-			double delta = DeltaAngle(toMirror.angle, toMirror.spawnAngle);
+			double delta = DeltaAngle(platMaster.angle, platMaster.spawnAngle);
 			angle = Normalize180(spawnAngle + delta);
 		}
 
 		if ((args[ARG_OPTIONS] & OPTFLAG_PITCH) != 0)
-			pitch = Normalize180(toMirror.pitch);
+			pitch = Normalize180(platMaster.pitch);
 
 		if ((args[ARG_OPTIONS] & OPTFLAG_ROLL) != 0)
-			roll = -Normalize180(toMirror.roll);
+			roll = -Normalize180(platMaster.roll);
 
 		if (!MoveRiders(teleMove, teleMove))
 		{
@@ -1132,14 +1125,9 @@ extend class FCW_Platform
 			//we're blocked too. (Our move won't be cancelled.)
 			//Yes, mirrors can get mirrored, too.
 			let m = mirrors[i];
-			if (m == null || m.bDestroyed)
-			{
-				mirrors.Delete(i--);
-				continue;
-			}
 			if (m.mirrors.Find(self) < m.mirrors.Size()) //Avoid infinite recursions
 				continue;
-			if (!m.MirrorMove(self, teleMove))
+			if (!m.MirrorMove(teleMove))
 				return false;
 		}
 		return true;
@@ -1196,6 +1184,7 @@ extend class FCW_Platform
 				if (bDestroyed || currNode == null || currNode.bDestroyed)
 					return; //Abort if we or the node got Thing_Remove()'d
 
+				CheckArrayEntries();
 				GetNewRiders(true, true);
 				UpdateOldInfo();
 				SetOrigin(currNode.pos, false);
@@ -1239,13 +1228,7 @@ extend class FCW_Platform
 
 				MoveRiders(true, true);
 				for (int i = 0; i < mirrors.Size(); ++i)
-				{
-					let m = mirrors[i];
-					if (m == null || m.bDestroyed)
-						mirrors.Delete(i--);
-					else
-						m.MirrorMove(self, true);
-				}
+					mirrors[i].MirrorMove(true);
 			}
 		}
 	}
@@ -1262,13 +1245,16 @@ extend class FCW_Platform
 				return; //Freed itself
 		}
 
-		HandleOldRiders();
-
 		//Sanity check - most of a mirror's thinking is done by its master
-		if (platMaster != null && platMaster.mirrors.Find(self) < platMaster.mirrors.Size())
-			return;
-		platMaster = null;
+		if (platMaster != null)
+		{
+			if (platMaster.mirrors.Find(self) < platMaster.mirrors.Size())
+				return;
+			platMaster = null;
+		}
 
+		CheckArrayEntries();
+		HandleOldRiders();
 		UpdateOldInfo();
 
 		if (bDormant)
