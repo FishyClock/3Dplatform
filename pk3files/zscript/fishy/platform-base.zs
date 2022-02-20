@@ -1069,7 +1069,7 @@ extend class FCW_Platform
 	{
 		//The way we mirror movement is by getting the offset going
 		//from the mirror's current position to its spawn position
-		//and using that to get a offseted position from
+		//and using that to get a offsetted position from
 		//our own spawn position.
 		//So we pretty much always go in the opposite direction
 		//using our spawn position as a reference point.
