@@ -35,7 +35,7 @@ class FCW_Platform : Actor abstract
 
 		//$Arg0 Target
 		//$Arg0Type 14
-		//$Arg0Tooltip Must be a interpolation point (path) or another platform (to mirror).
+		//$Arg0Tooltip Must be a interpolation point (path) or another platform (to mirror movement).\nNOTE: You can't have two platforms mirroring each other.
 
 		//$Arg1 Options
 		//$Arg1Type 12
@@ -143,15 +143,21 @@ extend class FCW_Platform
 		if (args[ARG_TARGET] == 0)
 			return; //Print no warnings if we're not supposed to look for anything
 
+		String prefix = "\ckPlatform class '" .. GetClassName() .. "' with tid " .. tid .. ":\nat position " .. pos .. ":\n";
+		if (args[ARG_TARGET] == tid)
+		{
+			Console.Printf(prefix .. "Is targeting itself.");
+			return;
+		}
+
 		let it = level.CreateActorIterator(args[ARG_TARGET]);
 		Actor mo = it.Next();
 		while (mo != null && !(mo is "InterpolationPoint") && !(mo is "FCW_Platform"))
 			mo = it.Next();
 
-		String prefix = "\ckPlatform class '" .. GetClassName() .. "' with tid " .. tid .. ":\nat position " .. pos .. ":\n";
 		if (mo == null)
 		{
-			Console.Printf(prefix .. "Can't find suitable target with tid " .. args[ARG_TARGET] .. ".\nTarget must be a interpolation point (path) or another platform (to mirror).");
+			Console.Printf(prefix .. "Can't find suitable target with tid " .. args[ARG_TARGET] .. ".\nTarget must be a interpolation point (path) or another platform (to mirror movement).");
 			return;
 		}
 
@@ -382,12 +388,8 @@ extend class FCW_Platform
 		{
 			let m = mirrors[i];
 			if (m == null || m.bDestroyed)
-			{
 				mirrors.Delete(i--);
-				continue;
-			}
-			m.platMaster = self;
-			if (m.mirrors.Find(self) >= m.mirrors.Size()) //Avoid infinite recursions
+			else
 				m.CheckArrayEntries();
 		}
 	}
@@ -403,11 +405,7 @@ extend class FCW_Platform
 		oldPitch = pitch;
 		oldRoll = roll;
 		for (int i = 0; i < mirrors.Size(); ++i)
-		{
-			let m = mirrors[i];
-			if (m.mirrors.Find(self) >= m.mirrors.Size()) //Avoid infinite recursions
-				m.UpdateOldInfo();
-		}
+			mirrors[i].UpdateOldInfo();
 	}
 
 	//============================
@@ -417,11 +415,7 @@ extend class FCW_Platform
 	{
 		bPlatBlocked = true;
 		for (int i = 0; i < mirrors.Size(); ++i)
-		{
-			let m = mirrors[i];
-			if (m.mirrors.Find(self) >= m.mirrors.Size()) //Avoid infinite recursions
-				m.MarkAsBlocked();
-		}
+			mirrors[i].MarkAsBlocked();
 	}
 
 	//============================
@@ -829,11 +823,7 @@ extend class FCW_Platform
 		}
 
 		for (int i = 0; i < mirrors.Size(); ++i)
-		{
-			let m = mirrors[i];
-			if (m.mirrors.Find(self) >= m.mirrors.Size()) //Avoid infinite recursions
-				m.HandleOldRiders();
-		}
+			mirrors[i].HandleOldRiders();
 	}
 
 	//============================
@@ -1124,10 +1114,8 @@ extend class FCW_Platform
 			//If one of our mirrors is blocked, pretend
 			//we're blocked too. (Our move won't be cancelled.)
 			//Yes, mirrors can get mirrored, too.
-			let m = mirrors[i];
-			if (m.mirrors.Find(self) < m.mirrors.Size()) //Avoid infinite recursions
-				continue;
-			if (!m.MirrorMove(teleMove))
+			//(But they can't mirror each other.)
+			if (!mirrors[i].MirrorMove(teleMove))
 				return false;
 		}
 		return true;
@@ -1248,8 +1236,27 @@ extend class FCW_Platform
 		//Sanity check - most of a mirror's thinking is done by its master
 		if (platMaster != null)
 		{
-			if (platMaster.mirrors.Find(self) < platMaster.mirrors.Size())
-				return;
+			let pMastIndex = platMaster.mirrors.Find(self);
+			if (pMastIndex < platMaster.mirrors.Size())
+			{
+				//Because the way this is set up to work you
+				//can't have two platforms mirroring each other.
+				let myIndex = mirrors.Find(platMaster);
+				if (myIndex < mirrors.Size())
+				{
+					Console.Printf("\ckPlatform class '" .. GetClassName() .. "' with tid " .. tid .. ":\nat position " .. pos .. ":\n" ..
+					"and platform class '" .. platMaster.GetClassName() .. "' with tid " .. platMaster.tid .. ":\nat position " .. platMaster.pos .. ":\n" ..
+					"are mirroring each other; Mirror info will be cleared for both.");
+
+					mirrors.Delete(myIndex);
+					platMaster.mirrors.Delete(pMastIndex);
+					platMaster.platMaster = null;
+				}
+				else
+				{
+					return;
+				}
+			}
 			platMaster = null;
 		}
 
@@ -1308,6 +1315,32 @@ extend class FCW_Platform
 	}
 
 	//============================
+	// CommonACSSetup
+	//============================
+	private void CommonACSSetup (int newTime)
+	{
+		if (platMaster != null)
+		{
+			//Stop mirroring
+			let index = platMaster.mirrors.Find(self);
+			if (index < platMaster.mirrors.Size())
+				platMaster.mirrors.Delete(index);
+			platMaster = null;
+		}
+		currNode = null; //Deactivate when done moving
+		prevNode = null;
+		time = 0.;
+		holdTime = 0;
+		SetTimeFraction(newTime);
+		bDormant = false;
+		pPrev = pCurr = pos;
+		pPrevAngs = pCurrAngs = (
+			Normalize180(angle),
+			Normalize180(pitch),
+			Normalize180(roll));
+	}
+
+	//============================
 	// Move (ACS utility)
 	//============================
 	static void Move (int platTid, double offX, double offY, double offZ, int newTime, double offAng = 0., double offPi = 0., double offRo = 0.)
@@ -1316,28 +1349,9 @@ extend class FCW_Platform
 		FCW_Platform plat;
 		while ((plat = FCW_Platform(it.Next())) != null)
 		{
-			if (plat.platMaster != null)
-			{
-				//Stop mirroring
-				let mast = plat.platMaster;
-				let index = mast.mirrors.Find(plat);
-				if (index < mast.mirrors.Size())
-					mast.mirrors.Delete(index);
-			}
-			plat.platMaster = null;
-			plat.currNode = null; //Deactivate when done moving
-			plat.prevNode = null;
-			plat.pPrev = plat.pCurr = plat.pos;
+			plat.CommonACSSetup(newTime);
 			plat.pNext = plat.pNextNext = plat.Vec3Offset(offX, offY, offZ);
-			plat.pPrevAngs = plat.pCurrAngs = (
-				Normalize180(plat.angle),
-				Normalize180(plat.pitch),
-				Normalize180(plat.roll));
 			plat.pNextAngs = plat.pNextNextAngs = plat.pCurrAngs + (offAng, offPi, offRo);
-			plat.time = 0.;
-			plat.holdTime = 0;
-			plat.SetTimeFraction(newTime);
-			plat.bDormant = false;
 		}
 	}
 
@@ -1346,33 +1360,15 @@ extend class FCW_Platform
 	//============================
 	static void MoveTo (int platTid, double newX, double newY, double newZ, int newTime, double offAng = 0., double offPi = 0., double offRo = 0.)
 	{
+		//ACS itself has no 'vector3' variable type so it has to be 3 doubles (floats/fixed point numbers)
 		vector3 newPos = (newX, newY, newZ);
 		let it = level.CreateActorIterator(platTid, "FCW_Platform");
 		FCW_Platform plat;
 		while ((plat = FCW_Platform(it.Next())) != null)
 		{
-			if (plat.platMaster != null)
-			{
-				//Stop mirroring
-				let mast = plat.platMaster;
-				let index = mast.mirrors.Find(plat);
-				if (index < mast.mirrors.Size())
-					mast.mirrors.Delete(index);
-			}
-			plat.platMaster = null;
-			plat.currNode = null; //Deactivate when done moving
-			plat.prevNode = null;
-			plat.pPrev = plat.pCurr = plat.pos;
+			plat.CommonACSSetup(newTime);
 			plat.pNext = plat.pNextNext = plat.pos + level.Vec3Diff(plat.pos, newPos); //Make it portal aware
-			plat.pPrevAngs = plat.pCurrAngs = (
-				Normalize180(plat.angle),
-				Normalize180(plat.pitch),
-				Normalize180(plat.roll));
 			plat.pNextAngs = plat.pNextNextAngs = plat.pCurrAngs + (offAng, offPi, offRo);
-			plat.time = 0.;
-			plat.holdTime = 0;
-			plat.SetTimeFraction(newTime);
-			plat.bDormant = false;
 		}
 	}
 
@@ -1381,7 +1377,7 @@ extend class FCW_Platform
 	//============================
 	static void MoveToSpot (int platTid, int spotTid, int newTime)
 	{
-		//This is the only place you can make a platform use any actor as a destination
+		//This is the only place you can make a platform use any actor as a travel destination
 		let it = level.CreateActorIterator(spotTid);
 		Actor spot = it.Next();
 		if (spot == null)
@@ -1391,31 +1387,12 @@ extend class FCW_Platform
 		FCW_Platform plat;
 		while ((plat = FCW_Platform(it.Next())) != null)
 		{
-			if (plat.platMaster != null)
-			{
-				//Stop mirroring
-				let mast = plat.platMaster;
-				let index = mast.mirrors.Find(plat);
-				if (index < mast.mirrors.Size())
-					mast.mirrors.Delete(index);
-			}
-			plat.platMaster = null;
-			plat.currNode = null; //Deactivate when done moving
-			plat.prevNode = null;
-			plat.pPrev = plat.pCurr = plat.pos;
+			plat.CommonACSSetup(newTime);
 			plat.pNext = plat.pNextNext = plat.pos + plat.Vec3To(spot); //Make it portal aware
-			plat.pPrevAngs = plat.pCurrAngs = (
-				Normalize180(plat.angle),
-				Normalize180(plat.pitch),
-				Normalize180(plat.roll));
 			plat.pNextAngs = plat.pNextNextAngs = plat.pCurrAngs + (
 				DeltaAngle(plat.pCurrAngs.x, spot.angle),
 				DeltaAngle(plat.pCurrAngs.y, spot.pitch),
 				DeltaAngle(plat.pCurrAngs.z, spot.roll));
-			plat.time = 0.;
-			plat.holdTime = 0;
-			plat.SetTimeFraction(newTime);
-			plat.bDormant = false;
 		}
 	}
 
