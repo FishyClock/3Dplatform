@@ -401,16 +401,6 @@ extend class FCW_Platform
 	}
 
 	//============================
-	// MarkAsBlocked
-	//============================
-	private void MarkAsBlocked ()
-	{
-		bPlatBlocked = true;
-		for (int i = 0; i < mirrors.Size(); ++i)
-			mirrors[i].MarkAsBlocked();
-	}
-
-	//============================
 	// GetNewRiders
 	//============================
 	private bool GetNewRiders (bool ignoreObs, bool laxZCheck)
@@ -1279,7 +1269,7 @@ extend class FCW_Platform
 
 		if (!Interpolate())
 		{
-			MarkAsBlocked();
+			bPlatBlocked = true;
 			return;
 		}
 
@@ -1403,7 +1393,11 @@ extend class FCW_Platform
 	{
 		let it = level.CreateActorIterator(platTid, "FCW_Platform");
 		let plat = FCW_Platform(it.Next());
-		return (plat != null && (
+		if (plat == null)
+			return false;
+		if (plat.platMaster != null)
+			plat = plat.platMaster;
+		return (!plat.bDormant && (
 			plat.pos != plat.oldPos ||
 			plat.angle != plat.oldAngle ||
 			plat.pitch != plat.oldPitch ||
@@ -1417,6 +1411,10 @@ extend class FCW_Platform
 	{
 		let it = level.CreateActorIterator(platTid, "FCW_Platform");
 		let plat = FCW_Platform(it.Next());
-		return (plat != null && plat.bPlatBlocked);
+		if (plat == null)
+			return false;
+		if (plat.platMaster != null)
+			plat = plat.platMaster;
+		return (!plat.bDormant && plat.bPlatBlocked);
 	}
 }
