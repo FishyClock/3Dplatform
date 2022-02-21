@@ -387,20 +387,6 @@ extend class FCW_Platform
 	}
 
 	//============================
-	// UpdateOldInfo
-	//============================
-	private void UpdateOldInfo ()
-	{
-		bPlatBlocked = false;
-		oldPos = pos;
-		oldAngle = angle;
-		oldPitch = pitch;
-		oldRoll = roll;
-		for (int i = 0; i < mirrors.Size(); ++i)
-			mirrors[i].UpdateOldInfo();
-	}
-
-	//============================
 	// GetNewRiders
 	//============================
 	private bool GetNewRiders (bool ignoreObs, bool laxZCheck)
@@ -577,11 +563,14 @@ extend class FCW_Platform
 		//Move our riders (platform rotation is taken into account)
 		double top = pos.z + height;
 		double delta = DeltaAngle(oldAngle, angle);
-		double piDelta = DeltaAngle(oldPitch, pitch)*2;
-		double roDelta = DeltaAngle(oldRoll, roll)*2;
-
-		vector2 piAndRoOffset = (cos(angle)*piDelta, sin(angle)*piDelta) + //Front/back
-			(cos(angle-90.)*roDelta, sin(angle-90.)*roDelta); //Right/left
+		vector2 piAndRoOffset = (0., 0.);
+		if (!teleMove)
+		{
+			double piDelta = DeltaAngle(oldPitch, pitch)*2;
+			double roDelta = DeltaAngle(oldRoll, roll)*2;
+			piAndRoOffset = (cos(angle)*piDelta, sin(angle)*piDelta) + //Front/back
+				(cos(angle-90.)*roDelta, sin(angle-90.)*roDelta); //Right/left
+		}
 
 		Array<double> preMovePos; //Sadly we can't have a vector2/3 dyn array
 		for (int i = 0; i < riders.Size(); ++i)
@@ -707,11 +696,11 @@ extend class FCW_Platform
 		//The AI's native handling of trying not to fall off of other actors
 		//just isn't good enough.
 
-		bool hasMoved = (bPlatBlocked ||
+		bool hasMoved = (!bDormant && (
 			pos != oldPos ||
 			angle != oldAngle ||
 			pitch != oldPitch ||
-			roll != oldRoll);
+			roll != oldRoll));
 		vector2 pushForce = (0., 0.);
 		bool piPush = ((args[ARG_OPTIONS] & OPTFLAG_PITCH) != 0);
 		bool roPush = ((args[ARG_OPTIONS] & OPTFLAG_ROLL) != 0);
@@ -1047,6 +1036,11 @@ extend class FCW_Platform
 	//============================
 	private bool MirrorMove (bool teleMove)
 	{
+		oldPos = pos;
+		oldAngle = angle;
+		oldPitch = pitch;
+		oldRoll = roll;
+
 		//The way we mirror movement is by getting the offset going
 		//from the mirror's current position to its spawn position
 		//and using that to get a offsetted position from
@@ -1162,9 +1156,7 @@ extend class FCW_Platform
 				if (bDestroyed || currNode == null || currNode.bDestroyed)
 					return; //Abort if we or the node got Thing_Remove()'d
 
-				CheckMirrorEntries();
 				GetNewRiders(true, true);
-				UpdateOldInfo();
 				SetOrigin(currNode.pos, false);
 				time = 0.;
 				holdTime = 0;
@@ -1172,39 +1164,8 @@ extend class FCW_Platform
 				bDormant = false;
 				SetInterpolationCoordinates();
 				SetTimeFraction(currNode.args[NODEARG_TRAVELTIME]);
-
-				//Don't fling away any riders if the pitch/roll difference is too great
-				bool faceMove = ((args[ARG_OPTIONS] & OPTFLAG_FACEMOVE) != 0);
-				if ((args[ARG_OPTIONS] & OPTFLAG_PITCH) != 0)
-				{
-					if (faceMove && currNode.next != null)
-					{
-						vector3 dpos;
-						if ((args[ARG_OPTIONS] & OPTFLAG_LINEAR) != 0)
-						{
-							dpos = Vec3To(currNode.next);
-						}
-						else //Spline
-						{
-							time = timeFrac;
-							dpos.x = MaybeSplerp(pPrev.x, pCurr.x, pNext.x, pNextNext.x);
-							dpos.y = MaybeSplerp(pPrev.y, pCurr.y, pNext.y, pNextNext.y);
-							dpos.z = MaybeSplerp(pPrev.z, pCurr.z, pNext.z, pNextNext.z);
-							time = 0.;
-							dpos -= pos; //It's an offset
-						}
-						double dist = dpos.xy.Length();
-						pitch = oldPitch = (dist != 0.) ? VectorAngle(dist, -dpos.z) : 0.;
-					}
-					else
-					{
-						pitch = oldPitch = currNode.pitch;
-					}
-				}
-				if ((args[ARG_OPTIONS] & OPTFLAG_ROLL) != 0)
-					roll = oldRoll = (faceMove) ? 0. : currNode.roll;
-
 				MoveRiders(true, true);
+				CheckMirrorEntries();
 				for (int i = 0; i < mirrors.Size(); ++i)
 					mirrors[i].MirrorMove(true);
 			}
@@ -1252,10 +1213,15 @@ extend class FCW_Platform
 
 		CheckMirrorEntries();
 		HandleOldRiders();
-		UpdateOldInfo();
 
 		if (bDormant)
 			return;
+
+		bPlatBlocked = false;
+		oldPos = pos;
+		oldAngle = angle;
+		oldPitch = pitch;
+		oldRoll = roll;
 
 		if (bJustStepped)
 		{
