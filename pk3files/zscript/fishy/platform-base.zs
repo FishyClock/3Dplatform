@@ -369,28 +369,20 @@ extend class FCW_Platform
 	}
 
 	//============================
-	// CheckArrayEntries
+	// CheckMirrorEntries
 	//============================
-	private void CheckArrayEntries ()
+	private void CheckMirrorEntries ()
 	{
-		for (int i = 0; i < riders.Size(); ++i)
-		{
-			let mo = riders[i];
-			if (mo == null || mo.bDestroyed ||
-				mo.bNoBlockmap ||
-				mo.bFloorHugger || mo.bCeilingHugger ||
-				(!mo.bCanPass && !mo.bSpecial))
-			{
-				riders.Delete(i--);
-			}
-		}
 		for (int i = 0; i < mirrors.Size(); ++i)
 		{
 			let m = mirrors[i];
 			if (m == null || m.bDestroyed)
+			{
 				mirrors.Delete(i--);
-			else
-				m.CheckArrayEntries();
+				continue;
+			}
+			m.platMaster = self;
+			m.CheckMirrorEntries();
 		}
 	}
 
@@ -766,6 +758,14 @@ extend class FCW_Platform
 		for (int i = 0; i < riders.Size(); ++i)
 		{
 			let mo = riders[i];
+			if (mo == null || mo.bDestroyed ||
+				mo.bNoBlockmap ||
+				mo.bFloorHugger || mo.bCeilingHugger ||
+				(!mo.bCanPass && !mo.bSpecial))
+			{
+				riders.Delete(i--);
+				continue;
+			}
 
 			//'floorZ' can be the top of a 3D floor that's right below an actor.
 			if (mo.pos.z < top - 1. || mo.floorZ > top + 1.) //Is below us or stuck in us or there's a 3D floor between us?
@@ -1172,7 +1172,7 @@ extend class FCW_Platform
 				if (bDestroyed || currNode == null || currNode.bDestroyed)
 					return; //Abort if we or the node got Thing_Remove()'d
 
-				CheckArrayEntries();
+				CheckMirrorEntries();
 				GetNewRiders(true, true);
 				UpdateOldInfo();
 				SetOrigin(currNode.pos, false);
@@ -1260,7 +1260,7 @@ extend class FCW_Platform
 			platMaster = null;
 		}
 
-		CheckArrayEntries();
+		CheckMirrorEntries();
 		HandleOldRiders();
 		UpdateOldInfo();
 
