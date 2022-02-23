@@ -40,11 +40,16 @@ class FCW_Platform : Actor abstract
 		//$Arg1 Options
 		//$Arg1Type 12
 		//Yes, this enum definition has to be on one line
-		//$Arg1Enum {1 = "Linear path"; 2 = "Use target angle"; 4 = "Use target pitch"; 8 = "Use target roll"; 16 = "Face movement direction"; 32 = "Don't clip against geometry and other platforms"; 64 = "Travel/Hold time in tics (not octics)"; 128 = "Travel/Hold time in seconds (not octics)"; 256 = "Start active";}
-		//$Arg1Tooltip Flag 64 takes precedence over flag 128.\nNOTE: When mirroring another platform, only flags 2, 4, 8 and 32 have any effect.
+		//$Arg1Enum {1 = "Linear path"; 2 = "Use target angle"; 4 = "Use target pitch"; 8 = "Use target roll"; 16 = "Face movement direction"; 32 = "Don't clip against geometry and other platforms"; 64 = "Start active";}
+		//$Arg1Tooltip NOTE: When mirroring another platform, only flags 2, 4, 8 and 32 have any effect.
 
-		//$Arg2 Crush Damage
-		//$Arg2Tooltip The damage is applied once per 4 tics.
+		//$Arg2 Travel/Hold time type
+		//$Arg2Type 11
+		//$Arg2Enum {0 = "Octics (default)"; 1 = "Tics"; 2 = "Seconds";}
+		//$Arg2Tooltip Here you can specify travel time and hold time to be interpreted as something other than octics.\nNOTE: Does nothing if mirroring another platform.
+
+		//$Arg3 Crush Damage
+		//$Arg3Tooltip The damage is applied once per 4 tics.
 
 		+ACTLIKEBRIDGE;
 		+NOGRAVITY;
@@ -69,17 +74,21 @@ extend class FCW_Platform
 	{
 		ARG_TARGET		= 0,
 		ARG_OPTIONS		= 1,
-		ARG_CRUSHDMG	= 2,
+		ARG_TIMETYPE	= 2,
+		ARG_CRUSHDMG	= 3,
 
+		//For "ARG_OPTIONS"
 		OPTFLAG_LINEAR			= 1,
 		OPTFLAG_ANGLE			= 2,
 		OPTFLAG_PITCH			= 4,
 		OPTFLAG_ROLL			= 8,
 		OPTFLAG_FACEMOVE		= 16,
 		OPTFLAG_IGNOREGEO		= 32,
-		OPTFLAG_TIMEINTICS		= 64,
-		OPTFLAG_TIMEINSECS		= 128,
-		OPTFLAG_STARTACTIVE		= 256,
+		OPTFLAG_STARTACTIVE		= 64,
+
+		//For "ARG_TIMETYPE"
+		OPT_TIMEINTICS		= 1,
+		OPT_TIMEINSECS		= 2,
 
 		//"InterpolationPoint" args (that we check)
 		NODEARG_TRAVELTIME	= 1,
@@ -291,15 +300,18 @@ extend class FCW_Platform
 	//============================
 	private void SetTimeFraction (int newTime)
 	{
-		int flags = args[ARG_OPTIONS];
-		if ((flags & OPTFLAG_TIMEINTICS) != 0)
-			timeFrac = 1. / max(1, newTime); //Interpret 'newTime' as tics
-
-		else if ((flags & OPTFLAG_TIMEINSECS) != 0)
-			timeFrac = 1. / (max(1, newTime) * TICRATE); //Interpret 'newTime' as seconds
-
-		else
-			timeFrac = 8. / (max(1, newTime) * TICRATE); //Interpret 'newTime' as octics
+		switch (args[ARG_TIMETYPE])
+		{
+			case OPT_TIMEINTICS:
+				timeFrac = 1. / max(1, newTime); //Interpret 'newTime' as tics
+				break;
+			case OPT_TIMEINSECS:
+				timeFrac = 1. / (max(1, newTime) * TICRATE); //Interpret 'newTime' as seconds
+				break;
+			default:
+				timeFrac = 8. / (max(1, newTime) * TICRATE); //Interpret 'newTime' as octics
+				break;
+		}
 	}
 
 	//============================
@@ -310,15 +322,18 @@ extend class FCW_Platform
 		if (newTime <= 0)
 			return;
 
-		int flags = args[ARG_OPTIONS];
-		if ((flags & OPTFLAG_TIMEINTICS) != 0)
-			holdTime = level.mapTime + newTime; //Interpret 'newTime' as tics
-
-		else if ((flags & OPTFLAG_TIMEINSECS) != 0)
-			holdTime = level.mapTime + newTime * TICRATE; //Interpret 'newTime' as seconds
-
-		else
-			holdTime = level.mapTime + newTime * TICRATE / 8; //Interpret 'newTime' as octics
+		switch (args[ARG_TIMETYPE])
+		{
+			case OPT_TIMEINTICS:
+				holdTime = level.mapTime + newTime; //Interpret 'newTime' as tics
+				break;
+			case OPT_TIMEINSECS:
+				holdTime = level.mapTime + newTime * TICRATE; //Interpret 'newTime' as seconds
+				break;
+			default:
+				holdTime = level.mapTime + newTime * TICRATE / 8; //Interpret 'newTime' as octics
+				break;
+		}
 	}
 
 	//============================
