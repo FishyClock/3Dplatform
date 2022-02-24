@@ -35,18 +35,18 @@ class FCW_Platform : Actor abstract
 
 		//$Arg0 Target
 		//$Arg0Type 14
-		//$Arg0Tooltip Must be a interpolation point (path) or another platform (to mirror movement).\nNOTE: You can't have two platforms mirroring each other.
+		//$Arg0Tooltip Must be a interpolation point (path to follow) or another platform (to attach to).\nNOTE: You can't have two platforms attached to each other.
 
 		//$Arg1 Options
 		//$Arg1Type 12
 		//Yes, this enum definition has to be on one line
-		//$Arg1Enum {1 = "Linear path"; 2 = "Use target angle"; 4 = "Use target pitch"; 8 = "Use target roll"; 16 = "Face movement direction"; 32 = "Don't clip against geometry and other platforms"; 64 = "Start active";}
-		//$Arg1Tooltip NOTE: When mirroring another platform, only flags 2, 4, 8 and 32 have any effect.
+		//$Arg1Enum {1 = "Linear path"; 2 = "Use target angle"; 4 = "Use target pitch"; 8 = "Use target roll"; 16 = "Face movement direction"; 32 = "Don't clip against geometry and other platforms"; 64 = "Start active"; 128 = "Mirror target platform's movement";}
+		//$Arg1Tooltip NOTE: When attached to another platform, only flags 2, 4, 8 and 32 have any effect. Flag 128 only makes sense for attached platforms.
 
 		//$Arg2 Travel/Hold time type
 		//$Arg2Type 11
 		//$Arg2Enum {0 = "Octics (default)"; 1 = "Tics"; 2 = "Seconds";}
-		//$Arg2Tooltip Here you can specify travel time and hold time to be interpreted as something other than octics.\nNOTE: Does nothing if mirroring another platform.
+		//$Arg2Tooltip Here you can specify travel time and hold time to be interpreted as something other than octics.\nNOTE: Does nothing if attached to another platform.
 
 		//$Arg3 Crush Damage
 		//$Arg3Tooltip The damage is applied once per 4 tics.
@@ -85,6 +85,7 @@ extend class FCW_Platform
 		OPTFLAG_FACEMOVE		= 16,
 		OPTFLAG_IGNOREGEO		= 32,
 		OPTFLAG_STARTACTIVE		= 64,
+		OPTFLAG_MIRROR			= 128,
 
 		//For "ARG_TIMETYPE"
 		OPT_TIMEINTICS		= 1,
@@ -107,8 +108,8 @@ extend class FCW_Platform
 	InterpolationPoint currNode, firstNode;
 	InterpolationPoint prevNode, firstPrevNode;
 	Array<Actor> riders;
-	Array<FCW_Platform> mirrors;
-	FCW_Platform platMaster; //Mirrors have most of their thinking done by the platform they mirror (IE their master)
+	Array<FCW_Platform> attachedPlats;
+	FCW_Platform platMaster; //Attached platforms have most of their thinking done by the platform they're attached to.
 
 	//Unlike PathFollower classes, our interpolations are done with
 	//vector3 coordinates rather than checking InterpolationPoint positions.
@@ -136,7 +137,7 @@ extend class FCW_Platform
 		currNode = firstNode = null;
 		prevNode = firstPrevNode = null;
 		riders.Clear();
-		mirrors.Clear();
+		attachedPlats.Clear();
 		platMaster = null;
 
 		pCurr = pPrev = pNext = pNextNext = (0., 0., 0.);
@@ -166,19 +167,19 @@ extend class FCW_Platform
 
 		if (mo == null)
 		{
-			Console.Printf(prefix .. "Can't find suitable target with tid " .. args[ARG_TARGET] .. ".\nTarget must be a interpolation point (path) or another platform (to mirror movement).");
+			Console.Printf(prefix .. "Can't find suitable target with tid " .. args[ARG_TARGET] .. ".\nTarget must be a interpolation point (path to follow) or another platform (to attach to).");
 			return;
 		}
 
 		if (mo is "FCW_Platform")
 		{
 			platMaster = FCW_Platform(mo);
-			platMaster.mirrors.Push(self);
+			platMaster.attachedPlats.Push(self);
 
 			//Get going if it's active
 			//and we ticked after it.
 			if (platMaster.pos != platMaster.spawnPoint)
-				MirrorMove(true);
+				AttachedMove(true);
 			return;
 		}
 		firstNode = InterpolationPoint(mo);
@@ -384,20 +385,20 @@ extend class FCW_Platform
 	}
 
 	//============================
-	// CheckMirrorEntries
+	// CheckAttachedPlatforms
 	//============================
-	private void CheckMirrorEntries ()
+	private void CheckAttachedPlatforms ()
 	{
-		for (int i = 0; i < mirrors.Size(); ++i)
+		for (int i = 0; i < attachedPlats.Size(); ++i)
 		{
-			let m = mirrors[i];
-			if (m == null || m.bDestroyed)
+			let plat = attachedPlats[i];
+			if (plat == null || plat.bDestroyed)
 			{
-				mirrors.Delete(i--);
+				attachedPlats.Delete(i--);
 				continue;
 			}
-			m.platMaster = self;
-			m.CheckMirrorEntries();
+			plat.platMaster = self;
+			plat.CheckAttachedPlatforms();
 		}
 	}
 
@@ -816,8 +817,8 @@ extend class FCW_Platform
 				mo.moveCount = 1;
 		}
 
-		for (int i = 0; i < mirrors.Size(); ++i)
-			mirrors[i].HandleOldRiders();
+		for (int i = 0; i < attachedPlats.Size(); ++i)
+			attachedPlats[i].HandleOldRiders();
 	}
 
 	//============================
@@ -1036,20 +1037,20 @@ extend class FCW_Platform
 			pNextNext += offset;
 		}
 
-		for (int i = 0; i < mirrors.Size(); ++i)
+		for (int i = 0; i < attachedPlats.Size(); ++i)
 		{
-			//If one of our mirrors is blocked, pretend
+			//If one of our attached platforms is blocked, pretend
 			//we're blocked too. (Our move won't be cancelled.)
-			if (!mirrors[i].MirrorMove(false))
+			if (!attachedPlats[i].AttachedMove(false))
 				return false;
 		}
 		return true;
 	}
 
 	//============================
-	// MirrorMove
+	// AttachedMove
 	//============================
-	private bool MirrorMove (bool teleMove)
+	private bool AttachedMove (bool teleMove)
 	{
 		oldPos = pos;
 		oldAngle = angle;
@@ -1108,13 +1109,13 @@ extend class FCW_Platform
 			return false;
 		}
 
-		for (int i = 0; i < mirrors.Size(); ++i)
+		for (int i = 0; i < attachedPlats.Size(); ++i)
 		{
-			//If one of our mirrors is blocked, pretend
+			//If one of our attached platforms is blocked, pretend
 			//we're blocked too. (Our move won't be cancelled.)
-			//Yes, mirrors can get mirrored, too.
-			//(But they can't mirror each other.)
-			if (!mirrors[i].MirrorMove(teleMove))
+			//Yes, attached plats can have their own attached plats.
+			//(But they can't be attached to each other.)
+			if (!attachedPlats[i].AttachedMove(teleMove))
 				return false;
 		}
 		return true;
@@ -1180,9 +1181,9 @@ extend class FCW_Platform
 				SetInterpolationCoordinates();
 				SetTimeFraction(currNode.args[NODEARG_TRAVELTIME]);
 				MoveRiders(true, true);
-				CheckMirrorEntries();
-				for (int i = 0; i < mirrors.Size(); ++i)
-					mirrors[i].MirrorMove(true);
+				CheckAttachedPlatforms();
+				for (int i = 0; i < attachedPlats.Size(); ++i)
+					attachedPlats[i].AttachedMove(true);
 			}
 		}
 	}
@@ -1199,23 +1200,23 @@ extend class FCW_Platform
 				return; //Freed itself
 		}
 
-		//Sanity check - most of a mirror's thinking is done by its master
+		//Sanity check - most of a attached platform's thinking is done by its master
 		if (platMaster != null)
 		{
-			let pMastIndex = platMaster.mirrors.Find(self);
-			if (pMastIndex < platMaster.mirrors.Size())
+			let pMastIndex = platMaster.attachedPlats.Find(self);
+			if (pMastIndex < platMaster.attachedPlats.Size())
 			{
 				//Because the way this is set up to work you
-				//can't have two platforms mirroring each other.
-				let myIndex = mirrors.Find(platMaster);
-				if (myIndex < mirrors.Size())
+				//can't have two platforms attached to each other.
+				let myIndex = attachedPlats.Find(platMaster);
+				if (myIndex < attachedPlats.Size())
 				{
 					Console.Printf("\ckPlatform class '" .. GetClassName() .. "' with tid " .. tid .. ":\nat position " .. pos .. ":\n" ..
 					"and platform class '" .. platMaster.GetClassName() .. "' with tid " .. platMaster.tid .. ":\nat position " .. platMaster.pos .. ":\n" ..
-					"are mirroring each other; Mirror info will be cleared for both.");
+					"are attached to each other; Both will be detached from each other.");
 
-					mirrors.Delete(myIndex);
-					platMaster.mirrors.Delete(pMastIndex);
+					attachedPlats.Delete(myIndex);
+					platMaster.attachedPlats.Delete(pMastIndex);
 					platMaster.platMaster = null;
 				}
 				else
@@ -1226,7 +1227,7 @@ extend class FCW_Platform
 			platMaster = null;
 		}
 
-		CheckMirrorEntries();
+		CheckAttachedPlatforms();
 		HandleOldRiders();
 
 		if (bDormant)
@@ -1288,21 +1289,24 @@ extend class FCW_Platform
 	//============================
 	// CommonACSSetup
 	//============================
-	private void CommonACSSetup (int newTime)
+	private void CommonACSSetup (int newTime, int timeType)
 	{
 		if (platMaster != null)
 		{
-			//Stop mirroring
-			let index = platMaster.mirrors.Find(self);
-			if (index < platMaster.mirrors.Size())
-				platMaster.mirrors.Delete(index);
+			//Detach from master platform
+			let index = platMaster.attachedPlats.Find(self);
+			if (index < platMaster.attachedPlats.Size())
+				platMaster.attachedPlats.Delete(index);
 			platMaster = null;
 		}
 		currNode = null; //Deactivate when done moving
 		prevNode = null;
 		time = 0.;
 		holdTime = 0;
+		let savedArg = args[ARG_TIMETYPE];
+		args[ARG_TIMETYPE] = timeType;
 		SetTimeFraction(newTime);
+		args[ARG_TIMETYPE] = savedArg;
 		bDormant = false;
 		pPrev = pCurr = pos;
 		pPrevAngs = pCurrAngs = (
@@ -1314,13 +1318,13 @@ extend class FCW_Platform
 	//============================
 	// Move (ACS utility)
 	//============================
-	static void Move (int platTid, double offX, double offY, double offZ, int newTime, double offAng = 0., double offPi = 0., double offRo = 0.)
+	static void Move (int platTid, double offX, double offY, double offZ, int newTime, int timeType = OPT_TIMEINTICS, double offAng = 0., double offPi = 0., double offRo = 0.)
 	{
 		let it = level.CreateActorIterator(platTid, "FCW_Platform");
 		FCW_Platform plat;
 		while ((plat = FCW_Platform(it.Next())) != null)
 		{
-			plat.CommonACSSetup(newTime);
+			plat.CommonACSSetup(newTime, timeType);
 			plat.pNext = plat.pNextNext = plat.Vec3Offset(offX, offY, offZ);
 			plat.pNextAngs = plat.pNextNextAngs = plat.pCurrAngs + (offAng, offPi, offRo);
 		}
@@ -1329,7 +1333,7 @@ extend class FCW_Platform
 	//============================
 	// MoveTo (ACS utility)
 	//============================
-	static void MoveTo (int platTid, double newX, double newY, double newZ, int newTime, double offAng = 0., double offPi = 0., double offRo = 0.)
+	static void MoveTo (int platTid, double newX, double newY, double newZ, int newTime, int timeType = OPT_TIMEINTICS, double offAng = 0., double offPi = 0., double offRo = 0.)
 	{
 		//ACS itself has no 'vector3' variable type so it has to be 3 doubles (floats/fixed point numbers)
 		vector3 newPos = (newX, newY, newZ);
@@ -1337,7 +1341,7 @@ extend class FCW_Platform
 		FCW_Platform plat;
 		while ((plat = FCW_Platform(it.Next())) != null)
 		{
-			plat.CommonACSSetup(newTime);
+			plat.CommonACSSetup(newTime, timeType);
 			plat.pNext = plat.pNextNext = plat.pos + level.Vec3Diff(plat.pos, newPos); //Make it portal aware
 			plat.pNextAngs = plat.pNextNextAngs = plat.pCurrAngs + (offAng, offPi, offRo);
 		}
@@ -1346,7 +1350,7 @@ extend class FCW_Platform
 	//============================
 	// MoveToSpot (ACS utility)
 	//============================
-	static void MoveToSpot (int platTid, int spotTid, int newTime)
+	static void MoveToSpot (int platTid, int spotTid, int newTime, int timeType = OPT_TIMEINTICS)
 	{
 		//This is the only place you can make a platform use any actor as a travel destination
 		let it = level.CreateActorIterator(spotTid);
@@ -1358,7 +1362,7 @@ extend class FCW_Platform
 		FCW_Platform plat;
 		while ((plat = FCW_Platform(it.Next())) != null)
 		{
-			plat.CommonACSSetup(newTime);
+			plat.CommonACSSetup(newTime, timeType);
 			plat.pNext = plat.pNextNext = plat.pos + plat.Vec3To(spot); //Make it portal aware
 			plat.pNextAngs = plat.pNextNextAngs = plat.pCurrAngs + (
 				DeltaAngle(plat.pCurrAngs.x, spot.angle),
@@ -1376,7 +1380,7 @@ extend class FCW_Platform
 		let plat = FCW_Platform(it.Next());
 		if (plat == null)
 			return false;
-		if (plat.platMaster != null)
+		while (plat.platMaster != null && plat.platMaster.platMaster != plat)
 			plat = plat.platMaster;
 		return (!plat.bDormant && (
 			plat.pos != plat.oldPos ||
@@ -1394,7 +1398,7 @@ extend class FCW_Platform
 		let plat = FCW_Platform(it.Next());
 		if (plat == null)
 			return false;
-		if (plat.platMaster != null)
+		while (plat.platMaster != null && plat.platMaster.platMaster != plat)
 			plat = plat.platMaster;
 		return (!plat.bDormant && plat.bPlatBlocked);
 	}
