@@ -100,6 +100,8 @@ extend class FCW_Platform
 	double oldAngle;
 	double oldPitch;
 	double oldRoll;
+	double spawnPitch;
+	double spawnRoll;
 	double time, timeFrac;
 	int holdTime;
 	bool bJustStepped;
@@ -129,6 +131,8 @@ extend class FCW_Platform
 		oldAngle = angle;
 		oldPitch = pitch;
 		oldRoll = roll;
+		spawnPitch = pitch;
+		spawnRoll = roll;
 		time = timeFrac = 0.;
 		holdTime = 0;
 		bJustStepped = false;
@@ -178,8 +182,13 @@ extend class FCW_Platform
 
 			//Get going if it's active
 			//and we ticked after it.
-			if (platMaster.pos != platMaster.spawnPoint)
+			if (platMaster.pos != platMaster.spawnPoint ||
+				platMaster.angle != platMaster.spawnAngle ||
+				platMaster.pitch != platMaster.spawnPitch ||
+				platMaster.roll != platMaster.spawnRoll)
+			{
 				AttachedMove(true);
+			}
 			return;
 		}
 		firstNode = InterpolationPoint(mo);
@@ -223,10 +232,11 @@ extend class FCW_Platform
 	//============================
 	override bool CanCollideWith(Actor other, bool passive)
 	{
-		if ((args[ARG_OPTIONS] & OPTFLAG_IGNOREGEO) != 0 && other is "FCW_Platform")
+		if (bPlatInMove && riders.Find(other) < riders.Size())
 			return false;
 
-		if (bPlatInMove && riders.Find(other) < riders.Size())
+		let plat = FCW_Platform(other);
+		if (plat != null && (plat == platMaster || (args[ARG_OPTIONS] & OPTFLAG_IGNOREGEO) != 0))
 			return false;
 
 		return true;
@@ -1057,14 +1067,81 @@ extend class FCW_Platform
 		oldPitch = pitch;
 		oldRoll = roll;
 
-		//The way we mirror movement is by getting the offset going
-		//from the mirror's current position to its spawn position
-		//and using that to get a offsetted position from
-		//our own spawn position.
-		//So we pretty much always go in the opposite direction
-		//using our spawn position as a reference point.
-		vector3 offset = level.Vec3Diff(platMaster.pos, platMaster.spawnPoint);
-		vector3 newPos = level.Vec3Offset(spawnPoint, offset);
+		vector3 newPos;
+		if ((args[ARG_OPTIONS] & OPTFLAG_MIRROR) != 0)
+		{
+			//The way we mirror movement is by getting the offset going
+			//from the master's current position to its spawn position
+			//and using that to get a offsetted position from
+			//our own spawn position.
+			//So we pretty much always go in the opposite direction
+			//using our spawn position as a reference point.
+			vector3 offset = level.Vec3Diff(platMaster.pos, platMaster.spawnPoint);
+			newPos = level.Vec3Offset(spawnPoint, offset);
+
+			if ((args[ARG_OPTIONS] & OPTFLAG_ANGLE) != 0)
+			{
+				//Same offset logic as position changing
+				double delta = DeltaAngle(platMaster.angle, platMaster.spawnAngle);
+				angle = Normalize180(spawnAngle + delta);
+			}
+
+			if ((args[ARG_OPTIONS] & OPTFLAG_PITCH) != 0)
+			{
+				//Same offset logic as position changing
+				double piDelta = DeltaAngle(platMaster.pitch, platMaster.spawnPitch);
+				pitch = Normalize180(spawnPitch + piDelta);
+			}
+
+			if ((args[ARG_OPTIONS] & OPTFLAG_ROLL) != 0)
+			{
+				//Same offset logic as position changing
+				double roDelta = DeltaAngle(platMaster.roll, platMaster.spawnRoll);
+				roll = Normalize180(spawnRoll + roDelta);
+			}
+		}
+		else
+		{
+			//Follow around master platform
+			vector3 offset = level.Vec3Diff(platMaster.spawnPoint, spawnPoint);
+			double delta = DeltaAngle(platMaster.spawnAngle, platMaster.angle);
+			double piDelta = DeltaAngle(platMaster.spawnPitch, platMaster.pitch);
+			double roDelta = DeltaAngle(platMaster.spawnRoll, platMaster.roll);
+			if (delta != 0.)
+				offset.xy = RotateVector(offset.xy, delta);
+
+			if (piDelta != 0.)
+			{
+				let oldX = offset.x;
+				offset.x = offset.z;
+				offset.z = oldX;
+				offset.xy = RotateVector(offset.xy, -piDelta);
+				oldX = offset.x;
+				offset.x = offset.z;
+				offset.z = oldX;
+			}
+
+			if (roDelta != 0.)
+			{
+				let oldY = offset.y;
+				offset.y = offset.z;
+				offset.z = oldY;
+				offset.xy = RotateVector(offset.xy, roDelta);
+				oldY = offset.y;
+				offset.y = offset.z;
+				offset.z = oldY;
+			}
+			newPos = level.Vec3Offset(platMaster.pos, offset);
+
+			if ((args[ARG_OPTIONS] & OPTFLAG_ANGLE) != 0)
+				angle = Normalize180(spawnAngle + delta);
+
+			if ((args[ARG_OPTIONS] & OPTFLAG_PITCH) != 0)
+				pitch = Normalize180(spawnPitch + piDelta);
+
+			if ((args[ARG_OPTIONS] & OPTFLAG_ROLL) != 0)
+				roll = Normalize180(spawnRoll + roDelta);
+		}
 
 		//Do a blockmap search once per tic if we're in motion.
 		//Otherwise, do (at most) two searches per 64 tics (almost 2 seconds).
@@ -1073,7 +1150,12 @@ extend class FCW_Platform
 		if (newPos != pos || ((level.mapTime + 32) & 63) == 0)
 		{
 			if (!GetNewRiders(false, false))
+			{
+				angle = oldAngle;
+				pitch = oldPitch;
+				roll = oldRoll;
 				return false;
+			}
 		}
 
 		if (teleMove)
@@ -1084,21 +1166,13 @@ extend class FCW_Platform
 		{
 			newPos = pos + level.Vec3Diff(pos, newPos); //For TryMove()
 			if (!PlatTryMove(newPos))
+			{
+				angle = oldAngle;
+				pitch = oldPitch;
+				roll = oldRoll;
 				return false;
+			}
 		}
-
-		if ((args[ARG_OPTIONS] & OPTFLAG_ANGLE) != 0)
-		{
-			//Same offset logic as position changing
-			double delta = DeltaAngle(platMaster.angle, platMaster.spawnAngle);
-			angle = Normalize180(spawnAngle + delta);
-		}
-
-		if ((args[ARG_OPTIONS] & OPTFLAG_PITCH) != 0)
-			pitch = Normalize180(platMaster.pitch);
-
-		if ((args[ARG_OPTIONS] & OPTFLAG_ROLL) != 0)
-			roll = -Normalize180(platMaster.roll);
 
 		if (!MoveRiders(teleMove, teleMove))
 		{
@@ -1174,6 +1248,12 @@ extend class FCW_Platform
 
 				GetNewRiders(true, true);
 				SetOrigin(currNode.pos, false);
+				if ((args[ARG_OPTIONS] & OPTFLAG_ANGLE) != 0)
+					angle = currNode.angle;
+				if ((args[ARG_OPTIONS] & OPTFLAG_PITCH) != 0)
+					pitch = currNode.pitch;
+				if ((args[ARG_OPTIONS] & OPTFLAG_ROLL) != 0)
+					roll = currNode.roll;
 				time = 0.;
 				holdTime = 0;
 				bJustStepped = true;
