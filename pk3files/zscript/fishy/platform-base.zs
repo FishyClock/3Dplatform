@@ -187,7 +187,10 @@ extend class FCW_Platform
 				platMaster.pitch != platMaster.spawnPitch ||
 				platMaster.roll != platMaster.spawnRoll)
 			{
-				AttachedMove(true);
+				double d1 = DeltaAngle(platMaster.spawnAngle, platMaster.angle);
+				double d2 = DeltaAngle(platMaster.spawnPitch, platMaster.pitch);
+				double d3 = DeltaAngle(platMaster.spawnRoll, platMaster.roll);
+				AttachedMove(true, d1, d2, d3);
 			}
 			return;
 		}
@@ -1047,12 +1050,18 @@ extend class FCW_Platform
 			pNextNext += offset;
 		}
 
-		for (int i = 0; i < attachedPlats.Size(); ++i)
+		if (attachedPlats.Size() > 0)
 		{
-			//If one of our attached platforms is blocked, pretend
-			//we're blocked too. (Our move won't be cancelled.)
-			if (!attachedPlats[i].AttachedMove(false))
-				return false;
+			double d1 = DeltaAngle(spawnAngle, angle);
+			double d2 = DeltaAngle(spawnPitch, pitch);
+			double d3 = DeltaAngle(spawnRoll, roll);
+			for (int i = 0; i < attachedPlats.Size(); ++i)
+			{
+				//If one of our attached platforms is blocked, pretend
+				//we're blocked too. (Our move won't be cancelled.)
+				if (!attachedPlats[i].AttachedMove(false, d1, d2, d3))
+					return false;
+			}
 		}
 		return true;
 	}
@@ -1060,7 +1069,7 @@ extend class FCW_Platform
 	//============================
 	// AttachedMove
 	//============================
-	private bool AttachedMove (bool teleMove)
+	private bool AttachedMove (bool teleMove, double delta, double piDelta, double roDelta)
 	{
 		oldPos = pos;
 		oldAngle = angle;
@@ -1080,56 +1089,33 @@ extend class FCW_Platform
 			newPos = level.Vec3Offset(spawnPoint, offset);
 
 			if ((args[ARG_OPTIONS] & OPTFLAG_ANGLE) != 0)
-			{
-				//Same offset logic as position changing
-				double delta = DeltaAngle(platMaster.angle, platMaster.spawnAngle);
-				angle = Normalize180(spawnAngle + delta);
-			}
+				angle = Normalize180(spawnAngle - delta);
 
 			if ((args[ARG_OPTIONS] & OPTFLAG_PITCH) != 0)
-			{
-				//Same offset logic as position changing
-				double piDelta = DeltaAngle(platMaster.pitch, platMaster.spawnPitch);
-				pitch = Normalize180(spawnPitch + piDelta);
-			}
+				pitch = Normalize180(spawnPitch - piDelta);
 
 			if ((args[ARG_OPTIONS] & OPTFLAG_ROLL) != 0)
-			{
-				//Same offset logic as position changing
-				double roDelta = DeltaAngle(platMaster.roll, platMaster.spawnRoll);
-				roll = Normalize180(spawnRoll + roDelta);
-			}
+				roll = Normalize180(spawnRoll - roDelta);
 		}
 		else
 		{
 			//Follow around master platform
-			vector3 offset = level.Vec3Diff(platMaster.spawnPoint, spawnPoint);
-			double delta = DeltaAngle(platMaster.spawnAngle, platMaster.angle);
-			double piDelta = DeltaAngle(platMaster.spawnPitch, platMaster.pitch);
-			double roDelta = DeltaAngle(platMaster.spawnRoll, platMaster.roll);
+			vector3 baseOff = level.Vec3Diff(platMaster.spawnPoint, spawnPoint);
+			vector3 offset = baseOff;
 			if (delta != 0.)
-				offset.xy = RotateVector(offset.xy, delta);
+				offset.xy = RotateVector(baseOff.xy, delta);
 
 			if (piDelta != 0.)
 			{
-				let oldX = offset.x;
-				offset.x = offset.z;
-				offset.z = oldX;
-				offset.xy = RotateVector(offset.xy, -piDelta);
-				oldX = offset.x;
-				offset.x = offset.z;
-				offset.z = oldX;
+				vector2 piOff = RotateVector((baseOff.y, baseOff.z), piDelta);
+				offset.y += piOff.x - baseOff.y;
+				offset.z += piOff.y - baseOff.z;
 			}
-
 			if (roDelta != 0.)
 			{
-				let oldY = offset.y;
-				offset.y = offset.z;
-				offset.z = oldY;
-				offset.xy = RotateVector(offset.xy, roDelta);
-				oldY = offset.y;
-				offset.y = offset.z;
-				offset.z = oldY;
+				vector2 roOff = RotateVector((baseOff.x, baseOff.z), roDelta);
+				offset.x += roOff.x - baseOff.x;
+				offset.z += roOff.y - baseOff.z;
 			}
 			newPos = level.Vec3Offset(platMaster.pos, offset);
 
@@ -1183,14 +1169,20 @@ extend class FCW_Platform
 			return false;
 		}
 
-		for (int i = 0; i < attachedPlats.Size(); ++i)
+		if (attachedPlats.Size() > 0)
 		{
-			//If one of our attached platforms is blocked, pretend
-			//we're blocked too. (Our move won't be cancelled.)
-			//Yes, attached plats can have their own attached plats.
-			//(But they can't be attached to each other.)
-			if (!attachedPlats[i].AttachedMove(teleMove))
-				return false;
+			double d1 = DeltaAngle(spawnAngle, angle);
+			double d2 = DeltaAngle(spawnPitch, pitch);
+			double d3 = DeltaAngle(spawnRoll, roll);
+			for (int i = 0; i < attachedPlats.Size(); ++i)
+			{
+				//If one of our attached platforms is blocked, pretend
+				//we're blocked too. (Our move won't be cancelled.)
+				//Yes, attached plats can have their own attached plats.
+				//(But they can't be attached to each other.)
+				if (!attachedPlats[i].AttachedMove(teleMove, d1, d2, d3))
+					return false;
+			}
 		}
 		return true;
 	}
@@ -1262,8 +1254,14 @@ extend class FCW_Platform
 				SetTimeFraction(currNode.args[NODEARG_TRAVELTIME]);
 				MoveRiders(true, true);
 				CheckAttachedPlatforms();
-				for (int i = 0; i < attachedPlats.Size(); ++i)
-					attachedPlats[i].AttachedMove(true);
+				if (attachedPlats.Size() > 0)
+				{
+					double d1 = DeltaAngle(spawnAngle, angle);
+					double d2 = DeltaAngle(spawnPitch, pitch);
+					double d3 = DeltaAngle(spawnRoll, roll);
+					for (int i = 0; i < attachedPlats.Size(); ++i)
+						attachedPlats[i].AttachedMove(true, d1, d2, d3);
+				}
 			}
 		}
 	}
