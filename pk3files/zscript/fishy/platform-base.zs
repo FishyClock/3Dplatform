@@ -1100,23 +1100,15 @@ extend class FCW_Platform
 		else
 		{
 			//Follow around master platform
-			vector3 baseOff = level.Vec3Diff(platMaster.spawnPoint, spawnPoint);
-			vector3 offset = baseOff;
-			if (delta != 0.)
-				offset.xy = RotateVector(baseOff.xy, delta);
+			vector3 offset = level.Vec3Diff(platMaster.spawnPoint, spawnPoint);
+			double cY = cos(angle), sY = sin(angle);
+			double cP = cos(pitch), sP = sin(pitch);
+			double cR = cos(roll), sR = sin(roll);
 
-			if (piDelta != 0.)
-			{
-				vector2 piOff = RotateVector((baseOff.y, baseOff.z), piDelta);
-				offset.y += piOff.x - baseOff.y;
-				offset.z += piOff.y - baseOff.z;
-			}
-			if (roDelta != 0.)
-			{
-				vector2 roOff = RotateVector((baseOff.x, baseOff.z), roDelta);
-				offset.x += roOff.x - baseOff.x;
-				offset.z += roOff.y - baseOff.z;
-			}
+			//Rotate the offset. The order here matters.
+			offset = (offset.x, offset.y*cR - offset.z*sR, offset.y*sR + offset.z*cR);  //X axis (roll)
+			offset = (offset.x*cP + offset.z*sP, offset.y, -offset.x*sP + offset.z*cP); //Y axis (pitch)
+			offset = (offset.x*cY - offset.y*sY, offset.x*sY + offset.y*cY, offset.z);  //Z axis (yaw/angle)
 			newPos = level.Vec3Offset(platMaster.pos, offset);
 
 			if ((args[ARG_OPTIONS] & OPTFLAG_ANGLE) != 0)
