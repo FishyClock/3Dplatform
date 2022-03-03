@@ -133,7 +133,7 @@ extend class FCW_Platform
 		oldRoll = roll;
 		spawnPitch = pitch;
 		spawnRoll = roll;
-		time = timeFrac = 0.;
+		time = timeFrac = 0.0;
 		holdTime = 0;
 		bJustStepped = false;
 		bPlatBlocked = false;
@@ -144,8 +144,8 @@ extend class FCW_Platform
 		attachedPlats.Clear();
 		platMaster = null;
 
-		pCurr = pPrev = pNext = pNextNext = (0., 0., 0.);
-		pCurrAngs = pPrevAngs = pNextAngs = pNextNextAngs = (0., 0., 0.);
+		pCurr = pPrev = pNext = pNextNext = (0, 0, 0);
+		pCurrAngs = pPrevAngs = pNextAngs = pNextNextAngs = (0, 0, 0);
 	}
 
 	//============================
@@ -154,7 +154,7 @@ extend class FCW_Platform
 	override void PostBeginPlay ()
 	{
 		bDormant = true;
-		if (args[ARG_TARGET] == 0)
+		if (!args[ARG_TARGET])
 			return; //Print no warnings if we're not supposed to look for anything
 
 		String prefix = "\ckPlatform class '" .. GetClassName() .. "' with tid " .. tid .. ":\nat position " .. pos .. ":\n";
@@ -166,10 +166,10 @@ extend class FCW_Platform
 
 		let it = level.CreateActorIterator(args[ARG_TARGET]);
 		Actor mo = it.Next();
-		while (mo != null && !(mo is "InterpolationPoint") && !(mo is "FCW_Platform"))
+		while (mo && !(mo is "InterpolationPoint") && !(mo is "FCW_Platform"))
 			mo = it.Next();
 
-		if (mo == null)
+		if (!mo)
 		{
 			Console.Printf(prefix .. "Can't find suitable target with tid " .. args[ARG_TARGET] .. ".\nTarget must be a interpolation point (path to follow) or another platform (to attach to).");
 			return;
@@ -198,9 +198,9 @@ extend class FCW_Platform
 
 		//Verify the path has enough nodes
 		firstNode.FormChain();
-		if ((args[ARG_OPTIONS] & OPTFLAG_LINEAR) != 0)
+		if (args[ARG_OPTIONS] & OPTFLAG_LINEAR)
 		{
-			if (firstNode.next == null) //Linear path; need 2 nodes
+			if (!firstNode.next) //Linear path; need 2 nodes
 			{
 				Console.Printf(prefix .. "Path needs at least 2 nodes.");
 				return;
@@ -208,9 +208,9 @@ extend class FCW_Platform
 		}
 		else //Spline path; need 4 nodes
 		{
-			if (firstNode.next == null ||
-				firstNode.next.next == null ||
-				firstNode.next.next.next == null)
+			if (!firstNode.next ||
+				!firstNode.next.next ||
+				!firstNode.next.next.next)
 			{
 				Console.Printf(prefix .. "Path needs at least 4 nodes.");
 				return;
@@ -219,14 +219,14 @@ extend class FCW_Platform
 			//If the first node is in a loop, we can start there.
 			//Otherwise, we need to start at the second node in the path.
 			firstPrevNode = firstNode.ScanForLoop();
-			if (firstPrevNode == null || firstPrevNode.next != firstNode)
+			if (!firstPrevNode || firstPrevNode.next != firstNode)
 			{
 				firstPrevNode = firstNode;
 				firstNode = firstNode.next;
 			}
 		}
 
-		if ((args[ARG_OPTIONS] & OPTFLAG_STARTACTIVE) != 0)
+		if (args[ARG_OPTIONS] & OPTFLAG_STARTACTIVE)
 			Activate(self);
 	}
 
@@ -239,7 +239,7 @@ extend class FCW_Platform
 			return false;
 
 		let plat = FCW_Platform(other);
-		if (plat != null && (plat == platMaster || (args[ARG_OPTIONS] & OPTFLAG_IGNOREGEO) != 0))
+		if (plat && (plat == platMaster || (args[ARG_OPTIONS] & OPTFLAG_IGNOREGEO)))
 			return false;
 
 		return true;
@@ -256,7 +256,7 @@ extend class FCW_Platform
 		if (!a.bSolid || !b.bSolid)
 			return false;
 
-		if ((a.bAllowThruBits || b.bAllowThruBits) && (a.thruBits & b.thruBits) != 0)
+		if ((a.bAllowThruBits || b.bAllowThruBits) && (a.thruBits & b.thruBits))
 			return false;
 
 		if ((a.bThruSpecies || b.bThruSpecies) && a.GetSpecies() == b.GetSpecies())
@@ -271,11 +271,11 @@ extend class FCW_Platform
 	private void CrushObstacle (Actor victim)
 	{
 		int crushDamage = args[ARG_CRUSHDMG];
-		if (crushDamage <= 0 || (level.mapTime & 3) != 0) //Only crush every 4th tic to allow victim's pain sound to be heard
+		if (crushDamage <= 0 || (level.mapTime & 3)) //Only crush every 4th tic to allow victim's pain sound to be heard
 			return;
 
 		int doneDamage = victim.DamageMobj(null, null, crushDamage, 'Crush');
-		victim.TraceBleed((doneDamage > 0) ? doneDamage : crushDamage, self);
+		victim.TraceBleed(doneDamage > 0 ? doneDamage : crushDamage, self);
 	}
 
 	//============================
@@ -283,16 +283,16 @@ extend class FCW_Platform
 	//============================
 	private void PushObstacle (Actor pushed, vector3 pushForce)
 	{
-		if (pushForce.z != 0. && Distance2D(pushed) >= radius + pushed.radius) //Out of range?
-			pushForce.z = 0.;
+		if (pushForce.z != 0.0 && Distance2D(pushed) >= radius + pushed.radius) //Out of range?
+			pushForce.z = 0.0;
 
-		if (pushForce == (0., 0., 0.))
+		if (pushForce ~== (0, 0, 0))
 			return;
 
-		if (pos.xy != pushed.pos.xy && pushForce.xy != (0., 0.))
+		if (pos.xy != pushed.pos.xy && pushForce.xy != (0, 0))
 		{
 			double delta = DeltaAngle(VectorAngle(pushForce.x, pushForce.y), AngleTo(pushed));
-			if (delta > 90. || delta < -90.)
+			if (delta > 90.0 || delta < -90.0)
 				pushForce.xy = RotateVector(pushForce.xy, delta); //Push away from platform's center
 		}
 		pushed.vel += pushForce;
@@ -317,13 +317,13 @@ extend class FCW_Platform
 		switch (args[ARG_TIMETYPE])
 		{
 			case OPT_TIMEINTICS:
-				timeFrac = 1. / max(1, newTime); //Interpret 'newTime' as tics
+				timeFrac = 1.0 / max(1, newTime); //Interpret 'newTime' as tics
 				break;
 			case OPT_TIMEINSECS:
-				timeFrac = 1. / (max(1, newTime) * TICRATE); //Interpret 'newTime' as seconds
+				timeFrac = 1.0 / (max(1, newTime) * TICRATE); //Interpret 'newTime' as seconds
 				break;
 			default:
-				timeFrac = 8. / (max(1, newTime) * TICRATE); //Interpret 'newTime' as octics
+				timeFrac = 8.0 / (max(1, newTime) * TICRATE); //Interpret 'newTime' as octics
 				break;
 		}
 	}
@@ -355,7 +355,7 @@ extend class FCW_Platform
 	//============================
 	private void SetInterpolationCoordinates ()
 	{
-		if (prevNode != null)
+		if (prevNode)
 		{
 			pPrev = pos + Vec3To(prevNode); //Make it portal aware
 			pPrevAngs = (
@@ -363,10 +363,10 @@ extend class FCW_Platform
 				Normalize180(prevNode.pitch),
 				Normalize180(prevNode.roll));
 		}
-		if (currNode != null)
+		if (currNode)
 		{
 			pCurr = pos + Vec3To(currNode); //Ditto
-			if (prevNode == null)
+			if (!prevNode)
 				pCurrAngs = (
 				Normalize180(currNode.angle),
 				Normalize180(currNode.pitch),
@@ -377,7 +377,7 @@ extend class FCW_Platform
 				DeltaAngle(pPrevAngs.y, currNode.pitch),
 				DeltaAngle(pPrevAngs.z, currNode.roll));
 
-			if (currNode.next != null)
+			if (currNode.next)
 			{
 				pNext = pos + Vec3To(currNode.next); //Ditto
 				pNextAngs = pCurrAngs + (
@@ -385,7 +385,7 @@ extend class FCW_Platform
 				DeltaAngle(pCurrAngs.y, currNode.next.pitch),
 				DeltaAngle(pCurrAngs.z, currNode.next.roll));
 
-				if (currNode.next.next != null)
+				if (currNode.next.next)
 				{
 					pNextNext = pos + Vec3To(currNode.next.next); //Ditto
 					pNextNextAngs = pNextAngs + (
@@ -405,7 +405,7 @@ extend class FCW_Platform
 		for (int i = 0; i < attachedPlats.Size(); ++i)
 		{
 			let plat = attachedPlats[i];
-			if (plat == null || plat.bDestroyed)
+			if (!plat || plat.bDestroyed)
 			{
 				attachedPlats.Delete(i--);
 				continue;
@@ -463,7 +463,7 @@ extend class FCW_Platform
 			if (abs(it.position.x - mo.pos.x) < blockDist && abs(it.position.y - mo.pos.y) < blockDist)
 			{
 				//'laxZCheck' makes anything above our 'top' legit
-				if (mo.pos.z >= top && (laxZCheck || mo.pos.z <= top + 1.)) //On top of us?
+				if (mo.pos.z >= top && (laxZCheck || mo.pos.z <= top + 1.0)) //On top of us?
 				{
 					if (canCarry && !oldRider)
 						onTopOfMe.Push(mo);
@@ -548,7 +548,7 @@ extend class FCW_Platform
 		for (int i = 0; i < riders.Size(); ++i)
 		{
 			let mo = riders[i];
-			double moTop = mo.pos.z + mo.height + 1.;
+			double moTop = mo.pos.z + mo.height + 1.0;
 
 			for (int iOther = 0; iOther < miscResults.Size(); ++iOther)
 			{
@@ -572,7 +572,7 @@ extend class FCW_Platform
 	{
 		//Returns false if a blocked rider would block the platform's movement
 
-		if (riders.Size() == 0)
+		if (!riders.Size())
 			return true; //No riders? Nothing to do
 
 		//The goal is to move all riders as if they were one entity.
@@ -592,13 +592,13 @@ extend class FCW_Platform
 		//Move our riders (platform rotation is taken into account)
 		double top = pos.z + height;
 		double delta = DeltaAngle(oldAngle, angle);
-		vector2 piAndRoOffset = (0., 0.);
+		vector2 piAndRoOffset = (0, 0);
 		if (!teleMove)
 		{
 			double piDelta = DeltaAngle(oldPitch, pitch)*2;
 			double roDelta = DeltaAngle(oldRoll, roll)*2;
 			piAndRoOffset = (cos(angle)*piDelta, sin(angle)*piDelta) + //Front/back
-				(cos(angle-90.)*roDelta, sin(angle-90.)*roDelta); //Right/left
+				(cos(angle-90.0)*roDelta, sin(angle-90.0)*roDelta); //Right/left
 		}
 
 		Array<double> preMovePos; //Sadly we can't have a vector2/3 dyn array
@@ -608,7 +608,7 @@ extend class FCW_Platform
 			let moOldPos = mo.pos;
 
 			vector3 offset = level.Vec3Diff(oldPos, mo.pos);
-			if (delta != 0.)
+			if (delta)
 				offset.xy = RotateVector(offset.xy, delta);
 			offset.xy += piAndRoOffset;
 			vector3 moNewPos = level.Vec3Offset(pos, offset);
@@ -640,7 +640,7 @@ extend class FCW_Platform
 
 			//Take into account riders getting Thing_Remove()'d
 			//when they activate lines.
-			if (mo == null || mo.bDestroyed)
+			if (!mo || mo.bDestroyed)
 			{
 				riders.Delete(i--);
 				continue;
@@ -710,7 +710,7 @@ extend class FCW_Platform
 		{
 			let mo = riders[i];
 			mo.A_ChangeLinkFlags(addToBmap);
-			if (delta != 0.)
+			if (delta)
 				mo.angle = Normalize180(mo.angle + delta);
 		}
 		return true;
@@ -730,33 +730,33 @@ extend class FCW_Platform
 			angle != oldAngle ||
 			pitch != oldPitch ||
 			roll != oldRoll));
-		vector2 pushForce = (0., 0.);
-		bool piPush = ((args[ARG_OPTIONS] & OPTFLAG_PITCH) != 0);
-		bool roPush = ((args[ARG_OPTIONS] & OPTFLAG_ROLL) != 0);
+		vector2 pushForce = (0, 0);
+		bool piPush = (args[ARG_OPTIONS] & OPTFLAG_PITCH);
+		bool roPush = (args[ARG_OPTIONS] & OPTFLAG_ROLL);
 
 		//If we're not moving and we interpolate our pitch/roll,
 		//and our pitch/roll is currently steep, then push things off of us.
-		if (!hasMoved && (level.mapTime & 7) == 0) //Push is applied once per 8 tics.
+		if (!hasMoved && !(level.mapTime & 7)) //Push is applied once per 8 tics.
 		{
-			if ((piPush || roPush) && (level.mapTime & 63) == 0)
+			if ((piPush || roPush) && !(level.mapTime & 63))
 				GetNewRiders(true, false); //Get something to push off
 
-			if (piPush && riders.Size() > 0)
+			if (piPush && riders.Size())
 			{
 				pitch = Normalize180(pitch);
-				if (abs(pitch) >= 45. && abs(pitch) <= 135.)
+				if (abs(pitch) >= 45.0 && abs(pitch) <= 135.0)
 				{
 					vector2 newPush = (cos(angle), sin(angle)); //Push front or back
-					pushForce += ((pitch > 0. && pitch < 90.) || pitch < -90.) ? newPush : -newPush;
+					pushForce += ((pitch > 0.0 && pitch < 90.0) || pitch < -90.0) ? newPush : -newPush;
 				}
 			}
-			if (roPush && riders.Size() > 0)
+			if (roPush && riders.Size())
 			{
 				roll = Normalize180(roll);
-				if (abs(roll) >= 45. && abs(roll) <= 135.)
+				if (abs(roll) >= 45.0 && abs(roll) <= 135.0)
 				{
 					vector2 newPush = (cos(angle-90.), sin(angle-90.)); //Push right or left
-					pushForce += ((roll > 0. && roll < 90.) || roll < -90.) ? newPush : -newPush;
+					pushForce += ((roll > 0.0 && roll < 90.0) || roll < -90.0) ? newPush : -newPush;
 				}
 			}
 		}
@@ -766,7 +766,7 @@ extend class FCW_Platform
 		for (int i = 0; i < riders.Size(); ++i)
 		{
 			let mo = riders[i];
-			if (mo == null || mo.bDestroyed ||
+			if (!mo || mo.bDestroyed ||
 				mo.bNoBlockmap ||
 				mo.bFloorHugger || mo.bCeilingHugger ||
 				(!mo.bCanPass && !mo.bSpecial))
@@ -776,7 +776,7 @@ extend class FCW_Platform
 			}
 
 			//'floorZ' can be the top of a 3D floor that's right below an actor.
-			if (mo.pos.z < top - 1. || mo.floorZ > top + 1.) //Is below us or stuck in us or there's a 3D floor between us?
+			if (mo.pos.z < top - 1.0 || mo.floorZ > top + 1.0) //Is below us or stuck in us or there's a 3D floor between us?
 			{
 				riders.Delete(i--);
 				continue;
@@ -790,15 +790,15 @@ extend class FCW_Platform
 			}
 
 			mo.vel.xy += pushForce;
-			if (!mo.bIsMonster || mo.bNoGravity || mo.bFloat || mo.speed == 0) //Is not a walking monster?
+			if (!mo.bIsMonster || mo.bNoGravity || mo.bFloat || !mo.speed) //Is not a walking monster?
 			{
-				if (!hasMoved && pushForce == (0., 0.))
+				if (!hasMoved && pushForce ~== (0, 0))
 					riders.Delete(i--);
 				continue;
 			}
 			if (mo.bDropoff || mo.bJumpDown) //Is supposed to fall off of tall drops or jump down?
 			{
-				if (!hasMoved && pushForce == (0., 0.))
+				if (!hasMoved && pushForce ~== (0, 0))
 					riders.Delete(i--);
 				continue;
 			}
@@ -807,10 +807,10 @@ extend class FCW_Platform
 			if (mo.tics != 1 && mo.tics != 0)
 				continue; //Don't bother if it's not about to change states
 
-			if (pushForce != (0., 0.))
+			if (pushForce != (0, 0))
 				continue; //Not if we're pushing it
 
-			if (mo.pos.z > top + 1.)
+			if (mo.pos.z > top + 1.0)
 				continue; //Not exactly on top of us
 
 			if (dist < radius - mo.speed)
@@ -879,7 +879,7 @@ extend class FCW_Platform
 		SetZ(newPos.z);
 		bool moved = TryMove(newPos.xy, 1);
 
-		if (!moved && blockingMobj != null && !(blockingMobj is "FCW_Platform"))
+		if (!moved && blockingMobj && !(blockingMobj is "FCW_Platform"))
 		{
 			let mo = blockingMobj;
 			let moOldZ = mo.pos.z;
@@ -906,7 +906,7 @@ extend class FCW_Platform
 
 		if (!moved) //Blocked by geometry or another platform?
 		{
-			if ((args[ARG_OPTIONS] & OPTFLAG_IGNOREGEO) != 0)
+			if (args[ARG_OPTIONS] & OPTFLAG_IGNOREGEO)
 			{
 				SetOrigin(level.Vec3Offset(pos, newPos - pos), true);
 			}
@@ -928,12 +928,12 @@ extend class FCW_Platform
 		//A heavily modified version of the
 		//original function from PathFollower.
 
-		Vector3 dpos = (0., 0., 0.);
-		if ((args[ARG_OPTIONS] & OPTFLAG_FACEMOVE) != 0 && time > 0.)
+		Vector3 dpos = (0, 0, 0);
+		if ((args[ARG_OPTIONS] & OPTFLAG_FACEMOVE) && time > 0.0)
 			dpos = pos;
 
 		vector3 newPos;
-		if ((args[ARG_OPTIONS] & OPTFLAG_LINEAR) != 0)
+		if (args[ARG_OPTIONS] & OPTFLAG_LINEAR)
 		{
 			newPos.x = MaybeLerp(pCurr.x, pNext.x);
 			newPos.y = MaybeLerp(pCurr.y, pNext.y);
@@ -950,7 +950,7 @@ extend class FCW_Platform
 		//Otherwise, do (at most) two searches per 64 tics (almost 2 seconds).
 		//The first non-motion search can happen in HandleOldRiders().
 		//The second non-motion search will happen here 32 tics after the first one.
-		if (newPos != pos || ((level.mapTime + 32) & 63) == 0)
+		if (newPos != pos || !((level.mapTime + 32) & 63))
 		{
 			if (!GetNewRiders(false, false))
 				return false;
@@ -960,72 +960,72 @@ extend class FCW_Platform
 		if (!PlatTryMove(newPos))
 			return false;
 
-		if ((args[ARG_OPTIONS] & (OPTFLAG_ANGLE | OPTFLAG_PITCH | OPTFLAG_ROLL)) != 0)
+		if (args[ARG_OPTIONS] & (OPTFLAG_ANGLE | OPTFLAG_PITCH | OPTFLAG_ROLL))
 		{
-			if ((args[ARG_OPTIONS] & OPTFLAG_FACEMOVE) != 0)
+			if (args[ARG_OPTIONS] & OPTFLAG_FACEMOVE)
 			{
-				if ((args[ARG_OPTIONS] & OPTFLAG_LINEAR) != 0)
+				if (args[ARG_OPTIONS] & OPTFLAG_LINEAR)
 				{
 					dpos = pNext - pCurr;
 				}
-				else if (time > 0.) //Spline
+				else if (time > 0.0) //Spline
 				{
 					dpos = newPos - dpos;
 				}
-				else if ((args[ARG_OPTIONS] & (OPTFLAG_ANGLE | OPTFLAG_PITCH)) != 0)
-				{	//Spline but with time == 0.
+				else if (args[ARG_OPTIONS] & (OPTFLAG_ANGLE | OPTFLAG_PITCH))
+				{	//Spline but with time <= 0.0
 					dpos = newPos;
 					time = timeFrac;
 					newPos.x = MaybeSplerp(pPrev.x, pCurr.x, pNext.x, pNextNext.x);
 					newPos.y = MaybeSplerp(pPrev.y, pCurr.y, pNext.y, pNextNext.y);
 					newPos.z = MaybeSplerp(pPrev.z, pCurr.z, pNext.z, pNextNext.z);
-					time = 0.;
+					time = 0.0;
 					dpos = newPos - dpos;
 					newPos -= dpos;
 				}
 
 				//Adjust angle
-				if ((args[ARG_OPTIONS] & OPTFLAG_ANGLE) != 0)
+				if (args[ARG_OPTIONS] & OPTFLAG_ANGLE)
 					angle = VectorAngle(dpos.x, dpos.y);
 
 				//Adjust pitch
-				if ((args[ARG_OPTIONS] & OPTFLAG_PITCH) != 0)
+				if (args[ARG_OPTIONS] & OPTFLAG_PITCH)
 				{
 					double dist = dpos.xy.Length();
-					pitch = (dist != 0.) ? VectorAngle(dist, -dpos.z) : 0.;
+					pitch = dist ? VectorAngle(dist, -dpos.z) : 0.0;
 				}
 				//Adjust roll
-				if ((args[ARG_OPTIONS] & OPTFLAG_ROLL) != 0)
-					roll = 0.;
+				if (args[ARG_OPTIONS] & OPTFLAG_ROLL)
+					roll = 0.0;
 			}
 			else
 			{
-				if ((args[ARG_OPTIONS] & OPTFLAG_LINEAR) != 0)
+				if (args[ARG_OPTIONS] & OPTFLAG_LINEAR)
 				{
 					//Interpolate angle
-					if ((args[ARG_OPTIONS] & OPTFLAG_ANGLE) != 0)
+					if (args[ARG_OPTIONS] & OPTFLAG_ANGLE)
 						angle = MaybeLerp(pCurrAngs.x, pNextAngs.x);
 
 					//Interpolate pitch
-					if ((args[ARG_OPTIONS] & OPTFLAG_PITCH) != 0)
+					if (args[ARG_OPTIONS] & OPTFLAG_PITCH)
 						pitch = MaybeLerp(pCurrAngs.y, pNextAngs.y);
 
 					//Interpolate roll
-					if ((args[ARG_OPTIONS] & OPTFLAG_ROLL) != 0)
+					if (args[ARG_OPTIONS] & OPTFLAG_ROLL)
 						roll = MaybeLerp(pCurrAngs.z, pNextAngs.z);
 				}
 				else //Spline
 				{
 					//Interpolate angle
-					if ((args[ARG_OPTIONS] & OPTFLAG_ANGLE) != 0)
+					if (args[ARG_OPTIONS] & OPTFLAG_ANGLE)
 						angle = MaybeSplerp(pPrevAngs.x, pCurrAngs.x, pNextAngs.x, pNextNextAngs.x);
 
 					//Interpolate pitch
-					if ((args[ARG_OPTIONS] & OPTFLAG_PITCH) != 0)
+					if (args[ARG_OPTIONS] & OPTFLAG_PITCH)
 						pitch = MaybeSplerp(pPrevAngs.y, pCurrAngs.y, pNextAngs.y, pNextNextAngs.y);
 
 					//Interpolate roll
-					if ((args[ARG_OPTIONS] & OPTFLAG_ROLL) != 0)
+					if (args[ARG_OPTIONS] & OPTFLAG_ROLL)
 						roll = MaybeSplerp(pPrevAngs.z, pCurrAngs.z, pNextAngs.z, pNextNextAngs.z);
 				}
 			}
@@ -1050,7 +1050,7 @@ extend class FCW_Platform
 			pNextNext += offset;
 		}
 
-		if (attachedPlats.Size() > 0)
+		if (attachedPlats.Size())
 		{
 			double d1 = DeltaAngle(spawnAngle, angle);
 			double d2 = DeltaAngle(spawnPitch, pitch);
@@ -1077,7 +1077,7 @@ extend class FCW_Platform
 		oldRoll = roll;
 
 		vector3 newPos;
-		if ((args[ARG_OPTIONS] & OPTFLAG_MIRROR) != 0)
+		if (args[ARG_OPTIONS] & OPTFLAG_MIRROR)
 		{
 			//The way we mirror movement is by getting the offset going
 			//from the master's current position to its spawn position
@@ -1088,13 +1088,13 @@ extend class FCW_Platform
 			vector3 offset = level.Vec3Diff(platMaster.pos, platMaster.spawnPoint);
 			newPos = level.Vec3Offset(spawnPoint, offset);
 
-			if ((args[ARG_OPTIONS] & OPTFLAG_ANGLE) != 0)
+			if (args[ARG_OPTIONS] & OPTFLAG_ANGLE)
 				angle = Normalize180(spawnAngle - delta);
 
-			if ((args[ARG_OPTIONS] & OPTFLAG_PITCH) != 0)
+			if (args[ARG_OPTIONS] & OPTFLAG_PITCH)
 				pitch = Normalize180(spawnPitch - piDelta);
 
-			if ((args[ARG_OPTIONS] & OPTFLAG_ROLL) != 0)
+			if (args[ARG_OPTIONS] & OPTFLAG_ROLL)
 				roll = Normalize180(spawnRoll - roDelta);
 		}
 		else
@@ -1103,7 +1103,7 @@ extend class FCW_Platform
 			vector3 offset = level.Vec3Diff(platMaster.spawnPoint, spawnPoint);
 			double cY = cos(angle), sY = sin(angle);
 			double cP = cos(pitch), sP = sin(pitch);
-			double cR = cos(roll), sR = sin(roll);
+			double cR = cos(roll),  sR = sin(roll);
 
 			//Rotate the offset. The order here matters.
 			offset = (offset.x, offset.y*cR - offset.z*sR, offset.y*sR + offset.z*cR);  //X axis (roll)
@@ -1111,13 +1111,13 @@ extend class FCW_Platform
 			offset = (offset.x*cY - offset.y*sY, offset.x*sY + offset.y*cY, offset.z);  //Z axis (yaw/angle)
 			newPos = level.Vec3Offset(platMaster.pos, offset);
 
-			if ((args[ARG_OPTIONS] & OPTFLAG_ANGLE) != 0)
+			if (args[ARG_OPTIONS] & OPTFLAG_ANGLE)
 				angle = Normalize180(spawnAngle + delta);
 
-			if ((args[ARG_OPTIONS] & OPTFLAG_PITCH) != 0)
+			if (args[ARG_OPTIONS] & OPTFLAG_PITCH)
 				pitch = Normalize180(spawnPitch + piDelta);
 
-			if ((args[ARG_OPTIONS] & OPTFLAG_ROLL) != 0)
+			if (args[ARG_OPTIONS] & OPTFLAG_ROLL)
 				roll = Normalize180(spawnRoll + roDelta);
 		}
 
@@ -1125,7 +1125,7 @@ extend class FCW_Platform
 		//Otherwise, do (at most) two searches per 64 tics (almost 2 seconds).
 		//The first non-motion search can happen in HandleOldRiders().
 		//The second non-motion search will happen here 32 tics after the first one.
-		if (newPos != pos || ((level.mapTime + 32) & 63) == 0)
+		if (newPos != pos || !((level.mapTime + 32) & 63))
 		{
 			if (!GetNewRiders(false, false))
 			{
@@ -1161,7 +1161,7 @@ extend class FCW_Platform
 			return false;
 		}
 
-		if (attachedPlats.Size() > 0)
+		if (attachedPlats.Size())
 		{
 			double d1 = DeltaAngle(spawnAngle, angle);
 			double d2 = DeltaAngle(spawnPitch, pitch);
@@ -1193,10 +1193,8 @@ extend class FCW_Platform
 		//messed up. Gather all specials before
 		//calling them.
 		Array<int> specList;
-		while ((spec = it.Next()) != null)
+		while ((spec = it.Next()) && spec.special)
 		{
-			if (spec.special == 0)
-				continue;
 			specList.Push(spec.special);
 			for (int i = 0; i < 5; ++i)
 				specList.Push(spec.args[i]);
@@ -1224,21 +1222,21 @@ extend class FCW_Platform
 			currNode = firstNode;
 			prevNode = firstPrevNode;
 
-			if (currNode != null)
+			if (currNode)
 			{
 				CallNodeSpecials();
-				if (bDestroyed || currNode == null || currNode.bDestroyed)
+				if (bDestroyed || !currNode || currNode.bDestroyed)
 					return; //Abort if we or the node got Thing_Remove()'d
 
 				GetNewRiders(true, true);
 				SetOrigin(currNode.pos, false);
-				if ((args[ARG_OPTIONS] & OPTFLAG_ANGLE) != 0)
+				if (args[ARG_OPTIONS] & OPTFLAG_ANGLE)
 					angle = currNode.angle;
-				if ((args[ARG_OPTIONS] & OPTFLAG_PITCH) != 0)
+				if (args[ARG_OPTIONS] & OPTFLAG_PITCH)
 					pitch = currNode.pitch;
-				if ((args[ARG_OPTIONS] & OPTFLAG_ROLL) != 0)
+				if (args[ARG_OPTIONS] & OPTFLAG_ROLL)
 					roll = currNode.roll;
-				time = 0.;
+				time = 0.0;
 				holdTime = 0;
 				bJustStepped = true;
 				bDormant = false;
@@ -1246,7 +1244,7 @@ extend class FCW_Platform
 				SetTimeFraction(currNode.args[NODEARG_TRAVELTIME]);
 				MoveRiders(true, true);
 				CheckAttachedPlatforms();
-				if (attachedPlats.Size() > 0)
+				if (attachedPlats.Size())
 				{
 					double d1 = DeltaAngle(spawnAngle, angle);
 					double d2 = DeltaAngle(spawnPitch, pitch);
@@ -1271,7 +1269,7 @@ extend class FCW_Platform
 		}
 
 		//Sanity check - most of a attached platform's thinking is done by its master
-		if (platMaster != null)
+		if (platMaster)
 		{
 			let pMastIndex = platMaster.attachedPlats.Find(self);
 			if (pMastIndex < platMaster.attachedPlats.Size())
@@ -1312,7 +1310,7 @@ extend class FCW_Platform
 		if (bJustStepped)
 		{
 			bJustStepped = false;
-			if (currNode != null)
+			if (currNode)
 				SetHoldTime(currNode.args[NODEARG_HOLDTIME]);
 		}
 
@@ -1326,21 +1324,21 @@ extend class FCW_Platform
 		}
 
 		time += timeFrac;
-		if (time > 1.)
+		if (time > 1.0)
 		{
-			time -= 1.;
+			time -= 1.0;
 			bJustStepped = true;
 			prevNode = currNode;
-			if (currNode != null)
+			if (currNode)
 				currNode = currNode.next;
 
-			if (currNode != null)
+			if (currNode)
 			{
 				CallNodeSpecials();
 				if (bDestroyed)
 					return; //Abort if we got Thing_Remove()'d
 
-				if (currNode == null || currNode.bDestroyed)
+				if (!currNode || currNode.bDestroyed)
 				{
 					Deactivate(self);
 					return; //Our node got Thing_Remove()'d
@@ -1349,9 +1347,9 @@ extend class FCW_Platform
 				SetTimeFraction(currNode.args[NODEARG_TRAVELTIME]);
 			}
 
-			if (currNode == null || currNode.next == null)
+			if (!currNode || !currNode.next)
 				Deactivate(self);
-			else if ((args[ARG_OPTIONS] & OPTFLAG_LINEAR) == 0 && currNode.next.next == null)
+			else if ((args[ARG_OPTIONS] & OPTFLAG_LINEAR) && !currNode.next.next)
 				Deactivate(self);
 		}
 	}
@@ -1361,7 +1359,7 @@ extend class FCW_Platform
 	//============================
 	private void CommonACSSetup (int newTime, int timeType)
 	{
-		if (platMaster != null)
+		if (platMaster)
 		{
 			//Detach from master platform
 			let index = platMaster.attachedPlats.Find(self);
@@ -1371,7 +1369,7 @@ extend class FCW_Platform
 		}
 		currNode = null; //Deactivate when done moving
 		prevNode = null;
-		time = 0.;
+		time = 0.0;
 		holdTime = 0;
 		let savedArg = args[ARG_TIMETYPE];
 		args[ARG_TIMETYPE] = timeType;
@@ -1388,11 +1386,11 @@ extend class FCW_Platform
 	//============================
 	// Move (ACS utility)
 	//============================
-	static void Move (int platTid, double offX, double offY, double offZ, int newTime, int timeType = OPT_TIMEINTICS, double offAng = 0., double offPi = 0., double offRo = 0.)
+	static void Move (int platTid, double offX, double offY, double offZ, int newTime, int timeType = OPT_TIMEINTICS, double offAng = 0.0, double offPi = 0.0, double offRo = 0.0)
 	{
 		let it = level.CreateActorIterator(platTid, "FCW_Platform");
 		FCW_Platform plat;
-		while ((plat = FCW_Platform(it.Next())) != null)
+		while (plat = FCW_Platform(it.Next()))
 		{
 			plat.CommonACSSetup(newTime, timeType);
 			plat.pNext = plat.pNextNext = plat.Vec3Offset(offX, offY, offZ);
@@ -1403,13 +1401,13 @@ extend class FCW_Platform
 	//============================
 	// MoveTo (ACS utility)
 	//============================
-	static void MoveTo (int platTid, double newX, double newY, double newZ, int newTime, int timeType = OPT_TIMEINTICS, double offAng = 0., double offPi = 0., double offRo = 0.)
+	static void MoveTo (int platTid, double newX, double newY, double newZ, int newTime, int timeType = OPT_TIMEINTICS, double offAng = 0.0, double offPi = 0.0, double offRo = 0.0)
 	{
 		//ACS itself has no 'vector3' variable type so it has to be 3 doubles (floats/fixed point numbers)
 		vector3 newPos = (newX, newY, newZ);
 		let it = level.CreateActorIterator(platTid, "FCW_Platform");
 		FCW_Platform plat;
-		while ((plat = FCW_Platform(it.Next())) != null)
+		while (plat = FCW_Platform(it.Next()))
 		{
 			plat.CommonACSSetup(newTime, timeType);
 			plat.pNext = plat.pNextNext = plat.pos + level.Vec3Diff(plat.pos, newPos); //Make it portal aware
@@ -1425,12 +1423,12 @@ extend class FCW_Platform
 		//This is the only place you can make a platform use any actor as a travel destination
 		let it = level.CreateActorIterator(spotTid);
 		Actor spot = it.Next();
-		if (spot == null)
+		if (!spot)
 			return; //No spot? Nothing to do
 
 		it = level.CreateActorIterator(platTid, "FCW_Platform");
 		FCW_Platform plat;
-		while ((plat = FCW_Platform(it.Next())) != null)
+		while (plat = FCW_Platform(it.Next()))
 		{
 			plat.CommonACSSetup(newTime, timeType);
 			plat.pNext = plat.pNextNext = plat.pos + plat.Vec3To(spot); //Make it portal aware
@@ -1448,9 +1446,9 @@ extend class FCW_Platform
 	{
 		let it = level.CreateActorIterator(platTid, "FCW_Platform");
 		let plat = FCW_Platform(it.Next());
-		if (plat == null)
+		if (!plat)
 			return false;
-		while (plat.platMaster != null && plat.platMaster.platMaster != plat)
+		while (plat.platMaster && plat.platMaster.platMaster != plat)
 			plat = plat.platMaster;
 		return (!plat.bDormant && (
 			plat.pos != plat.oldPos ||
@@ -1466,9 +1464,9 @@ extend class FCW_Platform
 	{
 		let it = level.CreateActorIterator(platTid, "FCW_Platform");
 		let plat = FCW_Platform(it.Next());
-		if (plat == null)
+		if (!plat)
 			return false;
-		while (plat.platMaster != null && plat.platMaster.platMaster != plat)
+		while (plat.platMaster && plat.platMaster.platMaster != plat)
 			plat = plat.platMaster;
 		return (!plat.bDormant && plat.bPlatBlocked);
 	}
