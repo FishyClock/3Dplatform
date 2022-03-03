@@ -1101,9 +1101,9 @@ extend class FCW_Platform
 		{
 			//Follow around master platform
 			vector3 offset = level.Vec3Diff(platMaster.spawnPoint, spawnPoint);
-			double cY = cos(angle), sY = sin(angle);
-			double cP = cos(pitch), sP = sin(pitch);
-			double cR = cos(roll),  sR = sin(roll);
+			double cY = cos(platMaster.angle), sY = sin(platMaster.angle);
+			double cP = cos(platMaster.pitch), sP = sin(platMaster.pitch);
+			double cR = cos(platMaster.roll),  sR = sin(platMaster.roll);
 
 			//Rotate the offset. The order here matters.
 			offset = (offset.x, offset.y*cR - offset.z*sR, offset.y*sR + offset.z*cR);  //X axis (roll)
