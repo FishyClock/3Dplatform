@@ -187,10 +187,7 @@ extend class FCW_Platform
 				platMaster.pitch != platMaster.spawnPitch ||
 				platMaster.roll != platMaster.spawnRoll)
 			{
-				double d1 = DeltaAngle(platMaster.spawnAngle, platMaster.angle);
-				double d2 = DeltaAngle(platMaster.spawnPitch, platMaster.pitch);
-				double d3 = DeltaAngle(platMaster.spawnRoll, platMaster.roll);
-				AttachedMove(true, d1, d2, d3);
+				platMaster.MoveAttachedPlatforms(true);
 			}
 			return;
 		}
@@ -1050,131 +1047,135 @@ extend class FCW_Platform
 			pNextNext += offset;
 		}
 
-		if (attachedPlats.Size())
-		{
-			double d1 = DeltaAngle(spawnAngle, angle);
-			double d2 = DeltaAngle(spawnPitch, pitch);
-			double d3 = DeltaAngle(spawnRoll, roll);
-			for (int i = 0; i < attachedPlats.Size(); ++i)
-			{
-				//If one of our attached platforms is blocked, pretend
-				//we're blocked too. (Our move won't be cancelled.)
-				if (!attachedPlats[i].AttachedMove(false, d1, d2, d3))
-					return false;
-			}
-		}
+		
+		//If one of our attached platforms is blocked, pretend
+		//we're blocked too. (Our move won't be cancelled.)
+		if (!MoveAttachedPlatforms(false))
+			return false;
+
 		return true;
 	}
 
 	//============================
-	// AttachedMove
+	// MoveAttachedPlatforms
 	//============================
-	private bool AttachedMove (bool teleMove, double delta, double piDelta, double roDelta)
+	private bool MoveAttachedPlatforms (bool teleMove)
 	{
-		oldPos = pos;
-		oldAngle = angle;
-		oldPitch = pitch;
-		oldRoll = roll;
+		if (!attachedPlats.Size())
+			return true;
 
-		vector3 newPos;
-		if (args[ARG_OPTIONS] & OPTFLAG_MIRROR)
+		double delta = DeltaAngle(spawnAngle, angle);
+		double piDelta = DeltaAngle(spawnPitch, pitch);
+		double roDelta = DeltaAngle(spawnRoll, roll);
+
+		double cY = 0.0, sY = 0.0;
+		double cP, sP;
+		double cR, sR;
+
+		for (int i = 0; i < attachedPlats.Size(); ++i)
 		{
-			//The way we mirror movement is by getting the offset going
-			//from the master's current position to its spawn position
-			//and using that to get a offsetted position from
-			//our own spawn position.
-			//So we pretty much always go in the opposite direction
-			//using our spawn position as a reference point.
-			vector3 offset = level.Vec3Diff(platMaster.pos, platMaster.spawnPoint);
-			newPos = level.Vec3Offset(spawnPoint, offset);
+			let plat = attachedPlats[i];
 
-			if (args[ARG_OPTIONS] & OPTFLAG_ANGLE)
-				angle = Normalize180(spawnAngle - delta);
+			plat.oldPos = plat.pos;
+			plat.oldAngle = plat.angle;
+			plat.oldPitch = plat.pitch;
+			plat.oldRoll = plat.roll;
 
-			if (args[ARG_OPTIONS] & OPTFLAG_PITCH)
-				pitch = Normalize180(spawnPitch - piDelta);
-
-			if (args[ARG_OPTIONS] & OPTFLAG_ROLL)
-				roll = Normalize180(spawnRoll - roDelta);
-		}
-		else
-		{
-			//Follow around master platform
-			vector3 offset = level.Vec3Diff(platMaster.spawnPoint, spawnPoint);
-			double cY = cos(platMaster.angle), sY = sin(platMaster.angle);
-			double cP = cos(platMaster.pitch), sP = sin(platMaster.pitch);
-			double cR = cos(platMaster.roll),  sR = sin(platMaster.roll);
-
-			//Rotate the offset. The order here matters.
-			offset = (offset.x, offset.y*cR - offset.z*sR, offset.y*sR + offset.z*cR);  //X axis (roll)
-			offset = (offset.x*cP + offset.z*sP, offset.y, -offset.x*sP + offset.z*cP); //Y axis (pitch)
-			offset = (offset.x*cY - offset.y*sY, offset.x*sY + offset.y*cY, offset.z);  //Z axis (yaw/angle)
-			newPos = level.Vec3Offset(platMaster.pos, offset);
-
-			if (args[ARG_OPTIONS] & OPTFLAG_ANGLE)
-				angle = Normalize180(spawnAngle + delta);
-
-			if (args[ARG_OPTIONS] & OPTFLAG_PITCH)
-				pitch = Normalize180(spawnPitch + piDelta);
-
-			if (args[ARG_OPTIONS] & OPTFLAG_ROLL)
-				roll = Normalize180(spawnRoll + roDelta);
-		}
-
-		//Do a blockmap search once per tic if we're in motion.
-		//Otherwise, do (at most) two searches per 64 tics (almost 2 seconds).
-		//The first non-motion search can happen in HandleOldRiders().
-		//The second non-motion search will happen here 32 tics after the first one.
-		if (newPos != pos || !((level.mapTime + 32) & 63))
-		{
-			if (!GetNewRiders(false, false))
+			vector3 newPos;
+			if (plat.args[ARG_OPTIONS] & OPTFLAG_MIRROR)
 			{
-				angle = oldAngle;
-				pitch = oldPitch;
-				roll = oldRoll;
-				return false;
+				//The way we mirror movement is by getting the offset going
+				//from the master's current position to its spawn position
+				//and using that to get a offsetted position from
+				//the attached platform's spawn position.
+				//So we pretty much always go in the opposite direction
+				//using our spawn position as a reference point.
+				vector3 offset = level.Vec3Diff(pos, spawnPoint);
+				newPos = level.Vec3Offset(plat.spawnPoint, offset);
+
+				if (plat.args[ARG_OPTIONS] & OPTFLAG_ANGLE)
+					plat.angle = Normalize180(plat.spawnAngle - delta);
+
+				if (plat.args[ARG_OPTIONS] & OPTFLAG_PITCH)
+					plat.pitch = Normalize180(plat.spawnPitch - piDelta);
+
+				if (plat.args[ARG_OPTIONS] & OPTFLAG_ROLL)
+					plat.roll = Normalize180(plat.spawnRoll - roDelta);
 			}
-		}
-
-		if (teleMove)
-		{
-			SetOrigin(newPos, false);
-		}
-		else
-		{
-			newPos = pos + level.Vec3Diff(pos, newPos); //For TryMove()
-			if (!PlatTryMove(newPos))
+			else
 			{
-				angle = oldAngle;
-				pitch = oldPitch;
-				roll = oldRoll;
-				return false;
+				if (cY == sY) //Not called cos() and sin() yet?
+				{
+					cY = cos(angle); sY = sin(angle);
+					cP = cos(pitch); sP = sin(pitch);
+					cR = cos(roll);  sR = sin(roll);
+				}
+
+				//Follow around master platform
+				vector3 offset = level.Vec3Diff(spawnPoint, plat.spawnPoint);
+
+				//Rotate the offset. The order here matters.
+				offset = (offset.x, offset.y*cR - offset.z*sR, offset.y*sR + offset.z*cR);  //X axis (roll)
+				offset = (offset.x*cP + offset.z*sP, offset.y, -offset.x*sP + offset.z*cP); //Y axis (pitch)
+				offset = (offset.x*cY - offset.y*sY, offset.x*sY + offset.y*cY, offset.z);  //Z axis (yaw/angle)
+				newPos = level.Vec3Offset(pos, offset);
+
+				if (plat.args[ARG_OPTIONS] & OPTFLAG_ANGLE)
+					plat.angle = Normalize180(plat.spawnAngle + delta);
+
+				if (plat.args[ARG_OPTIONS] & OPTFLAG_PITCH)
+					plat.pitch = Normalize180(plat.spawnPitch + piDelta);
+
+				if (plat.args[ARG_OPTIONS] & OPTFLAG_ROLL)
+					plat.roll = Normalize180(plat.spawnRoll + roDelta);
 			}
-		}
 
-		if (!MoveRiders(teleMove, teleMove))
-		{
-			SetOrigin(oldPos, true);
-			angle = oldAngle;
-			pitch = oldPitch;
-			roll = oldRoll;
-			return false;
-		}
-
-		if (attachedPlats.Size())
-		{
-			double d1 = DeltaAngle(spawnAngle, angle);
-			double d2 = DeltaAngle(spawnPitch, pitch);
-			double d3 = DeltaAngle(spawnRoll, roll);
-			for (int i = 0; i < attachedPlats.Size(); ++i)
+			//Do a blockmap search once per tic if we're in motion.
+			//Otherwise, do (at most) two searches per 64 tics (almost 2 seconds).
+			//The first non-motion search can happen in HandleOldRiders().
+			//The second non-motion search will happen here 32 tics after the first one.
+			if (newPos != plat.pos || !((level.mapTime + 32) & 63))
 			{
-				//If one of our attached platforms is blocked, pretend
-				//we're blocked too. (Our move won't be cancelled.)
-				//Yes, attached plats can have their own attached plats.
-				//(But they can't be attached to each other.)
-				if (!attachedPlats[i].AttachedMove(teleMove, d1, d2, d3))
+				if (!plat.GetNewRiders(false, false))
+				{
+					plat.angle = plat.oldAngle;
+					plat.pitch = plat.oldPitch;
+					plat.roll = plat.oldRoll;
 					return false;
+				}
 			}
+
+			if (teleMove)
+			{
+				plat.SetOrigin(newPos, false);
+			}
+			else
+			{
+				newPos = plat.pos + level.Vec3Diff(plat.pos, newPos); //For TryMove()
+				if (!plat.PlatTryMove(newPos))
+				{
+					plat.angle = plat.oldAngle;
+					plat.pitch = plat.oldPitch;
+					plat.roll = plat.oldRoll;
+					return false;
+				}
+			}
+
+			if (!plat.MoveRiders(teleMove, teleMove))
+			{
+				plat.SetOrigin(plat.oldPos, true);
+				plat.angle = plat.oldAngle;
+				plat.pitch = plat.oldPitch;
+				plat.roll = plat.oldRoll;
+				return false;
+			}
+
+			//If one of our attached platforms is blocked, pretend
+			//we're blocked too. (Our move won't be cancelled.)
+			//Yes, attached plats can have their own attached plats.
+			//(But they can't be attached to each other.)
+			if (!plat.MoveAttachedPlatforms(teleMove))
+				return false;
 		}
 		return true;
 	}
@@ -1244,14 +1245,7 @@ extend class FCW_Platform
 				SetTimeFraction(currNode.args[NODEARG_TRAVELTIME]);
 				MoveRiders(true, true);
 				CheckAttachedPlatforms();
-				if (attachedPlats.Size())
-				{
-					double d1 = DeltaAngle(spawnAngle, angle);
-					double d2 = DeltaAngle(spawnPitch, pitch);
-					double d3 = DeltaAngle(spawnRoll, roll);
-					for (int i = 0; i < attachedPlats.Size(); ++i)
-						attachedPlats[i].AttachedMove(true, d1, d2, d3);
-				}
+				MoveAttachedPlatforms(true);
 			}
 		}
 	}
