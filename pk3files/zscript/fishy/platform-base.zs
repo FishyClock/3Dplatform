@@ -1128,6 +1128,21 @@ extend class FCW_Platform
 
 				if (plat.args[ARG_OPTIONS] & OPTFLAG_ROLL)
 					plat.roll = Normalize180(plat.spawnRoll + roDelta);
+
+				if (angle != plat.angle && (plat.args[ARG_OPTIONS] & (OPTFLAG_PITCH | OPTFLAG_ROLL)))
+				{
+					double newPi = plat.pitch;
+					double newRo = plat.roll;
+					double diff = DeltaAngle(angle, plat.angle);
+					double c = cos(diff), s = sin(diff);
+
+					if (plat.args[ARG_OPTIONS] & OPTFLAG_PITCH)
+						newPi = plat.pitch*c - plat.roll*s;
+					if (plat.args[ARG_OPTIONS] & OPTFLAG_ROLL)
+						newRo = plat.pitch*s + plat.roll*c;
+					plat.pitch = Normalize180(newPi);
+					plat.roll = Normalize180(newRo);
+				}
 			}
 
 			//Do a blockmap search once per tic if we're in motion.
