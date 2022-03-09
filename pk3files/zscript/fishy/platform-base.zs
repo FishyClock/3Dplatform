@@ -1080,6 +1080,9 @@ extend class FCW_Platform
 			plat.oldAngle = plat.angle;
 			plat.oldPitch = plat.pitch;
 			plat.oldRoll = plat.roll;
+			bool changeAng = (plat.args[ARG_OPTIONS] & OPTFLAG_ANGLE);
+			bool changePi = (plat.args[ARG_OPTIONS] & OPTFLAG_PITCH);
+			bool changeRo = (plat.args[ARG_OPTIONS] & OPTFLAG_ROLL);
 
 			vector3 newPos;
 			if (plat.args[ARG_OPTIONS] & OPTFLAG_MIRROR)
@@ -1093,13 +1096,11 @@ extend class FCW_Platform
 				vector3 offset = level.Vec3Diff(pos, spawnPoint);
 				newPos = level.Vec3Offset(plat.spawnPoint, offset);
 
-				if (plat.args[ARG_OPTIONS] & OPTFLAG_ANGLE)
+				if (changeAng)
 					plat.angle = Normalize180(plat.spawnAngle - delta);
-
-				if (plat.args[ARG_OPTIONS] & OPTFLAG_PITCH)
+				if (changePi)
 					plat.pitch = Normalize180(plat.spawnPitch - piDelta);
-
-				if (plat.args[ARG_OPTIONS] & OPTFLAG_ROLL)
+				if (changeRo)
 					plat.roll = Normalize180(plat.spawnRoll - roDelta);
 			}
 			else
@@ -1120,28 +1121,63 @@ extend class FCW_Platform
 				offset = (offset.x*cY - offset.y*sY, offset.x*sY + offset.y*cY, offset.z);  //Z axis (yaw/angle)
 				newPos = level.Vec3Offset(pos, offset);
 
-				if (plat.args[ARG_OPTIONS] & OPTFLAG_ANGLE)
+				if (changeAng)
 					plat.angle = Normalize180(plat.spawnAngle + delta);
-
-				if (plat.args[ARG_OPTIONS] & OPTFLAG_PITCH)
+				if (changePi)
 					plat.pitch = Normalize180(plat.spawnPitch + piDelta);
-
-				if (plat.args[ARG_OPTIONS] & OPTFLAG_ROLL)
+				if (changeRo)
 					plat.roll = Normalize180(plat.spawnRoll + roDelta);
 
-				if (angle != plat.angle && (plat.args[ARG_OPTIONS] & (OPTFLAG_PITCH | OPTFLAG_ROLL)))
+				if (changeAng || changePi || changeRo)
 				{
-					double newPi = plat.pitch;
-					double newRo = plat.roll;
-					double diff = DeltaAngle(angle, plat.angle);
-					double c = cos(diff), s = sin(diff);
+					double angDiff = DeltaAngle(angle, plat.angle);
+					double piDiff = DeltaAngle(pitch, plat.pitch);
+					double roDiff = DeltaAngle(roll, plat.roll);
 
-					if (plat.args[ARG_OPTIONS] & OPTFLAG_PITCH)
-						newPi = plat.pitch*c - plat.roll*s;
-					if (plat.args[ARG_OPTIONS] & OPTFLAG_ROLL)
-						newRo = plat.pitch*s + plat.roll*c;
-					plat.pitch = Normalize180(newPi);
-					plat.roll = Normalize180(newRo);
+					if (/*roDiff &&*/ (changeRo || changePi))
+					{
+						double c = cos(roDiff), s = sin(roDiff);
+						double newRo = plat.roll;
+						double newPi = plat.pitch;
+
+						if (changeRo)
+							newRo = -plat.roll*c - plat.pitch*s;
+						if (changePi)
+							newPi = -plat.roll*s + plat.pitch*c;
+
+						plat.roll = Normalize180(newRo);
+						plat.pitch = Normalize180(newPi);
+					}
+
+					if (/*piDiff &&*/ (changeRo || changeAng))
+					{
+						double c = cos(piDiff), s = sin(piDiff);
+						double newRo = plat.roll;
+						double newAng = plat.angle;
+
+						if (changeRo)
+							newRo = plat.roll*c - plat.angle*s;
+						if (changeAng)
+							newAng = plat.roll*s + plat.angle*c;
+
+						plat.roll = Normalize180(newRo);
+						plat.angle = Normalize180(newAng);
+					}
+
+					if (/*angDiff &&*/ (changePi || changeRo))
+					{
+						double c = cos(angDiff), s = sin(angDiff);
+						double newPi = plat.pitch;
+						double newRo = plat.roll;
+
+						if (changePi)
+							newPi = plat.pitch*c - plat.roll*s;
+						if (changeRo)
+							newRo = plat.pitch*s + plat.roll*c;
+
+						plat.pitch = Normalize180(newPi);
+						plat.roll = Normalize180(newRo);
+					}
 				}
 			}
 

@@ -17,6 +17,7 @@ Model TESTFloaty
 
 	Path "models"
 	Model 0 "Floaty.obj"
+	AngleOffset 90
 	FrameIndex MODL A 0 0
 }
 
