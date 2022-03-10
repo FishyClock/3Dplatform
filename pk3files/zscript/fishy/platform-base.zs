@@ -1134,37 +1134,7 @@ extend class FCW_Platform
 					double piDiff = DeltaAngle(pitch, plat.pitch);
 					double roDiff = DeltaAngle(roll, plat.roll);
 
-					if (/*roDiff &&*/ (changeRo || changePi))
-					{
-						double c = cos(roDiff), s = sin(roDiff);
-						double newRo = plat.roll;
-						double newPi = plat.pitch;
-
-						if (changeRo)
-							newRo = -plat.roll*c - plat.pitch*s;
-						if (changePi)
-							newPi = -plat.roll*s + plat.pitch*c;
-
-						plat.roll = Normalize180(newRo);
-						plat.pitch = Normalize180(newPi);
-					}
-
-					if (/*piDiff &&*/ (changeRo || changeAng))
-					{
-						double c = cos(piDiff), s = sin(piDiff);
-						double newRo = plat.roll;
-						double newAng = plat.angle;
-
-						if (changeRo)
-							newRo = plat.roll*c - plat.angle*s;
-						if (changeAng)
-							newAng = plat.roll*s + plat.angle*c;
-
-						plat.roll = Normalize180(newRo);
-						plat.angle = Normalize180(newAng);
-					}
-
-					if (/*angDiff &&*/ (changePi || changeRo))
+					if ((changePi || changeRo))
 					{
 						double c = cos(angDiff), s = sin(angDiff);
 						double newPi = plat.pitch;
@@ -1178,6 +1148,36 @@ extend class FCW_Platform
 						plat.pitch = Normalize180(newPi);
 						plat.roll = Normalize180(newRo);
 					}
+
+					if ((changeRo || changeAng)) //Incorrect
+					{
+						double c = cos(piDiff), s = sin(piDiff);
+						double newRo = plat.roll;
+						double newAng = plat.angle;
+
+						if (changeRo)
+							newRo = plat.roll*c - plat.angle*s;
+						if (changeAng)
+							newAng = plat.roll*s + plat.angle*c;
+
+						plat.roll = Normalize180(newRo);
+						plat.angle = Normalize180(newAng);
+					}
+/*
+					if ((changeAng || changePi)) //Incorrect
+					{
+						double c = cos(roDiff), s = sin(roDiff);
+						double newAng = plat.angle;
+						double newPi = plat.pitch;
+
+						if (changeAng)
+							newAng = plat.angle*c - plat.pitch*s;
+						if (changePi)
+							newPi = plat.angle*s + plat.pitch*c;
+
+						plat.angle = Normalize180(newAng);
+						plat.pitch = Normalize180(newPi);
+					}*/
 				}
 			}
 
