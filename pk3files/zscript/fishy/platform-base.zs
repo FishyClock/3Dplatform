@@ -1123,61 +1123,15 @@ extend class FCW_Platform
 
 				if (changeAng)
 					plat.angle = Normalize180(plat.spawnAngle + delta);
-				if (changePi)
-					plat.pitch = Normalize180(plat.spawnPitch + piDelta);
-				if (changeRo)
-					plat.roll = Normalize180(plat.spawnRoll + roDelta);
 
-				if (changeAng || changePi || changeRo)
+				if (changePi || changeRo)
 				{
-					double angDiff = DeltaAngle(angle, plat.angle);
-					double piDiff = DeltaAngle(pitch, plat.pitch);
-					double roDiff = DeltaAngle(roll, plat.roll);
-
-					if ((changePi || changeRo))
-					{
-						double c = cos(angDiff), s = sin(angDiff);
-						double newPi = plat.pitch;
-						double newRo = plat.roll;
-
-						if (changePi)
-							newPi = plat.pitch*c - plat.roll*s;
-						if (changeRo)
-							newRo = plat.pitch*s + plat.roll*c;
-
-						plat.pitch = Normalize180(newPi);
-						plat.roll = Normalize180(newRo);
-					}
-
-					if ((changeRo || changeAng)) //Incorrect
-					{
-						double c = cos(piDiff), s = sin(piDiff);
-						double newRo = plat.roll;
-						double newAng = plat.angle;
-
-						if (changeRo)
-							newRo = plat.roll*c - plat.angle*s;
-						if (changeAng)
-							newAng = plat.roll*s + plat.angle*c;
-
-						plat.roll = Normalize180(newRo);
-						plat.angle = Normalize180(newAng);
-					}
-/*
-					if ((changeAng || changePi)) //Incorrect
-					{
-						double c = cos(roDiff), s = sin(roDiff);
-						double newAng = plat.angle;
-						double newPi = plat.pitch;
-
-						if (changeAng)
-							newAng = plat.angle*c - plat.pitch*s;
-						if (changePi)
-							newPi = plat.angle*s + plat.pitch*c;
-
-						plat.angle = Normalize180(newAng);
-						plat.pitch = Normalize180(newPi);
-					}*/
+					double diff = DeltaAngle(angle, plat.angle);
+					double c = cos(diff), s = sin(diff);
+					if (changePi)
+						plat.pitch = Normalize180(plat.spawnPitch + pitch*c - roll*s);
+					if (changeRo)
+						plat.roll = Normalize180(plat.spawnRoll + pitch*s + roll*c);
 				}
 			}
 
@@ -1306,6 +1260,9 @@ extend class FCW_Platform
 	//============================
 	override void Tick ()
 	{
+		if (IsFrozen())
+			return;
+
 		//Advance states
 		if (tics != -1 && --tics <= 0)
 		{
