@@ -215,7 +215,10 @@ extend class FCW_Platform
 			for (plat = grpSrc; plat; plat = plat.grpNext)
 			{
 				if (!plat.bDormant)
+				{
 					plat.MovePlatformGroup(true);
+					break;
+				}
 			}
 			return;
 		}
