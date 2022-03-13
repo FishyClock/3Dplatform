@@ -35,7 +35,7 @@ class FCW_Platform : Actor abstract
 
 		//$Arg0 Target
 		//$Arg0Type 14
-		//$Arg0Tooltip Must be a interpolation point (path to follow) or another platform (to attach to).\nNOTE: You can't have two platforms attached to each other.
+		//$Arg0Tooltip Must be a interpolation point (path to follow) or another platform (to attach to).
 
 		//$Arg1 Options
 		//$Arg1Type 12
@@ -110,8 +110,7 @@ extend class FCW_Platform
 	InterpolationPoint currNode, firstNode;
 	InterpolationPoint prevNode, firstPrevNode;
 	Array<Actor> riders;
-	Array<FCW_Platform> attachedPlats;
-	FCW_Platform platMaster; //Attached platforms have most of their thinking done by the platform they're attached to.
+	private FCW_Platform grpSrc, grpNext;
 
 	//Unlike PathFollower classes, our interpolations are done with
 	//vector3 coordinates rather than checking InterpolationPoint positions.
@@ -141,8 +140,7 @@ extend class FCW_Platform
 		currNode = firstNode = null;
 		prevNode = firstPrevNode = null;
 		riders.Clear();
-		attachedPlats.Clear();
-		platMaster = null;
+		grpSrc = grpNext = null;
 
 		pCurr = pPrev = pNext = pNextNext = (0, 0, 0);
 		pCurrAngs = pPrevAngs = pNextAngs = pNextNextAngs = (0, 0, 0);
@@ -177,17 +175,47 @@ extend class FCW_Platform
 
 		if (mo is "FCW_Platform")
 		{
-			platMaster = FCW_Platform(mo);
-			platMaster.attachedPlats.Push(self);
-
-			//Get going if it's active
-			//and we ticked after it.
-			if (platMaster.pos != platMaster.spawnPoint ||
-				platMaster.angle != platMaster.spawnAngle ||
-				platMaster.pitch != platMaster.spawnPitch ||
-				platMaster.roll != platMaster.spawnRoll)
+			let plat = FCW_Platform(mo);
+			if (plat.grpSrc) //Target is in its own group?
 			{
-				platMaster.MoveAttachedPlatforms(true);
+				if (plat.grpSrc != grpSrc) //...And it's not our group or we don't have a group?
+				{
+					let oldSrc = grpSrc ? grpSrc : self;
+
+					//Redirect all our members (or just self) to the other group's source
+					for (let probe = oldSrc; probe; probe = probe.grpNext)
+						probe.grpSrc = plat.grpSrc;
+
+					//Find the last member of target's group and link it to our old source (or just self)
+					for (let probe = plat.grpSrc; probe; probe = probe.grpNext)
+					{
+						if (!probe.grpNext)
+						{
+							probe.grpNext = oldSrc;
+							break;
+						}
+					}
+				}
+			}
+			else if (grpSrc) //We're in a group but target doesn't have a group?
+			{
+				plat.grpSrc = grpSrc;
+				plat.grpNext = grpNext;
+				grpNext = plat;
+			}
+			else //Neither are in a group
+			{
+				grpSrc = plat.grpSrc = self;
+				grpNext = plat;
+				plat.grpNext = null;
+			}
+
+			//Get going if there's an active platform
+			//and we ticked after it.
+			for (plat = grpSrc; plat; plat = plat.grpNext)
+			{
+				if (!plat.bDormant)
+					plat.MovePlatformGroup(true);
 			}
 			return;
 		}
@@ -228,15 +256,48 @@ extend class FCW_Platform
 	}
 
 	//============================
+	// OnDestroy (override)
+	//============================
+	override void OnDestroy ()
+	{
+		if (grpSrc == self)
+		{
+			let newSrc = grpNext;
+			for (let plat = newSrc; plat; plat = plat.grpNext)
+			{
+				if (plat.grpSrc != grpSrc)
+					ThrowAbortException("Group info is corrupted.");
+
+				plat.grpSrc = newSrc;
+			}
+		}
+		else
+		{
+			for (let plat = grpSrc; plat; plat = plat.grpNext)
+			{
+				if (plat.grpSrc != grpSrc)
+					ThrowAbortException("Group info is corrupted.");
+
+				if (plat.grpNext == self)
+				{
+					plat.grpNext = grpNext;
+					break;
+				}
+			}
+		}
+		Super.OnDestroy();
+	}
+
+	//============================
 	// CanCollideWith (override)
 	//============================
 	override bool CanCollideWith(Actor other, bool passive)
 	{
-		if (bPlatInMove && riders.Find(other) < riders.Size())
+		let plat = FCW_Platform(other);
+		if (plat && ((plat.grpSrc && plat.grpSrc == grpSrc) || (args[ARG_OPTIONS] & OPTFLAG_IGNOREGEO)))
 			return false;
 
-		let plat = FCW_Platform(other);
-		if (plat && (plat == platMaster || (args[ARG_OPTIONS] & OPTFLAG_IGNOREGEO)))
+		if (bPlatInMove && riders.Find(other) < riders.Size())
 			return false;
 
 		return true;
@@ -391,24 +452,6 @@ extend class FCW_Platform
 					DeltaAngle(pNextAngs.z, currNode.next.next.roll));
 				}
 			}
-		}
-	}
-
-	//============================
-	// CheckAttachedPlatforms
-	//============================
-	private void CheckAttachedPlatforms ()
-	{
-		for (int i = 0; i < attachedPlats.Size(); ++i)
-		{
-			let plat = attachedPlats[i];
-			if (!plat || plat.bDestroyed)
-			{
-				attachedPlats.Delete(i--);
-				continue;
-			}
-			plat.platMaster = self;
-			plat.CheckAttachedPlatforms();
 		}
 	}
 
@@ -827,8 +870,17 @@ extend class FCW_Platform
 				mo.moveCount = 1;
 		}
 
-		for (int i = 0; i < attachedPlats.Size(); ++i)
-			attachedPlats[i].HandleOldRiders();
+		if (bDormant)
+			return;
+
+		for (let plat = grpSrc; plat; plat = plat.grpNext)
+		{
+			if (plat.grpSrc != grpSrc)
+				ThrowAbortException("Group info is corrupted.");
+
+			if (plat != self)
+				plat.HandleOldRiders();
+		}
 	}
 
 	//============================
@@ -1047,21 +1099,20 @@ extend class FCW_Platform
 			pNextNext += offset;
 		}
 
-		
 		//If one of our attached platforms is blocked, pretend
 		//we're blocked too. (Our move won't be cancelled.)
-		if (!MoveAttachedPlatforms(false))
+		if (!MovePlatformGroup(false))
 			return false;
 
 		return true;
 	}
 
 	//============================
-	// MoveAttachedPlatforms
+	// MovePlatformGroup
 	//============================
-	private bool MoveAttachedPlatforms (bool teleMove)
+	private bool MovePlatformGroup (bool teleMove)
 	{
-		if (!attachedPlats.Size())
+		if (!grpSrc || !grpSrc.grpNext)
 			return true;
 
 		double delta = DeltaAngle(spawnAngle, angle);
@@ -1072,10 +1123,15 @@ extend class FCW_Platform
 		double cP, sP;
 		double cR, sR;
 
-		for (int i = 0; i < attachedPlats.Size(); ++i)
+		for (let plat = grpSrc; plat; plat = plat.grpNext)
 		{
-			let plat = attachedPlats[i];
+			if (plat.grpSrc != grpSrc)
+				ThrowAbortException("Group info is corrupted.");
 
+			if (plat == self)
+				continue;
+
+			plat.bDormant = true; //We're the primary thinker
 			plat.oldPos = plat.pos;
 			plat.oldAngle = plat.angle;
 			plat.oldPitch = plat.pitch;
@@ -1141,7 +1197,7 @@ extend class FCW_Platform
 			//The second non-motion search will happen here 32 tics after the first one.
 			if (newPos != plat.pos || !((level.mapTime + 32) & 63))
 			{
-				if (!plat.GetNewRiders(false, false))
+				if (!plat.GetNewRiders(teleMove, teleMove))
 				{
 					plat.angle = plat.oldAngle;
 					plat.pitch = plat.oldPitch;
@@ -1174,13 +1230,6 @@ extend class FCW_Platform
 				plat.roll = plat.oldRoll;
 				return false;
 			}
-
-			//If one of our attached platforms is blocked, pretend
-			//we're blocked too. (Our move won't be cancelled.)
-			//Yes, attached plats can have their own attached plats.
-			//(But they can't be attached to each other.)
-			if (!plat.MoveAttachedPlatforms(teleMove))
-				return false;
 		}
 		return true;
 	}
@@ -1249,8 +1298,7 @@ extend class FCW_Platform
 				SetInterpolationCoordinates();
 				SetTimeFraction(currNode.args[NODEARG_TRAVELTIME]);
 				MoveRiders(true, true);
-				CheckAttachedPlatforms();
-				MoveAttachedPlatforms(true);
+				MovePlatformGroup(true);
 			}
 		}
 	}
@@ -1270,38 +1318,9 @@ extend class FCW_Platform
 				return; //Freed itself
 		}
 
-		//Sanity check - most of a attached platform's thinking is done by its master
-		if (platMaster)
-		{
-			let pMastIndex = platMaster.attachedPlats.Find(self);
-			if (pMastIndex < platMaster.attachedPlats.Size())
-			{
-				//Because the way this is set up to work you
-				//can't have two platforms attached to each other.
-				let myIndex = attachedPlats.Find(platMaster);
-				if (myIndex < attachedPlats.Size())
-				{
-					Console.Printf("\ckPlatform class '" .. GetClassName() .. "' with tid " .. tid .. ":\nat position " .. pos .. ":\n" ..
-					"and platform class '" .. platMaster.GetClassName() .. "' with tid " .. platMaster.tid .. ":\nat position " .. platMaster.pos .. ":\n" ..
-					"are attached to each other; Both will be detached from each other.");
-
-					attachedPlats.Delete(myIndex);
-					platMaster.attachedPlats.Delete(pMastIndex);
-					platMaster.platMaster = null;
-				}
-				else
-				{
-					return;
-				}
-			}
-			platMaster = null;
-		}
-
-		CheckAttachedPlatforms();
-		HandleOldRiders();
-
 		if (bDormant)
 			return;
+		HandleOldRiders();
 
 		bPlatBlocked = false;
 		oldPos = pos;
@@ -1361,13 +1380,11 @@ extend class FCW_Platform
 	//============================
 	private void CommonACSSetup (int newTime, int timeType)
 	{
-		if (platMaster)
+		for (let plat = grpSrc; plat; plat = plat.grpNext)
 		{
-			//Detach from master platform
-			let index = platMaster.attachedPlats.Find(self);
-			if (index < platMaster.attachedPlats.Size())
-				platMaster.attachedPlats.Delete(index);
-			platMaster = null;
+			if (plat.grpSrc != grpSrc)
+				ThrowAbortException("Group info is corrupted.");
+			plat.bDormant = true;
 		}
 		currNode = null; //Deactivate when done moving
 		prevNode = null;
@@ -1448,11 +1465,7 @@ extend class FCW_Platform
 	{
 		let it = level.CreateActorIterator(platTid, "FCW_Platform");
 		let plat = FCW_Platform(it.Next());
-		if (!plat)
-			return false;
-		while (plat.platMaster && plat.platMaster.platMaster != plat)
-			plat = plat.platMaster;
-		return (!plat.bDormant && (
+		return (plat && !plat.bDormant && (
 			plat.pos != plat.oldPos ||
 			plat.angle != plat.oldAngle ||
 			plat.pitch != plat.oldPitch ||
@@ -1466,10 +1479,6 @@ extend class FCW_Platform
 	{
 		let it = level.CreateActorIterator(platTid, "FCW_Platform");
 		let plat = FCW_Platform(it.Next());
-		if (!plat)
-			return false;
-		while (plat.platMaster && plat.platMaster.platMaster != plat)
-			plat = plat.platMaster;
-		return (!plat.bDormant && plat.bPlatBlocked);
+		return (plat && !plat.bDormant && plat.bPlatBlocked);
 	}
 }
