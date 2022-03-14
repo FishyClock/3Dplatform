@@ -1166,9 +1166,9 @@ extend class FCW_Platform
 			{
 				if (cY == sY) //Not called cos() and sin() yet?
 				{
-					cY = cos(delta); sY = sin(delta);
-					cP = cos(piDelta); sP = sin(piDelta);
-					cR = cos(roDelta); sR = sin(roDelta);
+					cY = cos(angle); sY = sin(angle);
+					cP = cos(pitch); sP = sin(pitch);
+					cR = cos(roll);  sR = sin(roll);
 				}
 
 				//Follow around master platform
