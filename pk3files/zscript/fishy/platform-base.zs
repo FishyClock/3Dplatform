@@ -100,8 +100,6 @@ extend class FCW_Platform
 	double oldAngle;
 	double oldPitch;
 	double oldRoll;
-	double spawnPitch;
-	double spawnRoll;
 	double time, timeFrac;
 	int holdTime;
 	bool bJustStepped;
@@ -112,6 +110,9 @@ extend class FCW_Platform
 	Array<Actor> riders;
 	private FCW_Platform groupRoot;
 	private FCW_Platform nextGroupmate;
+	double groupAngle;
+	double groupPitch;
+	double groupRoll;
 
 	//Unlike PathFollower classes, our interpolations are done with
 	//vector3 coordinates rather than checking InterpolationPoint positions.
@@ -131,8 +132,6 @@ extend class FCW_Platform
 		oldAngle = angle;
 		oldPitch = pitch;
 		oldRoll = roll;
-		spawnPitch = pitch;
-		spawnRoll = roll;
 		time = timeFrac = 0.0;
 		holdTime = 0;
 		bJustStepped = false;
@@ -143,6 +142,9 @@ extend class FCW_Platform
 		riders.Clear();
 		groupRoot = null;
 		nextGroupmate = null;
+		groupAngle = 0.0;
+		groupPitch = 0.0;
+		groupRoll = 0.0;
 
 		pCurr = pPrev = pNext = pNextNext = (0, 0, 0);
 		pCurrAngs = pPrevAngs = pNextAngs = pNextNextAngs = (0, 0, 0);
@@ -211,6 +213,9 @@ extend class FCW_Platform
 				nextGroupmate = plat;
 				plat.nextGroupmate = null;
 			}
+			groupAngle = angle;
+			groupPitch = pitch;
+			groupRoll = roll;
 
 			//Get going if there's an active platform
 			//and we ticked after it.
@@ -1113,6 +1118,25 @@ extend class FCW_Platform
 	}
 
 	//============================
+	// UpdateGroupInfo
+	//============================
+	private void UpdateGroupInfo ()
+	{
+		for (let plat = groupRoot; plat; plat = plat.nextGroupmate)
+		{
+			if (plat.groupRoot != groupRoot)
+				ThrowAbortException("Group info is corrupted.");
+
+			if (plat != self)
+				plat.bDormant = true;
+
+			plat.groupAngle = plat.angle;
+			plat.groupPitch = plat.pitch;
+			plat.groupRoll = plat.roll;
+		}
+	}
+
+	//============================
 	// MovePlatformGroup
 	//============================
 	private bool MovePlatformGroup (bool teleMove)
@@ -1120,9 +1144,9 @@ extend class FCW_Platform
 		if (!groupRoot || !groupRoot.nextGroupmate)
 			return true;
 
-		double delta = DeltaAngle(spawnAngle, angle);
-		double piDelta = DeltaAngle(spawnPitch, pitch);
-		double roDelta = DeltaAngle(spawnRoll, roll);
+		double delta = DeltaAngle(groupAngle, angle);
+		double piDelta = DeltaAngle(groupPitch, pitch);
+		double roDelta = DeltaAngle(groupRoll, roll);
 
 		double cY = 0.0, sY = 0.0;
 		double cP, sP;
@@ -1158,19 +1182,19 @@ extend class FCW_Platform
 				newPos = level.Vec3Offset(plat.spawnPoint, offset);
 
 				if (changeAng)
-					plat.angle = Normalize180(plat.spawnAngle - delta);
+					plat.angle = Normalize180(plat.groupAngle - delta);
 				if (changePi)
-					plat.pitch = Normalize180(plat.spawnPitch - piDelta);
+					plat.pitch = Normalize180(plat.groupPitch - piDelta);
 				if (changeRo)
-					plat.roll = Normalize180(plat.spawnRoll - roDelta);
+					plat.roll = Normalize180(plat.groupRoll - roDelta);
 			}
 			else
 			{
 				if (cY == sY) //Not called cos() and sin() yet?
 				{
-					cY = cos(angle); sY = sin(angle);
-					cP = cos(pitch); sP = sin(pitch);
-					cR = cos(roll);  sR = sin(roll);
+					cY = cos(delta); sY = sin(delta);
+					cP = cos(piDelta); sP = sin(piDelta);
+					cR = cos(roDelta);  sR = sin(roDelta);
 				}
 
 				//Follow around master platform
@@ -1183,16 +1207,16 @@ extend class FCW_Platform
 				newPos = level.Vec3Offset(pos, offset);
 
 				if (changeAng)
-					plat.angle = Normalize180(plat.spawnAngle + delta);
+					plat.angle = Normalize180(plat.groupAngle + delta);
 
 				if (changePi || changeRo)
 				{
 					double diff = DeltaAngle(angle, plat.angle);
 					double c = cos(diff), s = sin(diff);
 					if (changePi)
-						plat.pitch = Normalize180(plat.spawnPitch + pitch*c - roll*s);
+						plat.pitch = Normalize180(plat.groupPitch + piDelta*c - roDelta*s);
 					if (changeRo)
-						plat.roll = Normalize180(plat.spawnRoll + pitch*s + roll*c);
+						plat.roll = Normalize180(plat.groupRoll + piDelta*s + roDelta*c);
 				}
 			}
 
@@ -1288,6 +1312,7 @@ extend class FCW_Platform
 				if (bDestroyed || !currNode || currNode.bDestroyed)
 					return; //Abort if we or the node got Thing_Remove()'d
 
+				UpdateGroupInfo();
 				GetNewRiders(true, true);
 				SetOrigin(currNode.pos, false);
 				if (args[ARG_OPTIONS] & OPTFLAG_ANGLE)
@@ -1385,12 +1410,7 @@ extend class FCW_Platform
 	//============================
 	private void CommonACSSetup (int newTime, int timeType)
 	{
-		for (let plat = groupRoot; plat; plat = plat.nextGroupmate)
-		{
-			if (plat.groupRoot != groupRoot)
-				ThrowAbortException("Group info is corrupted.");
-			plat.bDormant = true;
-		}
+		UpdateGroupInfo();
 		currNode = null; //Deactivate when done moving
 		prevNode = null;
 		time = 0.0;
