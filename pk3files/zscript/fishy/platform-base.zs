@@ -110,7 +110,8 @@ extend class FCW_Platform
 	InterpolationPoint currNode, firstNode;
 	InterpolationPoint prevNode, firstPrevNode;
 	Array<Actor> riders;
-	private FCW_Platform grpSrc, grpNext;
+	private FCW_Platform groupRoot;
+	private FCW_Platform nextGroupmate;
 
 	//Unlike PathFollower classes, our interpolations are done with
 	//vector3 coordinates rather than checking InterpolationPoint positions.
@@ -140,7 +141,8 @@ extend class FCW_Platform
 		currNode = firstNode = null;
 		prevNode = firstPrevNode = null;
 		riders.Clear();
-		grpSrc = grpNext = null;
+		groupRoot = null;
+		nextGroupmate = null;
 
 		pCurr = pPrev = pNext = pNextNext = (0, 0, 0);
 		pCurrAngs = pPrevAngs = pNextAngs = pNextNextAngs = (0, 0, 0);
@@ -176,43 +178,43 @@ extend class FCW_Platform
 		if (mo is "FCW_Platform")
 		{
 			let plat = FCW_Platform(mo);
-			if (plat.grpSrc) //Target is in its own group?
+			if (plat.groupRoot) //Target is in its own group?
 			{
-				if (plat.grpSrc != grpSrc) //...And it's not our group or we don't have a group?
+				if (plat.groupRoot != groupRoot) //...And it's not our group or we don't have a group?
 				{
-					let oldSrc = grpSrc ? grpSrc : self;
+					let oldRoot = groupRoot ? groupRoot : self;
 
-					//Redirect all our members (or just self) to the other group's source
-					for (let probe = oldSrc; probe; probe = probe.grpNext)
-						probe.grpSrc = plat.grpSrc;
+					//Redirect all our members (or just self) to the other group's root
+					for (let probe = oldRoot; probe; probe = probe.nextGroupmate)
+						probe.groupRoot = plat.groupRoot;
 
-					//Find the last member of target's group and link it to our old source (or just self)
-					for (let probe = plat.grpSrc; probe; probe = probe.grpNext)
+					//Find the last member of target's group and link it to our old former root (or just self)
+					for (let probe = plat.groupRoot; probe; probe = probe.nextGroupmate)
 					{
-						if (!probe.grpNext)
+						if (!probe.nextGroupmate)
 						{
-							probe.grpNext = oldSrc;
+							probe.nextGroupmate = oldRoot;
 							break;
 						}
 					}
 				}
 			}
-			else if (grpSrc) //We're in a group but target doesn't have a group?
+			else if (groupRoot) //We're in a group but target doesn't have a group?
 			{
-				plat.grpSrc = grpSrc;
-				plat.grpNext = grpNext;
-				grpNext = plat;
+				plat.groupRoot = groupRoot;
+				plat.nextGroupmate = nextGroupmate;
+				nextGroupmate = plat;
 			}
 			else //Neither are in a group
 			{
-				grpSrc = plat.grpSrc = self;
-				grpNext = plat;
-				plat.grpNext = null;
+				groupRoot = plat.groupRoot = self;
+				nextGroupmate = plat;
+				plat.nextGroupmate = null;
 			}
 
 			//Get going if there's an active platform
 			//and we ticked after it.
-			for (plat = grpSrc; plat; plat = plat.grpNext)
+			for (plat = groupRoot; plat; plat = plat.nextGroupmate)
 			{
 				if (!plat.bDormant)
 				{
@@ -263,27 +265,27 @@ extend class FCW_Platform
 	//============================
 	override void OnDestroy ()
 	{
-		if (grpSrc == self)
+		if (groupRoot == self)
 		{
-			let newSrc = grpNext;
-			for (let plat = newSrc; plat; plat = plat.grpNext)
+			let newSrc = nextGroupmate;
+			for (let plat = newSrc; plat; plat = plat.nextGroupmate)
 			{
-				if (plat.grpSrc != grpSrc)
+				if (plat.groupRoot != groupRoot)
 					ThrowAbortException("Group info is corrupted.");
 
-				plat.grpSrc = newSrc;
+				plat.groupRoot = newSrc;
 			}
 		}
 		else
 		{
-			for (let plat = grpSrc; plat; plat = plat.grpNext)
+			for (let plat = groupRoot; plat; plat = plat.nextGroupmate)
 			{
-				if (plat.grpSrc != grpSrc)
+				if (plat.groupRoot != groupRoot)
 					ThrowAbortException("Group info is corrupted.");
 
-				if (plat.grpNext == self)
+				if (plat.nextGroupmate == self)
 				{
-					plat.grpNext = grpNext;
+					plat.nextGroupmate = nextGroupmate;
 					break;
 				}
 			}
@@ -297,7 +299,7 @@ extend class FCW_Platform
 	override bool CanCollideWith(Actor other, bool passive)
 	{
 		let plat = FCW_Platform(other);
-		if (plat && ((plat.grpSrc && plat.grpSrc == grpSrc) || (args[ARG_OPTIONS] & OPTFLAG_IGNOREGEO)))
+		if (plat && ((plat.groupRoot && plat.groupRoot == groupRoot) || (args[ARG_OPTIONS] & OPTFLAG_IGNOREGEO)))
 			return false;
 
 		if (bPlatInMove && riders.Find(other) < riders.Size())
@@ -876,9 +878,9 @@ extend class FCW_Platform
 		if (bDormant)
 			return;
 
-		for (let plat = grpSrc; plat; plat = plat.grpNext)
+		for (let plat = groupRoot; plat; plat = plat.nextGroupmate)
 		{
-			if (plat.grpSrc != grpSrc)
+			if (plat.groupRoot != groupRoot)
 				ThrowAbortException("Group info is corrupted.");
 
 			if (plat != self)
@@ -1115,7 +1117,7 @@ extend class FCW_Platform
 	//============================
 	private bool MovePlatformGroup (bool teleMove)
 	{
-		if (!grpSrc || !grpSrc.grpNext)
+		if (!groupRoot || !groupRoot.nextGroupmate)
 			return true;
 
 		double delta = DeltaAngle(spawnAngle, angle);
@@ -1126,9 +1128,9 @@ extend class FCW_Platform
 		double cP, sP;
 		double cR, sR;
 
-		for (let plat = grpSrc; plat; plat = plat.grpNext)
+		for (let plat = groupRoot; plat; plat = plat.nextGroupmate)
 		{
-			if (plat.grpSrc != grpSrc)
+			if (plat.groupRoot != groupRoot)
 				ThrowAbortException("Group info is corrupted.");
 
 			if (plat == self)
@@ -1383,9 +1385,9 @@ extend class FCW_Platform
 	//============================
 	private void CommonACSSetup (int newTime, int timeType)
 	{
-		for (let plat = grpSrc; plat; plat = plat.grpNext)
+		for (let plat = groupRoot; plat; plat = plat.nextGroupmate)
 		{
-			if (plat.grpSrc != grpSrc)
+			if (plat.groupRoot != groupRoot)
 				ThrowAbortException("Group info is corrupted.");
 			plat.bDormant = true;
 		}
