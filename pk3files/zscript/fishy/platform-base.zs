@@ -110,6 +110,7 @@ extend class FCW_Platform
 	Array<Actor> riders;
 	private FCW_Platform groupRoot;
 	private FCW_Platform nextGroupmate;
+	vector3 groupPoint;
 	double groupAngle;
 	double groupPitch;
 	double groupRoll;
@@ -142,6 +143,7 @@ extend class FCW_Platform
 		riders.Clear();
 		groupRoot = null;
 		nextGroupmate = null;
+		groupPoint = (0, 0, 0);
 		groupAngle = 0.0;
 		groupPitch = 0.0;
 		groupRoll = 0.0;
@@ -213,6 +215,7 @@ extend class FCW_Platform
 				nextGroupmate = plat;
 				plat.nextGroupmate = null;
 			}
+			groupPoint = pos;
 			groupAngle = angle;
 			groupPitch = pitch;
 			groupRoll = roll;
@@ -223,8 +226,7 @@ extend class FCW_Platform
 			{
 				if (!plat.bDormant)
 				{
-					plat.MovePlatformGroup(true);
-					break;
+					//Why does this detect DORMANT as false when it's not???
 				}
 			}
 			return;
@@ -1130,6 +1132,7 @@ extend class FCW_Platform
 			if (plat != self)
 				plat.bDormant = true;
 
+			plat.groupPoint = plat.pos;
 			plat.groupAngle = plat.angle;
 			plat.groupPitch = plat.pitch;
 			plat.groupRoll = plat.roll;
@@ -1178,8 +1181,8 @@ extend class FCW_Platform
 				//the attached platform's spawn position.
 				//So we pretty much always go in the opposite direction
 				//using our spawn position as a reference point.
-				vector3 offset = level.Vec3Diff(pos, spawnPoint);
-				newPos = level.Vec3Offset(plat.spawnPoint, offset);
+				vector3 offset = level.Vec3Diff(pos, groupPoint);
+				newPos = level.Vec3Offset(plat.groupPoint, offset);
 
 				if (changeAng)
 					plat.angle = Normalize180(plat.groupAngle - delta);
@@ -1194,16 +1197,17 @@ extend class FCW_Platform
 				{
 					cY = cos(delta); sY = sin(delta);
 					cP = cos(piDelta); sP = sin(piDelta);
-					cR = cos(roDelta);  sR = sin(roDelta);
+					cR = cos(roDelta); sR = sin(roDelta);
 				}
 
 				//Follow around master platform
-				vector3 offset = level.Vec3Diff(spawnPoint, plat.spawnPoint);
+				vector3 offset = level.Vec3Diff(groupPoint, plat.groupPoint);
 
 				//Rotate the offset. The order here matters.
 				offset = (offset.x, offset.y*cR - offset.z*sR, offset.y*sR + offset.z*cR);  //X axis (roll)
 				offset = (offset.x*cP + offset.z*sP, offset.y, -offset.x*sP + offset.z*cP); //Y axis (pitch)
 				offset = (offset.x*cY - offset.y*sY, offset.x*sY + offset.y*cY, offset.z);  //Z axis (yaw/angle)
+
 				newPos = level.Vec3Offset(pos, offset);
 
 				if (changeAng)
