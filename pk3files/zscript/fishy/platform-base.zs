@@ -274,13 +274,13 @@ extend class FCW_Platform
 	{
 		if (groupRoot == self)
 		{
-			let newSrc = nextGroupmate;
-			for (let plat = newSrc; plat; plat = plat.nextGroupmate)
+			let newRoot = nextGroupmate;
+			for (let plat = newRoot; plat; plat = plat.nextGroupmate)
 			{
 				if (plat.groupRoot != groupRoot)
 					ThrowAbortException("Group info is corrupted.");
 
-				plat.groupRoot = newSrc;
+				plat.groupRoot = newRoot;
 			}
 		}
 		else
