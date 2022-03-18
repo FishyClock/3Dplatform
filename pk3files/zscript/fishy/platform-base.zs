@@ -68,6 +68,53 @@ class FCW_Platform : Actor abstract
 //Ultimate Doom Builder doesn't need to read the rest
 //$GZDB_SKIP
 
+class FCW_PlatformGroup play
+{
+	private Array<FCW_Platform> members;
+	uint index;
+
+	static FCW_PlatformGroup Create ()
+	{
+		let group = new("FCW_PlatformGroup");
+		group.members.Clear();
+		group.index = 0;
+		return group;
+	}
+
+	void Join (FCW_Platform plat)
+	{
+		plat.group = self;
+		if (members.Find(plat) >= members.Size())
+			members.Push(plat);
+	}
+
+	FCW_Platform GetFirst ()
+	{
+		index = 0;
+		return GetNext();
+	}
+
+	FCW_Platform GetNext ()
+	{
+		//Handle invalid entries
+		while (index < members.Size() && !members[index])
+			members.Delete(index);
+
+		if (index < members.Size())
+		{
+			members[index].group = self; //Make sure this member points to correct group array holder
+			return members[index++];
+		}
+		return null;
+	}
+
+	void MergeWith (FCW_PlatformGroup otherGroup)
+	{
+		for (let plat = otherGroup.GetFirst(); plat; plat = otherGroup.GetNext())
+			Join(plat);
+	}
+}
+
 extend class FCW_Platform
 {
 	enum ArgValues
@@ -108,8 +155,7 @@ extend class FCW_Platform
 	InterpolationPoint currNode, firstNode;
 	InterpolationPoint prevNode, firstPrevNode;
 	Array<Actor> riders;
-	private FCW_Platform groupRoot;
-	private FCW_Platform nextGroupmate;
+	FCW_PlatformGroup group;
 	vector3 groupPoint;
 	double groupAngle;
 	double groupPitch;
@@ -141,8 +187,7 @@ extend class FCW_Platform
 		currNode = firstNode = null;
 		prevNode = firstPrevNode = null;
 		riders.Clear();
-		groupRoot = null;
-		nextGroupmate = null;
+		group = null;
 		groupPoint = (0, 0, 0);
 		groupAngle = 0.0;
 		groupPitch = 0.0;
@@ -182,38 +227,22 @@ extend class FCW_Platform
 		if (mo is "FCW_Platform")
 		{
 			let plat = FCW_Platform(mo);
-			if (plat.groupRoot) //Target is in its own group?
+			if (plat.group) //Target is in its own group?
 			{
-				if (plat.groupRoot != groupRoot) //...And it's not our group or we don't have a group?
-				{
-					let oldRoot = groupRoot ? groupRoot : self;
-
-					//Redirect all our members (or just self) to the other group's root
-					for (let probe = oldRoot; probe; probe = probe.nextGroupmate)
-						probe.groupRoot = plat.groupRoot;
-
-					//Find the last member of target's group and link it to our old former root (or just self)
-					for (let probe = plat.groupRoot; probe; probe = probe.nextGroupmate)
-					{
-						if (!probe.nextGroupmate)
-						{
-							probe.nextGroupmate = oldRoot;
-							break;
-						}
-					}
-				}
+				if (!group) //We don't have a group?
+					plat.group.Join(self);
+				else if (plat.group != group) //Both are in different groups?
+					plat.group.MergeWith(group);
 			}
-			else if (groupRoot) //We're in a group but target doesn't have a group?
+			else if (group) //We're in a group but target doesn't have a group?
 			{
-				plat.groupRoot = groupRoot;
-				plat.nextGroupmate = nextGroupmate;
-				nextGroupmate = plat;
+				group.Join(plat);
 			}
 			else //Neither are in a group
 			{
-				groupRoot = plat.groupRoot = self;
-				nextGroupmate = plat;
-				plat.nextGroupmate = null;
+				let newGroup = FCW_PlatformGroup.Create();
+				newGroup.Join(self);
+				newGroup.Join(plat);
 			}
 			groupPoint = pos;
 			groupAngle = angle;
@@ -222,9 +251,9 @@ extend class FCW_Platform
 
 			//Get going if there's an active platform
 			//and we ticked after it.
-			for (plat = groupRoot; plat; plat = plat.nextGroupmate)
+			for (let member = group.GetFirst(); member; member = group.GetNext())
 			{
-				if (!plat.bDormant)
+				if (!member.bDormant)
 				{
 					//Why does this detect DORMANT as false when it's not???
 				}
@@ -268,45 +297,14 @@ extend class FCW_Platform
 	}
 
 	//============================
-	// OnDestroy (override)
-	//============================
-	override void OnDestroy ()
-	{
-		if (groupRoot == self)
-		{
-			let newRoot = nextGroupmate;
-			for (let plat = newRoot; plat; plat = plat.nextGroupmate)
-			{
-				if (plat.groupRoot != groupRoot)
-					ThrowAbortException("Group info is corrupted.");
-
-				plat.groupRoot = newRoot;
-			}
-		}
-		else
-		{
-			for (let plat = groupRoot; plat; plat = plat.nextGroupmate)
-			{
-				if (plat.groupRoot != groupRoot)
-					ThrowAbortException("Group info is corrupted.");
-
-				if (plat.nextGroupmate == self)
-				{
-					plat.nextGroupmate = nextGroupmate;
-					break;
-				}
-			}
-		}
-		Super.OnDestroy();
-	}
-
-	//============================
 	// CanCollideWith (override)
 	//============================
 	override bool CanCollideWith(Actor other, bool passive)
 	{
 		let plat = FCW_Platform(other);
-		if (plat && ((plat.groupRoot && plat.groupRoot == groupRoot) || (args[ARG_OPTIONS] & OPTFLAG_IGNOREGEO)))
+
+		//For speed's sake assume they're both in the group array without actually checking
+		if (plat && ((plat.group && plat.group == group) || (args[ARG_OPTIONS] & OPTFLAG_IGNOREGEO)))
 			return false;
 
 		if (bPlatInMove && riders.Find(other) < riders.Size())
@@ -885,11 +883,9 @@ extend class FCW_Platform
 		if (bDormant)
 			return;
 
-		for (let plat = groupRoot; plat; plat = plat.nextGroupmate)
+		if (group)
+		for (let plat = group.GetFirst(); plat; plat = group.GetNext())
 		{
-			if (plat.groupRoot != groupRoot)
-				ThrowAbortException("Group info is corrupted.");
-
 			if (plat != self)
 				plat.HandleOldRiders();
 		}
@@ -1124,11 +1120,9 @@ extend class FCW_Platform
 	//============================
 	private void UpdateGroupInfo ()
 	{
-		for (let plat = groupRoot; plat; plat = plat.nextGroupmate)
+		if (group)
+		for (let plat = group.GetFirst(); plat; plat = group.GetNext())
 		{
-			if (plat.groupRoot != groupRoot)
-				ThrowAbortException("Group info is corrupted.");
-
 			if (plat != self)
 				plat.bDormant = true;
 
@@ -1144,7 +1138,7 @@ extend class FCW_Platform
 	//============================
 	private bool MovePlatformGroup (bool teleMove)
 	{
-		if (!groupRoot || !groupRoot.nextGroupmate)
+		if (!group)
 			return true;
 
 		double delta = DeltaAngle(groupAngle, angle);
@@ -1155,11 +1149,8 @@ extend class FCW_Platform
 		double cP, sP;
 		double cR, sR;
 
-		for (let plat = groupRoot; plat; plat = plat.nextGroupmate)
+		for (let plat = group.GetFirst(); plat; plat = group.GetNext())
 		{
-			if (plat.groupRoot != groupRoot)
-				ThrowAbortException("Group info is corrupted.");
-
 			if (plat == self)
 				continue;
 
