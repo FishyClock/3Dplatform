@@ -81,7 +81,7 @@ class FCW_PlatformGroup play
 		return group;
 	}
 
-	void Join (FCW_Platform plat)
+	void Add (FCW_Platform plat)
 	{
 		plat.group = self;
 		if (members.Find(plat) >= members.Size())
@@ -111,7 +111,7 @@ class FCW_PlatformGroup play
 	void MergeWith (FCW_PlatformGroup otherGroup)
 	{
 		for (let plat = otherGroup.GetFirst(); plat; plat = otherGroup.GetNext())
-			Join(plat);
+			Add(plat);
 	}
 }
 
@@ -230,19 +230,19 @@ extend class FCW_Platform
 			if (plat.group) //Target is in its own group?
 			{
 				if (!group) //We don't have a group?
-					plat.group.Join(self);
+					plat.group.Add(self);
 				else if (plat.group != group) //Both are in different groups?
 					plat.group.MergeWith(group);
 			}
 			else if (group) //We're in a group but target doesn't have a group?
 			{
-				group.Join(plat);
+				group.Add(plat);
 			}
 			else //Neither are in a group
 			{
 				let newGroup = FCW_PlatformGroup.Create();
-				newGroup.Join(self);
-				newGroup.Join(plat);
+				newGroup.Add(self);
+				newGroup.Add(plat);
 			}
 			groupPoint = pos;
 			groupAngle = angle;
