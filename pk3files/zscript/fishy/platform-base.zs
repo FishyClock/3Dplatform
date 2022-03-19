@@ -40,8 +40,8 @@ class FCW_Platform : Actor abstract
 		//$Arg1 Options
 		//$Arg1Type 12
 		//Yes, this enum definition has to be on one line
-		//$Arg1Enum {1 = "Linear path"; 2 = "Use target angle"; 4 = "Use target pitch"; 8 = "Use target roll"; 16 = "Face movement direction"; 32 = "Don't clip against geometry and other platforms"; 64 = "Start active"; 128 = "Mirror target platform's movement";}
-		//$Arg1Tooltip NOTE: When attached to another platform, only flags 2, 4, 8 and 32 have any effect. Flag 128 only makes sense for attached platforms.
+		//$Arg1Enum {1 = "Linear path"; 2 = "Use target angle"; 4 = "Use target pitch"; 8 = "Use target roll"; 16 = "Face movement direction"; 32 = "Don't clip against geometry and other platforms"; 64 = "Start active"; 128 = "Mirror group origin's movement";}
+		//$Arg1Tooltip NOTE: When being moved as part of a group, only flags 2, 4, 8 and 32 have any effect. Flag 128 only makes sense if in a group.
 
 		//$Arg2 Travel/Hold time type
 		//$Arg2Type 11
@@ -642,6 +642,7 @@ extend class FCW_Platform
 		//Move our riders (platform rotation is taken into account)
 		double top = pos.z + height;
 		double delta = DeltaAngle(oldAngle, angle);
+		double c = cos(delta), s = sin(delta);
 		vector2 piAndRoOffset = (0, 0);
 		if (!teleMove)
 		{
@@ -658,14 +659,13 @@ extend class FCW_Platform
 			let moOldPos = mo.pos;
 
 			vector3 offset = level.Vec3Diff(oldPos, mo.pos);
-			if (delta)
-				offset.xy = RotateVector(offset.xy, delta);
+			offset.xy = (offset.x*c - offset.y*s, offset.x*s + offset.y*c); //Rotate it
 			offset.xy += piAndRoOffset;
 			vector3 moNewPos = level.Vec3Offset(pos, offset);
 
 			//TryMove() has its own internal handling of portals which is
 			//a problem if 'moNewPos' is already through a portal from the platform's
-			//perspective. What it wants/needs is a offsetted position from 'mo' assuming
+			//position. What it wants/needs is a offsetted position from 'mo' assuming
 			//no portals have been crossed yet.
 			if (!teleMove)
 				moNewPos = mo.pos + level.Vec3Diff(mo.pos, moNewPos);
@@ -1145,9 +1145,11 @@ extend class FCW_Platform
 		double piDelta = DeltaAngle(groupPitch, pitch);
 		double roDelta = DeltaAngle(groupRoll, roll);
 
-		double cY = 0.0, sY = 0.0;
+		double cFirst = 0.0, sFirst = 0.0;
+		double cY, sY;
 		double cP, sP;
 		double cR, sR;
+		double cLast, sLast;
 
 		for (let plat = group.GetFirst(); plat; plat = group.GetNext())
 		{
@@ -1164,14 +1166,14 @@ extend class FCW_Platform
 			bool changeRo = (plat.args[ARG_OPTIONS] & OPTFLAG_ROLL);
 
 			vector3 newPos;
-			if (plat.args[ARG_OPTIONS] & OPTFLAG_MIRROR)
+			if (plat.args[ARG_OPTIONS] & OPTFLAG_MIRROR) //No rotations happen here
 			{
 				//The way we mirror movement is by getting the offset going
-				//from the master's current position to its spawn position
+				//from the origin's current position to its 'groupPoint'
 				//and using that to get a offsetted position from
-				//the attached platform's spawn position.
+				//the attached platform's 'groupPoint'.
 				//So we pretty much always go in the opposite direction
-				//using our spawn position as a reference point.
+				//using our 'groupPoint' as a reference point.
 				vector3 offset = level.Vec3Diff(pos, groupPoint);
 				newPos = level.Vec3Offset(plat.groupPoint, offset);
 
@@ -1182,22 +1184,24 @@ extend class FCW_Platform
 				if (changeRo)
 					plat.roll = Normalize180(plat.groupRoll - roDelta);
 			}
-			else
+			else //Non-mirror movement. Rotations happens here.
 			{
-				if (cY == sY) //Not called cos() and sin() yet?
+				if (cFirst == sFirst) //Not called cos() and sin() yet?
 				{
-					cY = cos(delta); sY = sin(delta);
+					cFirst = cos(-groupAngle); sFirst = sin(-groupAngle);
+					cY = cos(delta);   sY = sin(delta);
 					cP = cos(piDelta); sP = sin(piDelta);
 					cR = cos(roDelta); sR = sin(roDelta);
+					cLast = cos(groupAngle);   sLast = sin(groupAngle);
 				}
-
-				//Follow around master platform
 				vector3 offset = level.Vec3Diff(groupPoint, plat.groupPoint);
 
 				//Rotate the offset. The order here matters.
+				offset.xy = (offset.x*cFirst - offset.y*sFirst, offset.x*sFirst + offset.y*cFirst); //Rotate to 0 angle degrees of origin
 				offset = (offset.x, offset.y*cR - offset.z*sR, offset.y*sR + offset.z*cR);  //X axis (roll)
 				offset = (offset.x*cP + offset.z*sP, offset.y, -offset.x*sP + offset.z*cP); //Y axis (pitch)
 				offset = (offset.x*cY - offset.y*sY, offset.x*sY + offset.y*cY, offset.z);  //Z axis (yaw/angle)
+				offset.xy = (offset.x*cLast - offset.y*sLast, offset.x*sLast + offset.y*cLast); //Rotate back to origin's 'groupAngle'
 
 				newPos = level.Vec3Offset(pos, offset);
 
