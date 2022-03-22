@@ -71,7 +71,7 @@ class FCW_Platform : Actor abstract
 class FCW_PlatformGroup play
 {
 	private Array<FCW_Platform> members;
-	uint index;
+	transient uint index;
 
 	static FCW_PlatformGroup Create ()
 	{
@@ -101,11 +101,20 @@ class FCW_PlatformGroup play
 			members.Delete(index);
 
 		if (index < members.Size())
-		{
-			members[index].group = self; //Make sure this member points to correct group array holder
 			return members[index++];
-		}
+
 		return null;
+	}
+
+	void VerifyMembers (FCW_Platform caller)
+	{
+		//Ensure 'caller', who already points to this group, is actually a member
+		if (members.Find(caller) >= members.Size())
+			members.Push(caller);
+
+		//Ensure all members point to this group
+		for (let plat = GetFirst(); plat; plat = GetNext())
+			plat.group = self;
 	}
 
 	void MergeWith (FCW_PlatformGroup otherGroup)
@@ -1349,6 +1358,10 @@ extend class FCW_Platform
 
 		if (bDormant)
 			return;
+
+		if (group)
+			group.VerifyMembers(self);
+
 		HandleOldRiders();
 
 		bPlatBlocked = false;
