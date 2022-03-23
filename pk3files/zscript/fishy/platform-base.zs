@@ -254,19 +254,10 @@ extend class FCW_Platform
 				newGroup.Add(plat);
 			}
 			groupPoint = pos;
-			groupAngle = angle;
-			groupPitch = pitch;
-			groupRoll = roll;
+			groupAngle = Normalize180(angle);
+			groupPitch = Normalize180(pitch);
+			groupRoll = Normalize180(roll);
 
-			//Get going if there's an active platform
-			//and we ticked after it.
-			for (let member = group.GetFirst(); member; member = group.GetNext())
-			{
-				if (!member.bDormant)
-				{
-					//Why does this detect DORMANT as false when it's not???
-				}
-			}
 			return;
 		}
 		firstNode = InterpolationPoint(mo);
@@ -780,47 +771,33 @@ extend class FCW_Platform
 	//============================
 	private void HandleOldRiders ()
 	{
-		//The main purpose of this is to keep walkers away from platform's edge.
-		//The AI's native handling of trying not to fall off of other actors
-		//just isn't good enough.
+		// Tracks established riders and doesn't forget them even if
+		// they're above our 'top' (with no 3D floors in between).
+		// Such actors are mostly jumpy players and custom AI.
+		//
+		// Also keep non-flying monsters away from platform's edge.
+		// Because the AI's native handling of trying not to
+		// fall off of other actors just isn't good enough.
+		// Especially when the platform is moving.
 
-		bool hasMoved = (!bDormant && (
-			pos != oldPos ||
-			angle != oldAngle ||
-			pitch != oldPitch ||
-			roll != oldRoll));
-		vector2 pushForce = (0, 0);
-		bool piPush = (args[ARG_OPTIONS] & OPTFLAG_PITCH);
-		bool roPush = (args[ARG_OPTIONS] & OPTFLAG_ROLL);
-
-		//If we're not moving and we interpolate our pitch/roll,
-		//and our pitch/roll is currently steep, then push things off of us.
-		if (!hasMoved && !(level.mapTime & 7)) //Push is applied once per 8 tics.
+		double top;
+		bool isSteep;
+		if (riders.Size())
 		{
-			if ((piPush || roPush) && !(level.mapTime & 63))
-				GetNewRiders(true, false); //Get something to push off
+			top = pos.z + height;
 
-			if (piPush && riders.Size())
+			if (args[ARG_OPTIONS] & OPTFLAG_PITCH)
 			{
 				pitch = Normalize180(pitch);
-				if (abs(pitch) >= 45.0 && abs(pitch) <= 135.0)
-				{
-					vector2 newPush = (cos(angle), sin(angle)); //Push front or back
-					pushForce += ((pitch > 0.0 && pitch < 90.0) || pitch < -90.0) ? newPush : -newPush;
-				}
+				isSteep = (abs(pitch) >= 45.0 && abs(pitch) <= 135.0);
 			}
-			if (roPush && riders.Size())
+
+			if (!isSteep && (args[ARG_OPTIONS] & OPTFLAG_ROLL))
 			{
 				roll = Normalize180(roll);
-				if (abs(roll) >= 45.0 && abs(roll) <= 135.0)
-				{
-					vector2 newPush = (cos(angle-90.), sin(angle-90.)); //Push right or left
-					pushForce += ((roll > 0.0 && roll < 90.0) || roll < -90.0) ? newPush : -newPush;
-				}
+				isSteep = (abs(roll) >= 45.0 && abs(roll) <= 135.0);
 			}
 		}
-
-		double top = pos.z + height;
 
 		for (int i = 0; i < riders.Size(); ++i)
 		{
@@ -835,7 +812,10 @@ extend class FCW_Platform
 			}
 
 			//'floorZ' can be the top of a 3D floor that's right below an actor.
-			if (mo.pos.z < top - 1.0 || mo.floorZ > top + 1.0) //Is below us or stuck in us or there's a 3D floor between us?
+			//No 3D floors means 'floorZ' is the current sector's floor height.
+
+			//Is 'mo' below our 'top'? Or is there a 3D floor above our 'top' that's also below 'mo'?
+			if (mo.pos.z < top - 1.0 || mo.floorZ > top + 1.0)
 			{
 				riders.Delete(i--);
 				continue;
@@ -848,26 +828,18 @@ extend class FCW_Platform
 				continue;
 			}
 
-			mo.vel.xy += pushForce;
+			if (isSteep) //We're a pitch/roll changing platform that's currently "steep"?
+				continue; //Then let the native AI handle it; if it wants to fall off, let it fall off.
+
 			if (!mo.bIsMonster || mo.bNoGravity || mo.bFloat || !mo.speed) //Is not a walking monster?
-			{
-				if (!hasMoved && pushForce ~== (0, 0))
-					riders.Delete(i--);
 				continue;
-			}
+
 			if (mo.bDropoff || mo.bJumpDown) //Is supposed to fall off of tall drops or jump down?
-			{
-				if (!hasMoved && pushForce ~== (0, 0))
-					riders.Delete(i--);
 				continue;
-			}
 
 			//See if we should keep it away from the edge
 			if (mo.tics != 1 && mo.tics != 0)
-				continue; //Don't bother if it's not about to change states
-
-			if (pushForce != (0, 0))
-				continue; //Not if we're pushing it
+				continue; //Don't bother if it's not about to change states (and potentially call A_Chase()/A_Wander())
 
 			if (mo.pos.z > top + 1.0)
 				continue; //Not exactly on top of us
@@ -890,7 +862,7 @@ extend class FCW_Platform
 		}
 
 		if (bDormant)
-			return;
+			return; //We're not the "origin" of a group
 
 		if (group)
 		for (let plat = group.GetFirst(); plat; plat = group.GetNext())
@@ -1136,9 +1108,9 @@ extend class FCW_Platform
 				plat.bDormant = true;
 
 			plat.groupPoint = plat.pos;
-			plat.groupAngle = plat.angle;
-			plat.groupPitch = plat.pitch;
-			plat.groupRoll = plat.roll;
+			plat.groupAngle = Normalize180(plat.angle);
+			plat.groupPitch = Normalize180(plat.pitch);
+			plat.groupRoll = Normalize180(plat.roll);
 		}
 	}
 
@@ -1359,11 +1331,6 @@ extend class FCW_Platform
 		if (bDormant)
 			return;
 
-		if (group)
-			group.VerifyMembers(self);
-
-		HandleOldRiders();
-
 		bPlatBlocked = false;
 		oldPos = pos;
 		oldAngle = angle;
@@ -1379,6 +1346,11 @@ extend class FCW_Platform
 
 		if (holdTime > level.mapTime)
 			return;
+
+		if (group)
+			group.VerifyMembers(self);
+
+		HandleOldRiders();
 
 		if (!Interpolate())
 		{
