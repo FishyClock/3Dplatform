@@ -72,12 +72,14 @@ class FCW_PlatformGroup play
 {
 	private Array<FCW_Platform> members;
 	transient uint index;
+	FCW_Platform origin; //Group mover that does most of the thinking for the others. Other members are always "dormant" platforms.
 
 	static FCW_PlatformGroup Create ()
 	{
 		let group = new("FCW_PlatformGroup");
 		group.members.Clear();
 		group.index = 0;
+		group.origin = null;
 		return group;
 	}
 
@@ -106,15 +108,15 @@ class FCW_PlatformGroup play
 		return null;
 	}
 
-	void VerifyMembers (FCW_Platform caller)
+	void VerifyMembers ()
 	{
-		//Ensure 'caller', who already points to this group, is actually a member
-		if (members.Find(caller) >= members.Size())
-			members.Push(caller);
-
 		//Ensure all members point to this group
 		for (let plat = GetFirst(); plat; plat = GetNext())
 			plat.group = self;
+
+		//Ensure 'origin' is a member and points to this group
+		if (origin)
+			Add(origin);
 	}
 
 	void MergeWith (FCW_PlatformGroup otherGroup)
@@ -861,10 +863,9 @@ extend class FCW_Platform
 				mo.moveCount = 1;
 		}
 
-		if (bDormant)
-			return; //We're not the "origin" of a group
+		if (!group || group.origin != self)
+			return;
 
-		if (group)
 		for (let plat = group.GetFirst(); plat; plat = group.GetNext())
 		{
 			if (plat != self)
@@ -1101,12 +1102,12 @@ extend class FCW_Platform
 	//============================
 	private void UpdateGroupInfo ()
 	{
-		if (group)
+		if (!group)
+			return;
+
+		group.origin = self;
 		for (let plat = group.GetFirst(); plat; plat = group.GetNext())
 		{
-			if (plat != self)
-				plat.bDormant = true;
-
 			plat.groupPoint = plat.pos;
 			plat.groupAngle = Normalize180(plat.angle);
 			plat.groupPitch = Normalize180(plat.pitch);
@@ -1137,7 +1138,6 @@ extend class FCW_Platform
 			if (plat == self)
 				continue;
 
-			plat.bDormant = true; //We're the primary thinker
 			plat.oldPos = plat.pos;
 			plat.oldAngle = plat.angle;
 			plat.oldPitch = plat.pitch;
@@ -1321,72 +1321,70 @@ extend class FCW_Platform
 		if (IsFrozen())
 			return;
 
-		//Advance states
-		if (tics != -1 && --tics <= 0)
+		while (!bDormant && (!group || group.origin == self))
 		{
-			if (!SetState(curState.nextState))
-				return; //Freed itself
-		}
+			bPlatBlocked = false;
+			oldPos = pos;
+			oldAngle = angle;
+			oldPitch = pitch;
+			oldRoll = roll;
 
-		if (bDormant)
-			return;
-
-		bPlatBlocked = false;
-		oldPos = pos;
-		oldAngle = angle;
-		oldPitch = pitch;
-		oldRoll = roll;
-
-		if (bJustStepped)
-		{
-			bJustStepped = false;
-			if (currNode)
-				SetHoldTime(currNode.args[NODEARG_HOLDTIME]);
-		}
-
-		if (holdTime > level.mapTime)
-			return;
-
-		if (group)
-			group.VerifyMembers(self);
-
-		HandleOldRiders();
-
-		if (!Interpolate())
-		{
-			bPlatBlocked = true;
-			return;
-		}
-
-		time += timeFrac;
-		if (time > 1.0)
-		{
-			time -= 1.0;
-			bJustStepped = true;
-			prevNode = currNode;
-			if (currNode)
-				currNode = currNode.next;
-
-			if (currNode)
+			if (bJustStepped)
 			{
-				CallNodeSpecials();
-				if (bDestroyed)
-					return; //Abort if we got Thing_Remove()'d
-
-				if (!currNode || currNode.bDestroyed)
-				{
-					Deactivate(self);
-					return; //Our node got Thing_Remove()'d
-				}
-				SetInterpolationCoordinates();
-				SetTimeFraction(currNode.args[NODEARG_TRAVELTIME]);
+				bJustStepped = false;
+				if (currNode)
+					SetHoldTime(currNode.args[NODEARG_HOLDTIME]);
 			}
 
-			if (!currNode || !currNode.next)
-				Deactivate(self);
-			else if ((args[ARG_OPTIONS] & OPTFLAG_LINEAR) && !currNode.next.next)
-				Deactivate(self);
+			if (holdTime > level.mapTime)
+				break;
+
+			if (group)
+				group.VerifyMembers();
+
+			HandleOldRiders();
+
+			if (!Interpolate())
+			{
+				bPlatBlocked = true;
+				break;
+			}
+
+			time += timeFrac;
+			if (time > 1.0)
+			{
+				time -= 1.0;
+				bJustStepped = true;
+				prevNode = currNode;
+				if (currNode)
+					currNode = currNode.next;
+
+				if (currNode)
+				{
+					CallNodeSpecials();
+					if (bDestroyed)
+						return; //Abort if we got Thing_Remove()'d
+
+					if (!currNode || currNode.bDestroyed)
+					{
+						Deactivate(self);
+						break; //Our node got Thing_Remove()'d
+					}
+					SetInterpolationCoordinates();
+					SetTimeFraction(currNode.args[NODEARG_TRAVELTIME]);
+				}
+
+				if (!currNode || !currNode.next)
+					Deactivate(self);
+				else if ((args[ARG_OPTIONS] & OPTFLAG_LINEAR) && !currNode.next.next)
+					Deactivate(self);
+			}
+			break;
 		}
+
+		//Advance states
+		if (tics != -1 && --tics <= 0)
+			SetState(curState.nextState);
 	}
 
 	//============================
@@ -1474,6 +1472,10 @@ extend class FCW_Platform
 	{
 		let it = level.CreateActorIterator(platTid, "FCW_Platform");
 		let plat = FCW_Platform(it.Next());
+
+		if (plat && plat.group && plat.group.origin)
+			plat = plat.group.origin;
+
 		return (plat && !plat.bDormant && (
 			plat.pos != plat.oldPos ||
 			plat.angle != plat.oldAngle ||
@@ -1488,6 +1490,10 @@ extend class FCW_Platform
 	{
 		let it = level.CreateActorIterator(platTid, "FCW_Platform");
 		let plat = FCW_Platform(it.Next());
+
+		if (plat && plat.group && plat.group.origin)
+			plat = plat.group.origin;
+
 		return (plat && !plat.bDormant && plat.bPlatBlocked);
 	}
 }
