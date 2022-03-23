@@ -778,7 +778,7 @@ extend class FCW_Platform
 		// Also keep non-flying monsters away from platform's edge.
 		// Because the AI's native handling of trying not to
 		// fall off of other actors just isn't good enough.
-		// Especially when the platform is moving.
+		// This is only needed when the platform is moving.
 
 		double top;
 		bool isSteep;
