@@ -986,10 +986,8 @@ extend class FCW_Platform
 		}
 
 		//Do a blockmap search once per tic if we're in motion.
-		//Otherwise, do (at most) two searches per 64 tics (almost 2 seconds).
-		//The first non-motion search can happen in HandleOldRiders().
-		//The second non-motion search will happen here 32 tics after the first one.
-		if (newPos != pos || !((level.mapTime + 32) & 63))
+		//Otherwise, do one per 64 tics (almost 2 seconds).
+		if (newPos != pos || !(level.mapTime & 63))
 		{
 			if (!GetNewRiders(false, false))
 				return false;
@@ -1201,10 +1199,8 @@ extend class FCW_Platform
 			}
 
 			//Do a blockmap search once per tic if we're in motion.
-			//Otherwise, do (at most) two searches per 64 tics (almost 2 seconds).
-			//The first non-motion search can happen in HandleOldRiders().
-			//The second non-motion search will happen here 32 tics after the first one.
-			if (newPos != plat.pos || !((level.mapTime + 32) & 63))
+			//Otherwise, do one per 64 tics (almost 2 seconds).
+			if (newPos != plat.pos || !(level.mapTime & 63))
 			{
 				if (!plat.GetNewRiders(teleMove, teleMove))
 				{
