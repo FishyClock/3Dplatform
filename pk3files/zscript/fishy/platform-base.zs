@@ -783,7 +783,7 @@ extend class FCW_Platform
 		// This is only needed when the platform is moving.
 
 		double top;
-		bool isSteep;
+		bool isSteep = false;
 		if (riders.Size())
 		{
 			top = pos.z + height;
