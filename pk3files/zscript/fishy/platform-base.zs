@@ -1281,7 +1281,7 @@ extend class FCW_Platform
 	//============================
 	override void Activate (Actor activator)
 	{
-		if (bDormant)
+		if (bDormant || (group && group.origin != self))
 		{
 			currNode = firstNode;
 			prevNode = firstPrevNode;
