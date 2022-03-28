@@ -72,7 +72,7 @@ class FCW_PlatformGroup play
 {
 	private Array<FCW_Platform> members;
 	transient uint index;
-	FCW_Platform origin; //Group mover that does most of the thinking for the others. Other members are always "dormant" platforms.
+	FCW_Platform origin; //Group mover that does most of the thinking for the others. Other members are always "inactive" platforms.
 
 	static FCW_PlatformGroup Create ()
 	{
@@ -160,6 +160,7 @@ extend class FCW_Platform
 	double oldRoll;
 	double time, timeFrac;
 	int holdTime;
+	bool bActive;
 	bool bJustStepped;
 	bool bPlatBlocked; //Only useful for ACS. (See utility functions below.)
 	bool bPlatInMove; //No collision between a platform and its riders during said platform's move.
@@ -186,12 +187,14 @@ extend class FCW_Platform
 	override void BeginPlay ()
 	{
 		Super.BeginPlay();
+
 		oldPos = pos;
 		oldAngle = angle;
 		oldPitch = pitch;
 		oldRoll = roll;
 		time = timeFrac = 0.0;
 		holdTime = 0;
+		bActive = false;
 		bJustStepped = false;
 		bPlatBlocked = false;
 		bPlatInMove = false;
@@ -213,7 +216,8 @@ extend class FCW_Platform
 	//============================
 	override void PostBeginPlay ()
 	{
-		bDormant = true;
+		Super.PostBeginPlay();
+
 		if (!args[ARG_TARGET])
 			return; //Print no warnings if we're not supposed to look for anything
 
@@ -1269,7 +1273,7 @@ extend class FCW_Platform
 	//============================
 	override void Deactivate (Actor activator)
 	{
-		bDormant = true;
+		bActive = false;
 	}
 
 	//============================
@@ -1277,7 +1281,7 @@ extend class FCW_Platform
 	//============================
 	override void Activate (Actor activator)
 	{
-		if (bDormant || (group && group.origin != self))
+		if (!bActive || (group && group.origin != self))
 		{
 			currNode = firstNode;
 			prevNode = firstPrevNode;
@@ -1300,7 +1304,7 @@ extend class FCW_Platform
 				time = 0.0;
 				holdTime = 0;
 				bJustStepped = true;
-				bDormant = false;
+				bActive = true;
 				SetInterpolationCoordinates();
 				SetTimeFraction(currNode.args[NODEARG_TRAVELTIME]);
 				MoveRiders(true, true);
@@ -1317,7 +1321,7 @@ extend class FCW_Platform
 		if (IsFrozen())
 			return;
 
-		while (!bDormant && (!group || group.origin == self))
+		while (bActive && (!group || group.origin == self))
 		{
 			bPlatBlocked = false;
 			oldPos = pos;
@@ -1378,6 +1382,9 @@ extend class FCW_Platform
 			break;
 		}
 
+		if (!CheckNoDelay())
+			return; //Freed itself (ie got destroyed)
+
 		//Advance states
 		if (tics != -1 && --tics <= 0)
 			SetState(curState.nextState);
@@ -1397,7 +1404,7 @@ extend class FCW_Platform
 		args[ARG_TIMETYPE] = timeType;
 		SetTimeFraction(newTime);
 		args[ARG_TIMETYPE] = savedArg;
-		bDormant = false;
+		bActive = true;
 		pPrev = pCurr = pos;
 		pPrevAngs = pCurrAngs = (
 			Normalize180(angle),
@@ -1472,7 +1479,7 @@ extend class FCW_Platform
 		if (plat && plat.group && plat.group.origin)
 			plat = plat.group.origin;
 
-		return (plat && !plat.bDormant && (
+		return (plat && plat.bActive && (
 			plat.pos != plat.oldPos ||
 			plat.angle != plat.oldAngle ||
 			plat.pitch != plat.oldPitch ||
@@ -1490,6 +1497,6 @@ extend class FCW_Platform
 		if (plat && plat.group && plat.group.origin)
 			plat = plat.group.origin;
 
-		return (plat && !plat.bDormant && plat.bPlatBlocked);
+		return (plat && plat.bActive && plat.bPlatBlocked);
 	}
 }
