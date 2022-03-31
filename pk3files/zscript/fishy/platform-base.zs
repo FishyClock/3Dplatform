@@ -158,6 +158,8 @@ extend class FCW_Platform
 	double oldAngle;
 	double oldPitch;
 	double oldRoll;
+	double spawnPitch;
+	double spawnRoll;
 	double time, timeFrac;
 	int holdTime;
 	bool bActive;
@@ -168,10 +170,6 @@ extend class FCW_Platform
 	InterpolationPoint prevNode, firstPrevNode;
 	Array<Actor> riders;
 	FCW_PlatformGroup group;
-	vector3 groupPoint;
-	double groupAngle;
-	double groupPitch;
-	double groupRoll;
 
 	//Unlike PathFollower classes, our interpolations are done with
 	//vector3 coordinates rather than checking InterpolationPoint positions.
@@ -192,6 +190,8 @@ extend class FCW_Platform
 		oldAngle = angle;
 		oldPitch = pitch;
 		oldRoll = roll;
+		spawnPitch = pitch;
+		spawnRoll = roll;
 		time = timeFrac = 0.0;
 		holdTime = 0;
 		bActive = false;
@@ -202,10 +202,6 @@ extend class FCW_Platform
 		prevNode = firstPrevNode = null;
 		riders.Clear();
 		group = null;
-		groupPoint = (0, 0, 0);
-		groupAngle = 0.0;
-		groupPitch = 0.0;
-		groupRoll = 0.0;
 
 		pCurr = pPrev = pNext = pNextNext = (0, 0, 0);
 		pCurrAngs = pPrevAngs = pNextAngs = pNextNextAngs = (0, 0, 0);
@@ -259,11 +255,6 @@ extend class FCW_Platform
 				newGroup.Add(self);
 				newGroup.Add(plat);
 			}
-			groupPoint = pos;
-			groupAngle = Normalize180(angle);
-			groupPitch = Normalize180(pitch);
-			groupRoll = Normalize180(roll);
-
 			return;
 		}
 		firstNode = InterpolationPoint(mo);
@@ -1100,24 +1091,6 @@ extend class FCW_Platform
 	}
 
 	//============================
-	// UpdateGroupInfo
-	//============================
-	private void UpdateGroupInfo ()
-	{
-		if (!group)
-			return;
-
-		group.origin = self;
-		for (let plat = group.GetFirst(); plat; plat = group.GetNext())
-		{
-			plat.groupPoint = plat.pos;
-			plat.groupAngle = Normalize180(plat.angle);
-			plat.groupPitch = Normalize180(plat.pitch);
-			plat.groupRoll = Normalize180(plat.roll);
-		}
-	}
-
-	//============================
 	// MovePlatformGroup
 	//============================
 	private bool MovePlatformGroup (bool teleMove)
@@ -1125,9 +1098,9 @@ extend class FCW_Platform
 		if (!group)
 			return true;
 
-		double delta = DeltaAngle(groupAngle, angle);
-		double piDelta = DeltaAngle(groupPitch, pitch);
-		double roDelta = DeltaAngle(groupRoll, roll);
+		double delta = DeltaAngle(spawnAngle, angle);
+		double piDelta = DeltaAngle(spawnPitch, pitch);
+		double roDelta = DeltaAngle(spawnRoll, roll);
 
 		double cFirst = 0.0, sFirst = 0.0;
 		double cY, sY;
@@ -1152,53 +1125,53 @@ extend class FCW_Platform
 			if (plat.args[ARG_OPTIONS] & OPTFLAG_MIRROR) //No rotations happen here
 			{
 				//The way we mirror movement is by getting the offset going
-				//from the origin's current position to its 'groupPoint'
+				//from the origin's current position to its 'spawnPoint'
 				//and using that to get a offsetted position from
-				//the attached platform's 'groupPoint'.
+				//the attached platform's 'spawnPoint'.
 				//So we pretty much always go in the opposite direction
-				//using our 'groupPoint' as a reference point.
-				vector3 offset = level.Vec3Diff(pos, groupPoint);
-				newPos = level.Vec3Offset(plat.groupPoint, offset);
+				//using our 'spawnPoint' as a reference point.
+				vector3 offset = level.Vec3Diff(pos, spawnPoint);
+				newPos = level.Vec3Offset(plat.spawnPoint, offset);
 
 				if (changeAng)
-					plat.angle = Normalize180(plat.groupAngle - delta);
+					plat.angle = Normalize180(plat.spawnAngle - delta);
 				if (changePi)
-					plat.pitch = Normalize180(plat.groupPitch - piDelta);
+					plat.pitch = Normalize180(plat.spawnPitch - piDelta);
 				if (changeRo)
-					plat.roll = Normalize180(plat.groupRoll - roDelta);
+					plat.roll = Normalize180(plat.spawnRoll - roDelta);
 			}
 			else //Non-mirror movement. Rotations happens here.
 			{
 				if (cFirst == sFirst) //Not called cos() and sin() yet?
 				{
-					cFirst = cos(-groupAngle); sFirst = sin(-groupAngle);
+					cFirst = cos(-spawnAngle); sFirst = sin(-spawnAngle);
 					cY = cos(delta);   sY = sin(delta);
 					cP = cos(piDelta); sP = sin(piDelta);
 					cR = cos(roDelta); sR = sin(roDelta);
-					cLast = cos(groupAngle);   sLast = sin(groupAngle);
+					cLast = cos(spawnAngle);   sLast = sin(spawnAngle);
 				}
-				vector3 offset = level.Vec3Diff(groupPoint, plat.groupPoint);
+				vector3 offset = level.Vec3Diff(spawnPoint, plat.spawnPoint);
 
 				//Rotate the offset. The order here matters.
 				offset.xy = (offset.x*cFirst - offset.y*sFirst, offset.x*sFirst + offset.y*cFirst); //Rotate to 0 angle degrees of origin
 				offset = (offset.x, offset.y*cR - offset.z*sR, offset.y*sR + offset.z*cR);  //X axis (roll)
 				offset = (offset.x*cP + offset.z*sP, offset.y, -offset.x*sP + offset.z*cP); //Y axis (pitch)
 				offset = (offset.x*cY - offset.y*sY, offset.x*sY + offset.y*cY, offset.z);  //Z axis (yaw/angle)
-				offset.xy = (offset.x*cLast - offset.y*sLast, offset.x*sLast + offset.y*cLast); //Rotate back to origin's 'groupAngle'
+				offset.xy = (offset.x*cLast - offset.y*sLast, offset.x*sLast + offset.y*cLast); //Rotate back to origin's 'spawnAngle'
 
 				newPos = level.Vec3Offset(pos, offset);
 
 				if (changeAng)
-					plat.angle = Normalize180(plat.groupAngle + delta);
+					plat.angle = Normalize180(plat.spawnAngle + delta);
 
 				if (changePi || changeRo)
 				{
 					double diff = DeltaAngle(angle, plat.angle);
 					double c = cos(diff), s = sin(diff);
 					if (changePi)
-						plat.pitch = Normalize180(plat.groupPitch + piDelta*c - roDelta*s);
+						plat.pitch = Normalize180(plat.spawnPitch + piDelta*c - roDelta*s);
 					if (changeRo)
-						plat.roll = Normalize180(plat.groupRoll + piDelta*s + roDelta*c);
+						plat.roll = Normalize180(plat.spawnRoll + piDelta*s + roDelta*c);
 				}
 			}
 
@@ -1274,6 +1247,18 @@ extend class FCW_Platform
 	override void Deactivate (Actor activator)
 	{
 		bActive = false;
+		if (group && group.origin != self)
+			return;
+
+		if (!group)
+		{
+			riders.Clear();
+		}
+		else
+		{
+			for (let plat = group.GetFirst(); plat; plat = group.GetNext())
+				plat.riders.Clear();
+		}
 	}
 
 	//============================
@@ -1292,7 +1277,8 @@ extend class FCW_Platform
 				if (bDestroyed || !currNode || currNode.bDestroyed)
 					return; //Abort if we or the node got Thing_Remove()'d
 
-				UpdateGroupInfo();
+				if (group)
+					group.origin = self;
 				GetNewRiders(true, true);
 				SetOrigin(currNode.pos, false);
 				if (args[ARG_OPTIONS] & OPTFLAG_ANGLE)
@@ -1321,6 +1307,12 @@ extend class FCW_Platform
 		if (IsFrozen())
 			return;
 
+		if (group)
+		{
+			if (group.origin == self || (!group.origin && group.GetFirst() == self))
+				group.VerifyMembers();
+		}
+
 		while (bActive && (!group || group.origin == self))
 		{
 			bPlatBlocked = false;
@@ -1338,9 +1330,6 @@ extend class FCW_Platform
 
 			if (holdTime > level.mapTime)
 				break;
-
-			if (group)
-				group.VerifyMembers();
 
 			HandleOldRiders();
 
@@ -1395,7 +1384,8 @@ extend class FCW_Platform
 	//============================
 	private void CommonACSSetup (int newTime, int timeType)
 	{
-		UpdateGroupInfo();
+		if (group)
+			group.origin = self;
 		currNode = null; //Deactivate when done moving
 		prevNode = null;
 		time = 0.0;
