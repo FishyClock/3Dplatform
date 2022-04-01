@@ -192,7 +192,7 @@ extend class FCW_Platform
 		oldRoll = roll;
 		spawnPitch = pitch;
 		spawnRoll = roll;
-		time = timeFrac = 0.0;
+		time = timeFrac = 0;
 		holdTime = 0;
 		bActive = false;
 		bJustStepped = false;
@@ -348,8 +348,8 @@ extend class FCW_Platform
 	//============================
 	private void PushObstacle (Actor pushed, vector3 pushForce)
 	{
-		if (pushForce.z != 0.0 && Distance2D(pushed) >= radius + pushed.radius) //Out of range?
-			pushForce.z = 0.0;
+		if (pushForce.z != 0 && Distance2D(pushed) >= radius + pushed.radius) //Out of range?
+			pushForce.z = 0;
 
 		if (pushForce ~== (0, 0, 0))
 			return;
@@ -963,7 +963,7 @@ extend class FCW_Platform
 		//original function from PathFollower.
 
 		Vector3 dpos = (0, 0, 0);
-		if ((args[ARG_OPTIONS] & OPTFLAG_FACEMOVE) && time > 0.0)
+		if ((args[ARG_OPTIONS] & OPTFLAG_FACEMOVE) && time > 0)
 			dpos = pos;
 
 		vector3 newPos;
@@ -1000,18 +1000,18 @@ extend class FCW_Platform
 				{
 					dpos = pNext - pCurr;
 				}
-				else if (time > 0.0) //Spline
+				else if (time > 0) //Spline
 				{
 					dpos = newPos - dpos;
 				}
 				else if (args[ARG_OPTIONS] & (OPTFLAG_ANGLE | OPTFLAG_PITCH))
-				{	//Spline but with time <= 0.0
+				{	//Spline but with time <= 0
 					dpos = newPos;
 					time = timeFrac;
 					newPos.x = MaybeSplerp(pPrev.x, pCurr.x, pNext.x, pNextNext.x);
 					newPos.y = MaybeSplerp(pPrev.y, pCurr.y, pNext.y, pNextNext.y);
 					newPos.z = MaybeSplerp(pPrev.z, pCurr.z, pNext.z, pNextNext.z);
-					time = 0.0;
+					time = 0;
 					dpos = newPos - dpos;
 					newPos -= dpos;
 				}
@@ -1024,11 +1024,11 @@ extend class FCW_Platform
 				if (args[ARG_OPTIONS] & OPTFLAG_PITCH)
 				{
 					double dist = dpos.xy.Length();
-					pitch = dist ? VectorAngle(dist, -dpos.z) : 0.0;
+					pitch = dist ? VectorAngle(dist, -dpos.z) : 0;
 				}
 				//Adjust roll
 				if (args[ARG_OPTIONS] & OPTFLAG_ROLL)
-					roll = 0.0;
+					roll = 0;
 			}
 			else
 			{
@@ -1102,7 +1102,7 @@ extend class FCW_Platform
 		double piDelta = DeltaAngle(spawnPitch, pitch);
 		double roDelta = DeltaAngle(spawnRoll, roll);
 
-		double cFirst = 0.0, sFirst = 0.0;
+		double cFirst = 0, sFirst = 0;
 		double cY, sY;
 		double cP, sP;
 		double cR, sR;
@@ -1287,7 +1287,7 @@ extend class FCW_Platform
 					pitch = currNode.pitch;
 				if (args[ARG_OPTIONS] & OPTFLAG_ROLL)
 					roll = currNode.roll;
-				time = 0.0;
+				time = 0;
 				holdTime = 0;
 				bJustStepped = true;
 				bActive = true;
@@ -1388,7 +1388,7 @@ extend class FCW_Platform
 			group.origin = self;
 		currNode = null; //Deactivate when done moving
 		prevNode = null;
-		time = 0.0;
+		time = 0;
 		holdTime = 0;
 		let savedArg = args[ARG_TIMETYPE];
 		args[ARG_TIMETYPE] = timeType;
@@ -1405,7 +1405,7 @@ extend class FCW_Platform
 	//============================
 	// Move (ACS utility)
 	//============================
-	static void Move (int platTid, double offX, double offY, double offZ, int newTime, int timeType = OPT_TIMEINTICS, double offAng = 0.0, double offPi = 0.0, double offRo = 0.0)
+	static void Move (int platTid, double offX, double offY, double offZ, int newTime, int timeType = OPT_TIMEINTICS, double offAng = 0, double offPi = 0, double offRo = 0)
 	{
 		let it = level.CreateActorIterator(platTid, "FCW_Platform");
 		FCW_Platform plat;
@@ -1420,7 +1420,7 @@ extend class FCW_Platform
 	//============================
 	// MoveTo (ACS utility)
 	//============================
-	static void MoveTo (int platTid, double newX, double newY, double newZ, int newTime, int timeType = OPT_TIMEINTICS, double offAng = 0.0, double offPi = 0.0, double offRo = 0.0)
+	static void MoveTo (int platTid, double newX, double newY, double newZ, int newTime, int timeType = OPT_TIMEINTICS, double offAng = 0, double offPi = 0, double offRo = 0)
 	{
 		//ACS itself has no 'vector3' variable type so it has to be 3 doubles (floats/fixed point numbers)
 		vector3 newPos = (newX, newY, newZ);
