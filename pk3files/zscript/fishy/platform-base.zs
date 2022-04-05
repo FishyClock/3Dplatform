@@ -510,7 +510,7 @@ extend class FCW_Platform
 			if (abs(it.position.x - mo.pos.x) < blockDist && abs(it.position.y - mo.pos.y) < blockDist)
 			{
 				//'laxZCheck' makes anything above our 'top' legit
-				if (mo.pos.z >= top && (laxZCheck || mo.pos.z <= top + 1.0)) //On top of us?
+				if (mo.pos.z >= top && (laxZCheck || mo.pos.z <= top + double.epsilon)) //On top of us?
 				{
 					if (canCarry && !oldRider)
 						onTopOfMe.Push(mo);
@@ -668,7 +668,7 @@ extend class FCW_Platform
 				moNewPos = mo.pos + level.Vec3Diff(mo.pos, moNewPos);
 
 			//Handle z discrepancy
-			if (moNewPos.z < top && moNewPos.z + mo.height >= top)
+			if (moNewPos.z < top && moNewPos.z + double.epsilon >= top)
 				moNewPos.z = top;
 
 			let moOldNoDropoff = mo.bNoDropoff;
@@ -812,7 +812,7 @@ extend class FCW_Platform
 			//No 3D floors means 'floorZ' is the current sector's floor height.
 
 			//Is 'mo' below our 'top'? Or is there a 3D floor above our 'top' that's also below 'mo'?
-			if (mo.pos.z < top - 1.0 || mo.floorZ > top + 1.0)
+			if (mo.pos.z < top - double.epsilon || mo.floorZ > top + double.epsilon)
 			{
 				riders.Delete(i--);
 				continue;
@@ -838,7 +838,7 @@ extend class FCW_Platform
 			if (mo.tics != 1 && mo.tics != 0)
 				continue; //Don't bother if it's not about to change states (and potentially call A_Chase()/A_Wander())
 
-			if (mo.pos.z > top + 1.0)
+			if (mo.pos.z > top + double.epsilon)
 				continue; //Not exactly on top of us
 
 			if (dist < radius - mo.speed)
