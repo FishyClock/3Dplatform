@@ -62,8 +62,6 @@ class TESTSprite : FCW_Platform
 		{
 			Actor indicator = Spawn("TESTSPritePitchIndicator", pos);
 			indicator.tracer = self;
-			indicator = Spawn("TESTSPriteRollIndicator", pos);
-			indicator.tracer = self;
 		}
 		Stop;
 	}
@@ -88,30 +86,6 @@ class TESTSPritePitchIndicator : Actor
 				return;
 			}
 			SetOrigin(tracer.Vec3Offset(cos(tracer.angle)*tracer.radius, sin(tracer.angle)*tracer.radius, sin(-tracer.pitch)*tracer.radius), true);
-		}
-		Loop;
-	}
-}
-
-class TESTSPriteRollIndicator : Actor
-{
-	Default
-	{
-		+NOINTERACTION;
-		+NOBLOCKMAP;
-	}
-
-	States
-	{
-	Spawn:
-		PLSS AAABBB 1
-		{
-			if (!tracer)
-			{
-				Destroy();
-				return;
-			}
-			SetOrigin(tracer.Vec3Offset(cos(tracer.angle+90)*tracer.radius, cos(tracer.roll)*tracer.radius, sin(tracer.roll)*tracer.radius), true);
 		}
 		Loop;
 	}
