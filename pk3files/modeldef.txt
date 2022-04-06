@@ -8,6 +8,7 @@ Model TESTMooPlatform
 	Offset 0 0 -32
 	AngleOffset 90
 	FrameIndex MODL A 0 0
+	RollOffset 45
 }
 
 Model TESTFloaty
