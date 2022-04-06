@@ -50,28 +50,22 @@ class TESTSprite : FCW_Platform
 {
 	Default
 	{
-		Radius 24;
-		Height 64;
-		+ROLLSPRITE; //This is our indicator for roll changes
+		Radius 64;
+		Height 16;
+		+ROLLSPRITE;
 	}
 
 	States
 	{
 	Spawn:
-		BOSS A 5 NoDelay //Test NoDelay
+		TROO A -1 NoDelay //Test NoDelay
 		{
 			Actor indicator = Spawn("TESTSPritePitchIndicator", pos);
 			indicator.tracer = self;
+			indicator = Spawn("TESTSPriteRollIndicator", pos);
+			indicator.tracer = self;
 		}
-		Goto Baron+1;
-	Baron:
-		BOSS ABCD 5;
-		BOSS A 0 A_Jump(64, "HK");
-		Loop;
-	HK:
-		BOS2 ABCD 5;
-		BOS2 A 0 A_Jump(64, "Baron");
-		Loop;
+		Stop;
 	}
 }
 
@@ -81,22 +75,43 @@ class TESTSPritePitchIndicator : Actor
 	{
 		+NOINTERACTION;
 		+NOBLOCKMAP;
-		+ROLLSPRITE;
 	}
 
 	States
 	{
 	Spawn:
-		BAL7 AAAABBBB 1
+		APLS AAABBB 1
 		{
 			if (!tracer)
 			{
 				Destroy();
 				return;
 			}
-			SetOrigin(tracer.Vec3Offset(cos(tracer.angle)*64, sin(tracer.angle)*64, sin(-tracer.pitch)*64), true);
-			angle = tracer.angle;
-			roll = tracer.roll;
+			SetOrigin(tracer.Vec3Offset(cos(tracer.angle)*tracer.radius, sin(tracer.angle)*tracer.radius, sin(-tracer.pitch)*tracer.radius), true);
+		}
+		Loop;
+	}
+}
+
+class TESTSPriteRollIndicator : Actor
+{
+	Default
+	{
+		+NOINTERACTION;
+		+NOBLOCKMAP;
+	}
+
+	States
+	{
+	Spawn:
+		PLSS AAABBB 1
+		{
+			if (!tracer)
+			{
+				Destroy();
+				return;
+			}
+			SetOrigin(tracer.Vec3Offset(cos(tracer.angle+90)*tracer.radius, cos(tracer.roll)*tracer.radius, sin(tracer.roll)*tracer.radius), true);
 		}
 		Loop;
 	}
