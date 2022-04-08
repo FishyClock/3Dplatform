@@ -348,16 +348,21 @@ extend class FCW_Platform
 	//============================
 	private void PushObstacle (Actor pushed, vector3 pushForce)
 	{
-		if (pushForce.z != 0 && Distance2D(pushed) >= radius + pushed.radius) //Out of range?
+		//Don't bother if it's close to nothing
+		if (pushForce.x ~== 0) pushForce.x = 0;
+		if (pushForce.y ~== 0) pushForce.y = 0;
+		if (pushForce.z ~== 0) pushForce.z = 0;
+
+		if (pushForce.z && Distance2D(pushed) >= radius + pushed.radius) //Out of range?
 			pushForce.z = 0;
 
-		if (pushForce ~== (0, 0, 0))
+		if (pushForce == (0, 0, 0))
 			return;
 
 		if (pos.xy != pushed.pos.xy && pushForce.xy != (0, 0))
 		{
 			double delta = DeltaAngle(VectorAngle(pushForce.x, pushForce.y), AngleTo(pushed));
-			if (delta > 90.0 || delta < -90.0)
+			if (delta > 90 || delta < -90)
 				pushForce.xy = RotateVector(pushForce.xy, delta); //Push away from platform's center
 		}
 		pushed.vel += pushForce;
@@ -365,13 +370,13 @@ extend class FCW_Platform
 		if (args[ARG_CRUSHDMG] <= 0)
 			return;
 
-		let oldZ = pushed.pos.z;
-		pushed.AddZ(pushForce.z);
-		bool fits = pushed.CheckMove(pushed.Vec2Offset(pushForce.x, pushForce.y));
-		pushed.SetZ(oldZ);
-
-		if (!fits)
+		double testZ = pushed.pos.z + pushForce.z;
+		if (testZ < pushed.floorZ ||
+			testZ + pushed.height > pushed.ceilingZ ||
+			!pushed.CheckMove(pushed.Vec2Offset(pushForce.x, pushForce.y)))
+		{
 			CrushObstacle(pushed);
+		}
 	}
 
 	//============================
