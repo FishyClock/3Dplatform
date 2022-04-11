@@ -878,7 +878,7 @@ extend class FCW_Platform
 	//============================
 	private double MaybeLerp (double p1, double p2)
 	{
-		return (p1 == p2) ? p1 : (p1 + time * (p2 - p1));
+		return (p1 ~== p2) ? p1 : (p1 + time * (p2 - p1));
 	}
 
 	//============================
@@ -886,7 +886,7 @@ extend class FCW_Platform
 	//============================
 	private double MaybeSplerp (double p1, double p2, double p3, double p4)
 	{
-		if (p2 == p3)
+		if (p2 ~== p3)
 			return p2;
 
 		// This was copy-pasted from PathFollower's Splerp() function
@@ -1167,16 +1167,16 @@ extend class FCW_Platform
 				newPos = level.Vec3Offset(pos, offset);
 
 				if (changeAng)
-					plat.angle = Normalize180(plat.spawnAngle + delta);
+					plat.angle = plat.spawnAngle + delta;
 
 				if (changePi || changeRo)
 				{
-					double diff = DeltaAngle(angle, plat.angle);
+					double diff = DeltaAngle(spawnAngle, plat.spawnAngle);
 					double c = cos(diff), s = sin(diff);
 					if (changePi)
-						plat.pitch = Normalize180(plat.spawnPitch + piDelta*c - roDelta*s);
+						plat.pitch = plat.spawnPitch + piDelta*c - roDelta*s;
 					if (changeRo)
-						plat.roll = Normalize180(plat.spawnRoll + piDelta*s + roDelta*c);
+						plat.roll = plat.spawnRoll + piDelta*s + roDelta*c;
 				}
 			}
 
