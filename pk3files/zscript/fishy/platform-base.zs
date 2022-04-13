@@ -154,6 +154,8 @@ extend class FCW_Platform
 		NODEARG_HOLDTIME	= 2,
 	};
 
+	const TOPEPSILON = 1.0;
+
 	vector3 oldPos;
 	double oldAngle;
 	double oldPitch;
@@ -515,7 +517,7 @@ extend class FCW_Platform
 			if (abs(it.position.x - mo.pos.x) < blockDist && abs(it.position.y - mo.pos.y) < blockDist)
 			{
 				//'laxZCheck' makes anything above our 'top' legit
-				if (mo.pos.z >= top && (laxZCheck || mo.pos.z <= top + 1.0)) //On top of us?
+				if (mo.pos.z >= top && (laxZCheck || mo.pos.z <= top + TOPEPSILON)) //On top of us?
 				{
 					if (canCarry && !oldRider)
 						onTopOfMe.Push(mo);
@@ -600,7 +602,7 @@ extend class FCW_Platform
 		for (int i = 0; i < riders.Size(); ++i)
 		{
 			let mo = riders[i];
-			double moTop = mo.pos.z + mo.height + 1.0;
+			double moTop = mo.pos.z + mo.height + TOPEPSILON;
 
 			for (int iOther = 0; iOther < miscResults.Size(); ++iOther)
 			{
@@ -651,7 +653,7 @@ extend class FCW_Platform
 			double piDelta = DeltaAngle(oldPitch, pitch)*2;
 			double roDelta = DeltaAngle(oldRoll, roll)*2;
 			piAndRoOffset = (cos(angle)*piDelta, sin(angle)*piDelta) + //Front/back
-				(cos(angle-90.0)*roDelta, sin(angle-90.0)*roDelta); //Right/left
+				(cos(angle-90)*roDelta, sin(angle-90)*roDelta); //Right/left
 		}
 
 		Array<double> preMovePos; //Sadly we can't have a vector2/3 dyn array
@@ -791,13 +793,13 @@ extend class FCW_Platform
 			if (args[ARG_OPTIONS] & OPTFLAG_PITCH)
 			{
 				pitch = Normalize180(pitch);
-				isSteep = (abs(pitch) >= 45.0 && abs(pitch) <= 135.0);
+				isSteep = (abs(pitch) >= 45 && abs(pitch) <= 135);
 			}
 
 			if (!isSteep && (args[ARG_OPTIONS] & OPTFLAG_ROLL))
 			{
 				roll = Normalize180(roll);
-				isSteep = (abs(roll) >= 45.0 && abs(roll) <= 135.0);
+				isSteep = (abs(roll) >= 45 && abs(roll) <= 135);
 			}
 		}
 
@@ -817,7 +819,7 @@ extend class FCW_Platform
 			//No 3D floors means 'floorZ' is the current sector's floor height.
 
 			//Is 'mo' below our 'top'? Or is there a 3D floor above our 'top' that's also below 'mo'?
-			if (mo.pos.z < top - 1.0 || mo.floorZ > top + 1.0)
+			if (mo.pos.z < top - TOPEPSILON || mo.floorZ > top + TOPEPSILON)
 			{
 				riders.Delete(i--);
 				continue;
@@ -830,6 +832,7 @@ extend class FCW_Platform
 				continue;
 			}
 
+			//See if we should keep it away from the edge
 			if (isSteep) //We're a pitch/roll changing platform that's currently "steep"?
 				continue; //Then let the native AI handle it; if it wants to fall off, let it fall off.
 
@@ -839,17 +842,16 @@ extend class FCW_Platform
 			if (mo.bDropoff || mo.bJumpDown) //Is supposed to fall off of tall drops or jump down?
 				continue;
 
-			//See if we should keep it away from the edge
 			if (mo.tics != 1 && mo.tics != 0)
 				continue; //Don't bother if it's not about to change states (and potentially call A_Chase()/A_Wander())
 
-			if (mo.pos.z > top + 1.0)
+			if (mo.pos.z > top + TOPEPSILON)
 				continue; //Not exactly on top of us
 
 			if (dist < radius - mo.speed)
 				continue; //Not close to platform's edge
 
-			if (mo.pos.z - mo.curSector.NextLowestFloorAt(mo.pos.x, mo.pos.y, mo.pos.z) <= mo.maxDropoffHeight)
+			if (mo.pos.z - mo.floorZ <= mo.maxDropoffHeight)
 				continue; //Monster is close to the ground (which includes 3D floors) so let it walk off
 
 			//Make your bog-standard idTech1 AI
@@ -1139,11 +1141,11 @@ extend class FCW_Platform
 				newPos = level.Vec3Offset(plat.spawnPoint, offset);
 
 				if (changeAng)
-					plat.angle = Normalize180(plat.spawnAngle - delta);
+					plat.angle = plat.spawnAngle - delta;
 				if (changePi)
-					plat.pitch = Normalize180(plat.spawnPitch - piDelta);
+					plat.pitch = plat.spawnPitch - piDelta;
 				if (changeRo)
-					plat.roll = Normalize180(plat.spawnRoll - roDelta);
+					plat.roll = plat.spawnRoll - roDelta;
 			}
 			else //Non-mirror movement. Rotations happens here.
 			{
