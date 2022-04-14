@@ -158,6 +158,7 @@ extend class FCW_Platform
 	};
 
 	const TOPEPSILON = 1.0;
+	const ACTIVATION_AGE = 1;
 
 	vector3 oldPos;
 	double oldAngle;
@@ -175,6 +176,7 @@ extend class FCW_Platform
 	InterpolationPoint prevNode, firstPrevNode;
 	Array<Actor> riders;
 	FCW_PlatformGroup group;
+	Actor delayedActivator;
 
 	//Unlike PathFollower classes, our interpolations are done with
 	//vector3 coordinates rather than checking InterpolationPoint positions.
@@ -207,6 +209,7 @@ extend class FCW_Platform
 		prevNode = firstPrevNode = null;
 		riders.Clear();
 		group = null;
+		delayedActivator = null;
 
 		pCurr = pPrev = pNext = pNextNext = (0, 0, 0);
 		pCurrAngs = pPrevAngs = pNextAngs = pNextNextAngs = (0, 0, 0);
@@ -1270,6 +1273,18 @@ extend class FCW_Platform
 	{
 		if (!bActive || (group && group.origin != self))
 		{
+			//Do not activate too early because it's possible
+			//there are platforms that have yet to attach
+			//themselves to our group which means not all of
+			//them would move with the origin (self) in the
+			//first tic after activation.
+			//This problem is apparent if the first interpolation
+			//point has a defined hold time.
+			if (GetAge() < ACTIVATION_AGE)
+			{
+				delayedActivator = activator ? activator : Actor(self);
+				return;
+			}
 			currNode = firstNode;
 			prevNode = firstPrevNode;
 
@@ -1308,6 +1323,12 @@ extend class FCW_Platform
 	{
 		if (IsFrozen())
 			return;
+
+		if (delayedActivator && GetAge() >= ACTIVATION_AGE)
+		{
+			Activate(delayedActivator);
+			delayedActivator = null;
+		}
 
 		if (group)
 		{
