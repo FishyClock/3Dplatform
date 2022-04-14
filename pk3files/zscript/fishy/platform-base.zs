@@ -33,23 +33,25 @@ class FCW_Platform : Actor abstract
 		//https://zdoom.org/wiki/Editor_keys
 		//https://zdoom.org/wiki/Making_configurable_actors_in_DECORATE
 
-		//$Arg0 Target
+		//$Arg0 Interpolation Point
 		//$Arg0Type 14
-		//$Arg0Tooltip Must be a interpolation point (path to follow) or another platform (to attach to).
 
 		//$Arg1 Options
 		//$Arg1Type 12
 		//Yes, this enum definition has to be on one line
-		//$Arg1Enum {1 = "Linear path"; 2 = "Use target angle"; 4 = "Use target pitch"; 8 = "Use target roll"; 16 = "Face movement direction"; 32 = "Don't clip against geometry and other platforms"; 64 = "Start active"; 128 = "Mirror group origin's movement";}
-		//$Arg1Tooltip NOTE: When being moved as part of a group, only flags 2, 4, 8 and 32 have any effect. Flag 128 only makes sense if in a group.
+		//$Arg1Enum {1 = "Linear path"; 2 = "Use point angle / Group move: Rotate angle"; 4 = "Use point pitch / Group move: Rotate pitch"; 8 = "Use point roll / Group move: Rotate roll"; 16 = "Face movement direction"; 32 = "Don't clip against geometry and other platforms"; 64 = "Start active"; 128 = "Group move: Mirror group origin's movement";}
+		//$Arg1Tooltip Anything with 'Group move' affects movement imposed by the group's origin.\nIt does nothing for the group's origin itself.\nThe 'group origin' is the platform that the others move with and orbit around.
 
 		//$Arg2 Travel/Hold time type
 		//$Arg2Type 11
 		//$Arg2Enum {0 = "Octics (default)"; 1 = "Tics"; 2 = "Seconds";}
-		//$Arg2Tooltip Here you can specify travel time and hold time to be interpreted as something other than octics.\nNOTE: Does nothing if attached to another platform.
+		//$Arg2Tooltip Does nothing if being moved by group origin.\nThe 'group origin' is the platform that the others move with and orbit around.
 
-		//$Arg3 Crush Damage
-		//$Arg3Tooltip The damage is applied once per 4 tics.
+		//$Arg3 Group With Platform(s)
+		//$Arg3Type 14
+
+		//$Arg4 Crush Damage
+		//$Arg4Tooltip The damage is applied once per 4 tics.
 
 		+ACTLIKEBRIDGE;
 		+NOGRAVITY;
@@ -130,10 +132,11 @@ extend class FCW_Platform
 {
 	enum ArgValues
 	{
-		ARG_TARGET		= 0,
-		ARG_OPTIONS		= 1,
-		ARG_TIMETYPE	= 2,
-		ARG_CRUSHDMG	= 3,
+		ARG_NODETID			= 0,
+		ARG_OPTIONS			= 1,
+		ARG_TIMETYPE		= 2,
+		ARG_GROUPTID		= 3,
+		ARG_CRUSHDMG		= 4,
 
 		//For "ARG_OPTIONS"
 		OPTFLAG_LINEAR			= 1,
@@ -146,8 +149,8 @@ extend class FCW_Platform
 		OPTFLAG_MIRROR			= 128,
 
 		//For "ARG_TIMETYPE"
-		OPT_TIMEINTICS		= 1,
-		OPT_TIMEINSECS		= 2,
+		TIMETYPE_TICS		= 1,
+		TIMETYPE_SECS		= 2,
 
 		//"InterpolationPoint" args (that we check)
 		NODEARG_TRAVELTIME	= 1,
@@ -216,50 +219,42 @@ extend class FCW_Platform
 	{
 		Super.PostBeginPlay();
 
-		if (!args[ARG_TARGET])
-			return; //Print no warnings if we're not supposed to look for anything
-
-		String prefix = "\ckPlatform class '" .. GetClassName() .. "' with tid " .. tid .. ":\nat position " .. pos .. ":\n";
-		if (args[ARG_TARGET] == tid)
+		let it = level.CreateActorIterator(args[ARG_GROUPTID], "FCW_Platform");
+		FCW_Platform plat;
+		while (plat = FCW_Platform(it.Next()))
 		{
-			Console.Printf(prefix .. "Is targeting itself.");
-			return;
-		}
-
-		let it = level.CreateActorIterator(args[ARG_TARGET]);
-		Actor mo = it.Next();
-		while (mo && !(mo is "InterpolationPoint") && !(mo is "FCW_Platform"))
-			mo = it.Next();
-
-		if (!mo)
-		{
-			Console.Printf(prefix .. "Can't find suitable target with tid " .. args[ARG_TARGET] .. ".\nTarget must be a interpolation point (path to follow) or another platform (to attach to).");
-			return;
-		}
-
-		if (mo is "FCW_Platform")
-		{
-			let plat = FCW_Platform(mo);
 			if (plat.group) //Target is in its own group?
 			{
 				if (!group) //We don't have a group?
 					plat.group.Add(self);
 				else if (plat.group != group) //Both are in different groups?
 					plat.group.MergeWith(group);
+				//else - nothing happens because it's the same group or plat == self
 			}
 			else if (group) //We're in a group but target doesn't have a group?
 			{
 				group.Add(plat);
 			}
-			else //Neither are in a group
+			else if (plat != self) //Neither are in a group
 			{
 				let newGroup = FCW_PlatformGroup.Create();
 				newGroup.Add(self);
 				newGroup.Add(plat);
 			}
+		}
+
+		if (!args[ARG_NODETID])
+			return; //Print no warnings if we're not supposed to have a interpolation point
+
+		String prefix = "\ckPlatform class '" .. GetClassName() .. "' with tid " .. tid .. ":\nat position " .. pos .. ":\n";
+
+		it = level.CreateActorIterator(args[ARG_NODETID], "InterpolationPoint");
+		firstNode = InterpolationPoint(it.Next());
+		if (!firstNode)
+		{
+			Console.Printf(prefix .. "Can't find interpolation point with tid " .. args[ARG_NODETID] .. ".");
 			return;
 		}
-		firstNode = InterpolationPoint(mo);
 
 		//Verify the path has enough nodes
 		firstNode.FormChain();
@@ -388,10 +383,10 @@ extend class FCW_Platform
 	{
 		switch (args[ARG_TIMETYPE])
 		{
-			case OPT_TIMEINTICS:
+			case TIMETYPE_TICS:
 				timeFrac = 1.0 / max(1, newTime); //Interpret 'newTime' as tics
 				break;
-			case OPT_TIMEINSECS:
+			case TIMETYPE_SECS:
 				timeFrac = 1.0 / (max(1, newTime) * TICRATE); //Interpret 'newTime' as seconds
 				break;
 			default:
@@ -410,10 +405,10 @@ extend class FCW_Platform
 
 		switch (args[ARG_TIMETYPE])
 		{
-			case OPT_TIMEINTICS:
+			case TIMETYPE_TICS:
 				holdTime = level.mapTime + newTime; //Interpret 'newTime' as tics
 				break;
-			case OPT_TIMEINSECS:
+			case TIMETYPE_SECS:
 				holdTime = level.mapTime + newTime * TICRATE; //Interpret 'newTime' as seconds
 				break;
 			default:
@@ -1412,7 +1407,7 @@ extend class FCW_Platform
 	//============================
 	// Move (ACS utility)
 	//============================
-	static void Move (int platTid, double offX, double offY, double offZ, int newTime, int timeType = OPT_TIMEINTICS, double offAng = 0, double offPi = 0, double offRo = 0)
+	static void Move (int platTid, double offX, double offY, double offZ, int newTime, int timeType = TIMETYPE_TICS, double offAng = 0, double offPi = 0, double offRo = 0)
 	{
 		let it = level.CreateActorIterator(platTid, "FCW_Platform");
 		FCW_Platform plat;
@@ -1427,7 +1422,7 @@ extend class FCW_Platform
 	//============================
 	// MoveTo (ACS utility)
 	//============================
-	static void MoveTo (int platTid, double newX, double newY, double newZ, int newTime, int timeType = OPT_TIMEINTICS, double offAng = 0, double offPi = 0, double offRo = 0)
+	static void MoveTo (int platTid, double newX, double newY, double newZ, int newTime, int timeType = TIMETYPE_TICS, double offAng = 0, double offPi = 0, double offRo = 0)
 	{
 		//ACS itself has no 'vector3' variable type so it has to be 3 doubles (floats/fixed point numbers)
 		vector3 newPos = (newX, newY, newZ);
@@ -1444,7 +1439,7 @@ extend class FCW_Platform
 	//============================
 	// MoveToSpot (ACS utility)
 	//============================
-	static void MoveToSpot (int platTid, int spotTid, int newTime, int timeType = OPT_TIMEINTICS)
+	static void MoveToSpot (int platTid, int spotTid, int newTime, int timeType = TIMETYPE_TICS)
 	{
 		//This is the only place you can make a platform use any actor as a travel destination
 		let it = level.CreateActorIterator(spotTid);
