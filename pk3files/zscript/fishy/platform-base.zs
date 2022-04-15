@@ -29,6 +29,8 @@ class FCW_Platform : Actor abstract
 	Default
 	{
 		//Some editor keys for Ultimate Doom Builder.
+		//All editor key definitions have to be on one line
+		//or UDB can't parse them correctly. (Yes, even "Arg1Enum")
 		//For more info:
 		//https://zdoom.org/wiki/Editor_keys
 		//https://zdoom.org/wiki/Making_configurable_actors_in_DECORATE
@@ -38,9 +40,8 @@ class FCW_Platform : Actor abstract
 
 		//$Arg1 Options
 		//$Arg1Type 12
-		//Yes, this enum definition has to be on one line
 		//$Arg1Enum {1 = "Linear path"; 2 = "Use point angle / Group move: Rotate angle"; 4 = "Use point pitch / Group move: Rotate pitch"; 8 = "Use point roll / Group move: Rotate roll"; 16 = "Face movement direction"; 32 = "Don't clip against geometry and other platforms"; 64 = "Start active"; 128 = "Group move: Mirror group origin's movement";}
-		//$Arg1Tooltip Anything with 'Group move' affects movement imposed by the group's origin.\nIt does nothing for the group's origin itself.\nThe 'group origin' is the platform that the others move with and orbit around.
+		//$Arg1Tooltip Anything with 'Group move' affects movement imposed by the group origin.\nIt does nothing for the group origin itself.\nThe 'group origin' is the platform that the others move with and orbit around.
 
 		//$Arg2 Travel/Hold time type
 		//$Arg2Type 11
@@ -152,7 +153,7 @@ extend class FCW_Platform
 		TIMETYPE_TICS		= 1,
 		TIMETYPE_SECS		= 2,
 
-		//"InterpolationPoint" args (that we check)
+		//"InterpolationPoint" args that we check
 		NODEARG_TRAVELTIME	= 1,
 		NODEARG_HOLDTIME	= 2,
 	};
@@ -1127,7 +1128,7 @@ extend class FCW_Platform
 			bool changeRo = (plat.args[ARG_OPTIONS] & OPTFLAG_ROLL);
 
 			vector3 newPos;
-			if (plat.args[ARG_OPTIONS] & OPTFLAG_MIRROR) //No rotations happen here
+			if (plat.args[ARG_OPTIONS] & OPTFLAG_MIRROR)
 			{
 				//The way we mirror movement is by getting the offset going
 				//from the origin's current position to its 'spawnPoint'
@@ -1145,7 +1146,7 @@ extend class FCW_Platform
 				if (changeRo)
 					plat.roll = plat.spawnRoll - roDelta;
 			}
-			else //Non-mirror movement. Rotations happens here.
+			else //Non-mirror movement. Orbiting happens here.
 			{
 				if (cFirst == sFirst) //Not called cos() and sin() yet?
 				{
