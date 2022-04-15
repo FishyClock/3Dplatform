@@ -1388,7 +1388,7 @@ extend class FCW_Platform
 
 				if (!currNode || !currNode.next)
 					Deactivate(self);
-				else if ((args[ARG_OPTIONS] & OPTFLAG_LINEAR) && !currNode.next.next)
+				else if (!(args[ARG_OPTIONS] & OPTFLAG_LINEAR) && !currNode.next.next)
 					Deactivate(self);
 			}
 			break;
