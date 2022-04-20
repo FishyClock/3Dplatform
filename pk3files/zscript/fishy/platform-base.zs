@@ -43,7 +43,7 @@ class FCW_Platform : Actor abstract
 		//$Arg1Enum {1 = "Linear path"; 2 = "Use point angle / Group move: Rotate angle"; 4 = "Use point pitch / Group move: Rotate pitch"; 8 = "Use point roll / Group move: Rotate roll"; 16 = "Face movement direction"; 32 = "Don't clip against geometry and other platforms"; 64 = "Start active"; 128 = "Group move: Mirror group origin's movement";}
 		//$Arg1Tooltip Anything with 'Group move' affects movement imposed by the group origin.\nIt does nothing for the group origin itself.\nThe 'group origin' is the platform that the others move with and orbit around.
 
-		//$Arg2 Travel/Hold time type
+		//$Arg2 Travel/Hold time unit
 		//$Arg2Type 11
 		//$Arg2Enum {0 = "Octics (default)"; 1 = "Tics"; 2 = "Seconds";}
 		//$Arg2Tooltip Does nothing if being moved by group origin.\nThe 'group origin' is the platform that the others move with and orbit around.
@@ -135,7 +135,7 @@ extend class FCW_Platform
 	{
 		ARG_NODETID			= 0,
 		ARG_OPTIONS			= 1,
-		ARG_TIMETYPE		= 2,
+		ARG_TIMEUNIT		= 2,
 		ARG_GROUPTID		= 3,
 		ARG_CRUSHDMG		= 4,
 
@@ -149,9 +149,10 @@ extend class FCW_Platform
 		OPTFLAG_STARTACTIVE		= 64,
 		OPTFLAG_MIRROR			= 128,
 
-		//For "ARG_TIMETYPE"
-		TIMETYPE_TICS		= 1,
-		TIMETYPE_SECS		= 2,
+		//For "ARG_TIMEUNIT"
+		TIMEUNIT_OCTICS		= 0,
+		TIMEUNIT_TICS		= 1,
+		TIMEUNIT_SECS		= 2,
 
 		//"InterpolationPoint" args that we check
 		NODEARG_TRAVELTIME	= 1,
@@ -385,16 +386,17 @@ extend class FCW_Platform
 	//============================
 	private void SetTimeFraction (int newTime)
 	{
-		switch (args[ARG_TIMETYPE])
+		switch (args[ARG_TIMEUNIT])
 		{
-			case TIMETYPE_TICS:
+			default:
+			case TIMEUNIT_OCTICS:
+				timeFrac = 8.0 / (max(1, newTime) * TICRATE); //Interpret 'newTime' as octics
+				break;
+			case TIMEUNIT_TICS:
 				timeFrac = 1.0 / max(1, newTime); //Interpret 'newTime' as tics
 				break;
-			case TIMETYPE_SECS:
+			case TIMEUNIT_SECS:
 				timeFrac = 1.0 / (max(1, newTime) * TICRATE); //Interpret 'newTime' as seconds
-				break;
-			default:
-				timeFrac = 8.0 / (max(1, newTime) * TICRATE); //Interpret 'newTime' as octics
 				break;
 		}
 	}
@@ -407,16 +409,17 @@ extend class FCW_Platform
 		if (newTime <= 0)
 			return;
 
-		switch (args[ARG_TIMETYPE])
+		switch (args[ARG_TIMEUNIT])
 		{
-			case TIMETYPE_TICS:
+			default:
+			case TIMEUNIT_OCTICS:
+				holdTime = level.mapTime + newTime * TICRATE / 8; //Interpret 'newTime' as octics
+				break;
+			case TIMEUNIT_TICS:
 				holdTime = level.mapTime + newTime; //Interpret 'newTime' as tics
 				break;
-			case TIMETYPE_SECS:
+			case TIMEUNIT_SECS:
 				holdTime = level.mapTime + newTime * TICRATE; //Interpret 'newTime' as seconds
-				break;
-			default:
-				holdTime = level.mapTime + newTime * TICRATE / 8; //Interpret 'newTime' as octics
 				break;
 		}
 	}
@@ -1406,7 +1409,7 @@ extend class FCW_Platform
 	//============================
 	// CommonACSSetup
 	//============================
-	private void CommonACSSetup (int newTime, int timeType)
+	private void CommonACSSetup (int newTime)
 	{
 		if (group)
 			group.origin = self;
@@ -1414,10 +1417,7 @@ extend class FCW_Platform
 		prevNode = null;
 		time = 0;
 		holdTime = 0;
-		let savedArg = args[ARG_TIMETYPE];
-		args[ARG_TIMETYPE] = timeType;
 		SetTimeFraction(newTime);
-		args[ARG_TIMETYPE] = savedArg;
 		bActive = true;
 		pPrev = pCurr = pos;
 		pPrevAngs = pCurrAngs = (
@@ -1429,13 +1429,13 @@ extend class FCW_Platform
 	//============================
 	// Move (ACS utility)
 	//============================
-	static void Move (int platTid, double offX, double offY, double offZ, int newTime, int timeType = TIMETYPE_TICS, double offAng = 0, double offPi = 0, double offRo = 0)
+	static void Move (int platTid, double offX, double offY, double offZ, int newTime, double offAng = 0, double offPi = 0, double offRo = 0)
 	{
 		let it = level.CreateActorIterator(platTid, "FCW_Platform");
 		FCW_Platform plat;
 		while (plat = FCW_Platform(it.Next()))
 		{
-			plat.CommonACSSetup(newTime, timeType);
+			plat.CommonACSSetup(newTime);
 			plat.pNext = plat.pNextNext = plat.Vec3Offset(offX, offY, offZ);
 			plat.pNextAngs = plat.pNextNextAngs = plat.pCurrAngs + (offAng, offPi, offRo);
 		}
@@ -1444,7 +1444,7 @@ extend class FCW_Platform
 	//============================
 	// MoveTo (ACS utility)
 	//============================
-	static void MoveTo (int platTid, double newX, double newY, double newZ, int newTime, int timeType = TIMETYPE_TICS, double offAng = 0, double offPi = 0, double offRo = 0)
+	static void MoveTo (int platTid, double newX, double newY, double newZ, int newTime, double offAng = 0, double offPi = 0, double offRo = 0)
 	{
 		//ACS itself has no 'vector3' variable type so it has to be 3 doubles (floats/fixed point numbers)
 		vector3 newPos = (newX, newY, newZ);
@@ -1452,7 +1452,7 @@ extend class FCW_Platform
 		FCW_Platform plat;
 		while (plat = FCW_Platform(it.Next()))
 		{
-			plat.CommonACSSetup(newTime, timeType);
+			plat.CommonACSSetup(newTime);
 			plat.pNext = plat.pNextNext = plat.pos + level.Vec3Diff(plat.pos, newPos); //Make it portal aware
 			plat.pNextAngs = plat.pNextNextAngs = plat.pCurrAngs + (offAng, offPi, offRo);
 		}
@@ -1461,7 +1461,7 @@ extend class FCW_Platform
 	//============================
 	// MoveToSpot (ACS utility)
 	//============================
-	static void MoveToSpot (int platTid, int spotTid, int newTime, int timeType = TIMETYPE_TICS)
+	static void MoveToSpot (int platTid, int spotTid, int newTime)
 	{
 		//This is the only place you can make a platform use any actor as a travel destination
 		let it = level.CreateActorIterator(spotTid);
@@ -1473,7 +1473,7 @@ extend class FCW_Platform
 		FCW_Platform plat;
 		while (plat = FCW_Platform(it.Next()))
 		{
-			plat.CommonACSSetup(newTime, timeType);
+			plat.CommonACSSetup(newTime);
 			plat.pNext = plat.pNextNext = plat.pos + plat.Vec3To(spot); //Make it portal aware
 			plat.pNextAngs = plat.pNextNextAngs = plat.pCurrAngs + (
 				DeltaAngle(plat.pCurrAngs.x, spot.angle),
@@ -1512,5 +1512,30 @@ extend class FCW_Platform
 			plat = plat.group.origin;
 
 		return (plat && plat.bActive && plat.bPlatBlocked);
+	}
+
+	//============================
+	// SetTimeUnitTo* (ACS utility)
+	//============================
+	static void SetTimeUnitToOctics (int platTid)
+	{
+		let it = level.CreateActorIterator(platTid, "FCW_Platform");
+		Actor plat;
+		while (plat = it.Next())
+			plat.args[ARG_TIMEUNIT] = TIMEUNIT_OCTICS;
+	}
+	static void SetTimeUnitToTics (int platTid)
+	{
+		let it = level.CreateActorIterator(platTid, "FCW_Platform");
+		Actor plat;
+		while (plat = it.Next())
+			plat.args[ARG_TIMEUNIT] = TIMEUNIT_TICS;
+	}
+	static void SetTimeUnitToSeconds (int platTid)
+	{
+		let it = level.CreateActorIterator(platTid, "FCW_Platform");
+		Actor plat;
+		while (plat = it.Next())
+			plat.args[ARG_TIMEUNIT] = TIMEUNIT_SECS;
 	}
 }
