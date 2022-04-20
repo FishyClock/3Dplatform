@@ -43,12 +43,12 @@ class FCW_Platform : Actor abstract
 		//$Arg1Enum {1 = "Linear path"; 2 = "Use point angle / Group move: Rotate angle"; 4 = "Use point pitch / Group move: Rotate pitch"; 8 = "Use point roll / Group move: Rotate roll"; 16 = "Face movement direction"; 32 = "Don't clip against geometry and other platforms"; 64 = "Start active"; 128 = "Group move: Mirror group origin's movement";}
 		//$Arg1Tooltip Anything with 'Group move' affects movement imposed by the group origin.\nIt does nothing for the group origin itself.\nThe 'group origin' is the platform that the others move with and orbit around.
 
-		//$Arg2 Travel/Hold time unit
+		//$Arg2 Travel/Hold Time Unit
 		//$Arg2Type 11
 		//$Arg2Enum {0 = "Octics (default)"; 1 = "Tics"; 2 = "Seconds";}
 		//$Arg2Tooltip Does nothing if being moved by group origin.\nThe 'group origin' is the platform that the others move with and orbit around.
 
-		//$Arg3 Group With Platform(s)
+		//$Arg3 Platform(s) To Group With
 		//$Arg3Type 14
 
 		//$Arg4 Crush Damage
