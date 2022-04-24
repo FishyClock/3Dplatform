@@ -669,19 +669,10 @@ extend class FCW_Platform
 			offset.xy += piAndRoOffset;
 			vector3 moNewPos = level.Vec3Offset(pos, offset);
 
-			//TryMove() has its own internal handling of portals which is
-			//a problem if 'moNewPos' is already through a portal from the platform's
-			//position. What it wants/needs is a offsetted position from 'mo' assuming
-			//no portals have been crossed yet.
-			if (!teleMove)
-				moNewPos = mo.pos + level.Vec3Diff(mo.pos, moNewPos);
-
 			//Handle z discrepancy
 			if (moNewPos.z < top && moNewPos.z + mo.height >= top)
 				moNewPos.z = top;
 
-			let moOldNoDropoff = mo.bNoDropoff;
-			mo.bNoDropoff = false;
 			bool moved;
 			if (teleMove)
 			{
@@ -690,18 +681,61 @@ extend class FCW_Platform
 			}
 			else
 			{
-				mo.SetZ(moNewPos.z);
-				moved = mo.TryMove(moNewPos.xy, 1);
-			}
+				int maxSteps = 1;
+				vector3 stepMove = level.Vec3Diff(mo.pos, moNewPos);
 
-			//Take into account riders getting Thing_Remove()'d
-			//when they activate lines.
-			if (!mo || mo.bDestroyed)
-			{
-				riders.Delete(i--);
-				continue;
+				//If the move is equal or larger than the rider's radius
+				//then it has to be split up into smaller steps.
+				//This is needed for proper collision and to ensure
+				//lines with specials aren't skipped.
+				double maxMove = max(1, mo.radius - 1);
+				double moveSpeed = max(abs(stepMove.x), abs(stepMove.y));
+				if (moveSpeed > maxMove)
+				{
+					maxSteps = int(1 + moveSpeed / maxMove);
+					stepMove /= maxSteps;
+				}
+
+				//NODROPOFF overrides TryMove()'s second argument.
+				//the rider should be treated like a flying object.
+				let moOldNoDropoff = mo.bNoDropoff;
+				mo.bNoDropoff = false;
+				moved = true;
+				for (int step = 0; step < maxSteps; ++step)
+				{
+					let moOldAngle = mo.angle;
+					mo.AddZ(stepMove.z);
+					vector2 tryPos = mo.pos.xy + stepMove.xy;
+					if (!mo.TryMove(tryPos, 1))
+					{
+						moved = false;
+						break;
+					}
+
+					//Take into account riders getting Thing_Remove()'d
+					//when they activate lines.
+					if (!mo || mo.bDestroyed)
+						break;
+
+					if (tryPos != mo.pos.xy && step < maxSteps-1)
+					{
+						//If 'mo' has passed through a portal then
+						//adjust 'stepMove' if its angle changed.
+						double angDiff = DeltaAngle(moOldAngle, mo.angle);
+						if (angDiff)
+							stepMove.xy = RotateVector(stepMove.xy, angDiff);
+					}
+				}
+
+				//Take into account riders getting Thing_Remove()'d
+				//when they activate lines.
+				if (!mo || mo.bDestroyed)
+				{
+					riders.Delete(i--);
+					continue;
+				}
+				mo.bNoDropoff = moOldNoDropoff;
 			}
-			mo.bNoDropoff = moOldNoDropoff;
 
 			if (moved)
 			{
@@ -911,13 +945,10 @@ extend class FCW_Platform
 	}
 
 	//============================
-	// PlatTryMove
+	// PlatTakeOneStep
 	//============================
-	private bool PlatTryMove (vector3 newPos)
+	private bool PlatTakeOneStep (vector3 newPos)
 	{
-		if (pos == newPos)
-			return true;
-
 		bPlatInMove = true; //Temporarily don't clip against riders
 		SetZ(newPos.z);
 		bool moved = TryMove(newPos.xy, 1);
@@ -941,7 +972,6 @@ extend class FCW_Platform
 				bPlatInMove = false;
 				mo.SetZ(moOldZ);
 				self.SetZ(oldPos.z);
-				PushObstacle(mo, level.Vec3Diff(oldPos, newPos));
 				return false;
 			}
 		}
@@ -957,6 +987,53 @@ extend class FCW_Platform
 			{
 				SetZ(oldPos.z);
 				return false;
+			}
+		}
+
+		return true;
+	}
+
+	//============================
+	// PlatMove
+	//============================
+	private bool PlatMove (vector3 newPos)
+	{
+		if (pos == newPos)
+			return true;
+
+		int maxSteps = 1;
+		vector3 stepMove = level.Vec3Diff(pos, newPos);
+		vector3 pushForce = stepMove;
+
+		//If the move is equal or larger than our radius
+		//then it has to be split up into smaller steps.
+		//This is needed for proper collision.
+		double maxMove = max(1, radius - 1);
+		double moveSpeed = max(abs(stepMove.x), abs(stepMove.y));
+		if (moveSpeed > maxMove)
+		{
+			maxSteps = int(1 + moveSpeed / maxMove);
+			stepMove /= maxSteps;
+		}
+
+		for (int step = 0; step < maxSteps; ++step)
+		{
+			let preMoveAngle = angle;
+			newPos = pos + stepMove;
+			if (!PlatTakeOneStep(newPos))
+			{
+				if (blockingMobj && !(blockingMobj is "FCW_Platform"))
+					PushObstacle(blockingMobj, pushForce);
+				return false;
+			}
+
+			if (newPos.xy != pos.xy && step < maxSteps-1)
+			{
+				//If we have passed through a portal then
+				//adjust 'stepMove' if our angle changed.
+				double angDiff = DeltaAngle(preMoveAngle, angle);
+				if (angDiff)
+					stepMove.xy = RotateVector(stepMove.xy, angDiff);
 			}
 		}
 
@@ -998,7 +1075,7 @@ extend class FCW_Platform
 		}
 
 		let oldPGroup = curSector.portalGroup;
-		if (!PlatTryMove(newPos))
+		if (!PlatMove(newPos))
 			return false;
 
 		if (args[ARG_OPTIONS] & (OPTFLAG_ANGLE | OPTFLAG_PITCH | OPTFLAG_ROLL))
@@ -1203,8 +1280,7 @@ extend class FCW_Platform
 			}
 			else
 			{
-				newPos = plat.pos + level.Vec3Diff(plat.pos, newPos); //For TryMove()
-				if (!plat.PlatTryMove(newPos))
+				if (!plat.PlatMove(newPos))
 				{
 					plat.angle = plat.oldAngle;
 					plat.pitch = plat.oldPitch;
