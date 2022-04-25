@@ -173,7 +173,7 @@ extend class FCW_Platform
 	bool bActive;
 	bool bJustStepped;
 	bool bPlatBlocked; //Only useful for ACS. (See utility functions below.)
-	bool bPlatInMove; //No collision between a platform and its riders during said platform's move.
+	transient bool bPlatInMove; //No collision between a platform and its riders during said platform's move.
 	InterpolationPoint currNode, firstNode;
 	InterpolationPoint prevNode, firstPrevNode;
 	Array<Actor> riders;
@@ -912,17 +912,17 @@ extend class FCW_Platform
 	}
 
 	//============================
-	// MaybeLerp
+	// PlatLerp
 	//============================
-	private double MaybeLerp (double p1, double p2)
+	private double PlatLerp (double p1, double p2)
 	{
 		return (p1 ~== p2) ? p1 : (p1 + time * (p2 - p1));
 	}
 
 	//============================
-	// MaybeSplerp
+	// PlatSplerp
 	//============================
-	private double MaybeSplerp (double p1, double p2, double p3, double p4)
+	private double PlatSplerp (double p1, double p2, double p3, double p4)
 	{
 		if (p2 ~== p3)
 			return p2;
@@ -960,7 +960,8 @@ extend class FCW_Platform
 			let moNewZ = newPos.z + self.height;
 
 			//Try to set the obstacle on top of us if its 'maxStepHeight' allows it
-			if (moNewZ > moOldZ && moNewZ - moOldZ <= mo.maxStepHeight)
+			if (moNewZ > moOldZ && moNewZ - moOldZ <= mo.maxStepHeight &&
+				moNewZ >= mo.floorZ && moNewZ + mo.height <= mo.ceilingZ)
 			{
 				mo.SetZ(moNewZ);
 				if (mo.CheckMove(mo.pos.xy)) //Obstacle fits at new Z even before we moved?
@@ -996,10 +997,36 @@ extend class FCW_Platform
 	//============================
 	// PlatMove
 	//============================
-	private bool PlatMove (vector3 newPos)
+	private bool PlatMove (vector3 newPos, double newAngle, double newPitch, double newRoll, bool teleMove)
 	{
-		if (pos == newPos)
+		if (pos == newPos && angle == newAngle && pitch == newPitch && roll == newRoll)
 			return true;
+
+		if (!GetNewRiders(teleMove, teleMove))
+			return false;
+
+		if (teleMove || pos == newPos)
+		{
+			oldPos = pos;
+			oldAngle = angle;
+			oldPitch = pitch;
+			oldRoll = roll;
+
+			if (pos != newPos)
+				SetOrigin(newPos, !teleMove);
+			angle = newAngle;
+			pitch = newPitch;
+			roll = newRoll;
+
+			if (!MoveRiders(teleMove, teleMove))
+			{
+				angle = oldAngle;
+				pitch = oldPitch;
+				roll = oldRoll;
+				return false;
+			}
+			return true;
+		}
 
 		int maxSteps = 1;
 		vector3 stepMove = level.Vec3Diff(pos, newPos);
@@ -1018,7 +1045,11 @@ extend class FCW_Platform
 
 		for (int step = 0; step < maxSteps; ++step)
 		{
-			let preMoveAngle = angle;
+			oldPos = pos;
+			oldAngle = angle;
+			oldPitch = pitch;
+			oldRoll = roll;
+
 			newPos = pos + stepMove;
 			if (!PlatTakeOneStep(newPos))
 			{
@@ -1031,9 +1062,25 @@ extend class FCW_Platform
 			{
 				//If we have passed through a portal then
 				//adjust 'stepMove' if our angle changed.
-				double angDiff = DeltaAngle(preMoveAngle, angle);
+				double angDiff = DeltaAngle(oldAngle, angle);
 				if (angDiff)
 					stepMove.xy = RotateVector(stepMove.xy, angDiff);
+			}
+
+			if (step == 0)
+			{
+				angle = newAngle;
+				pitch = newPitch;
+				roll = newRoll;
+			}
+
+			if (!MoveRiders(false, false))
+			{
+				SetOrigin(oldPos, true);
+				angle = oldAngle;
+				pitch = oldPitch;
+				roll = oldRoll;
+				return false;
 			}
 		}
 
@@ -1053,30 +1100,22 @@ extend class FCW_Platform
 			dpos = pos;
 
 		vector3 newPos;
+		double newAngle = angle;
+		double newPitch = pitch;
+		double newRoll = roll;
+
 		if (args[ARG_OPTIONS] & OPTFLAG_LINEAR)
 		{
-			newPos.x = MaybeLerp(pCurr.x, pNext.x);
-			newPos.y = MaybeLerp(pCurr.y, pNext.y);
-			newPos.z = MaybeLerp(pCurr.z, pNext.z);
+			newPos.x = PlatLerp(pCurr.x, pNext.x);
+			newPos.y = PlatLerp(pCurr.y, pNext.y);
+			newPos.z = PlatLerp(pCurr.z, pNext.z);
 		}
 		else //Spline
 		{
-			newPos.x = MaybeSplerp(pPrev.x, pCurr.x, pNext.x, pNextNext.x);
-			newPos.y = MaybeSplerp(pPrev.y, pCurr.y, pNext.y, pNextNext.y);
-			newPos.z = MaybeSplerp(pPrev.z, pCurr.z, pNext.z, pNextNext.z);
+			newPos.x = PlatSplerp(pPrev.x, pCurr.x, pNext.x, pNextNext.x);
+			newPos.y = PlatSplerp(pPrev.y, pCurr.y, pNext.y, pNextNext.y);
+			newPos.z = PlatSplerp(pPrev.z, pCurr.z, pNext.z, pNextNext.z);
 		}
-
-		//Do a blockmap search once per tic if we're in motion.
-		//Otherwise, do one per 64 tics (almost 2 seconds).
-		if (newPos != pos || !(level.mapTime & 63))
-		{
-			if (!GetNewRiders(false, false))
-				return false;
-		}
-
-		let oldPGroup = curSector.portalGroup;
-		if (!PlatMove(newPos))
-			return false;
 
 		if (args[ARG_OPTIONS] & (OPTFLAG_ANGLE | OPTFLAG_PITCH | OPTFLAG_ROLL))
 		{
@@ -1094,9 +1133,9 @@ extend class FCW_Platform
 				{	//Spline but with time <= 0
 					dpos = newPos;
 					time = timeFrac;
-					newPos.x = MaybeSplerp(pPrev.x, pCurr.x, pNext.x, pNextNext.x);
-					newPos.y = MaybeSplerp(pPrev.y, pCurr.y, pNext.y, pNextNext.y);
-					newPos.z = MaybeSplerp(pPrev.z, pCurr.z, pNext.z, pNextNext.z);
+					newPos.x = PlatSplerp(pPrev.x, pCurr.x, pNext.x, pNextNext.x);
+					newPos.y = PlatSplerp(pPrev.y, pCurr.y, pNext.y, pNextNext.y);
+					newPos.z = PlatSplerp(pPrev.z, pCurr.z, pNext.z, pNextNext.z);
 					time = 0;
 					dpos = newPos - dpos;
 					newPos -= dpos;
@@ -1104,17 +1143,17 @@ extend class FCW_Platform
 
 				//Adjust angle
 				if (args[ARG_OPTIONS] & OPTFLAG_ANGLE)
-					angle = VectorAngle(dpos.x, dpos.y);
+					newAngle = VectorAngle(dpos.x, dpos.y);
 
 				//Adjust pitch
 				if (args[ARG_OPTIONS] & OPTFLAG_PITCH)
 				{
 					double dist = dpos.xy.Length();
-					pitch = dist ? VectorAngle(dist, -dpos.z) : 0;
+					newPitch = dist ? VectorAngle(dist, -dpos.z) : 0;
 				}
 				//Adjust roll
 				if (args[ARG_OPTIONS] & OPTFLAG_ROLL)
-					roll = 0;
+					newRoll = 0;
 			}
 			else
 			{
@@ -1122,41 +1161,36 @@ extend class FCW_Platform
 				{
 					//Interpolate angle
 					if (args[ARG_OPTIONS] & OPTFLAG_ANGLE)
-						angle = MaybeLerp(pCurrAngs.x, pNextAngs.x);
+						newAngle = PlatLerp(pCurrAngs.x, pNextAngs.x);
 
 					//Interpolate pitch
 					if (args[ARG_OPTIONS] & OPTFLAG_PITCH)
-						pitch = MaybeLerp(pCurrAngs.y, pNextAngs.y);
+						newPitch = PlatLerp(pCurrAngs.y, pNextAngs.y);
 
 					//Interpolate roll
 					if (args[ARG_OPTIONS] & OPTFLAG_ROLL)
-						roll = MaybeLerp(pCurrAngs.z, pNextAngs.z);
+						newRoll = PlatLerp(pCurrAngs.z, pNextAngs.z);
 				}
 				else //Spline
 				{
 					//Interpolate angle
 					if (args[ARG_OPTIONS] & OPTFLAG_ANGLE)
-						angle = MaybeSplerp(pPrevAngs.x, pCurrAngs.x, pNextAngs.x, pNextNextAngs.x);
+						newAngle = PlatSplerp(pPrevAngs.x, pCurrAngs.x, pNextAngs.x, pNextNextAngs.x);
 
 					//Interpolate pitch
 					if (args[ARG_OPTIONS] & OPTFLAG_PITCH)
-						pitch = MaybeSplerp(pPrevAngs.y, pCurrAngs.y, pNextAngs.y, pNextNextAngs.y);
+						newPitch = PlatSplerp(pPrevAngs.y, pCurrAngs.y, pNextAngs.y, pNextNextAngs.y);
 
 					//Interpolate roll
 					if (args[ARG_OPTIONS] & OPTFLAG_ROLL)
-						roll = MaybeSplerp(pPrevAngs.z, pCurrAngs.z, pNextAngs.z, pNextNextAngs.z);
+						newRoll = PlatSplerp(pPrevAngs.z, pCurrAngs.z, pNextAngs.z, pNextNextAngs.z);
 				}
 			}
 		}
 
-		if (!MoveRiders(false, false))
-		{
-			SetOrigin(oldPos, true);
-			angle = oldAngle;
-			pitch = oldPitch;
-			roll = oldRoll;
+		let oldPGroup = curSector.portalGroup;
+		if (!PlatMove(newPos, newAngle, newPitch, newRoll, false))
 			return false;
-		}
 
 		if (curSector.portalGroup != oldPGroup && pos != newPos) //Crossed a portal?
 		{
@@ -1170,16 +1204,16 @@ extend class FCW_Platform
 
 		//If one of our attached platforms is blocked, pretend
 		//we're blocked too. (Our move won't be cancelled.)
-		if (!MovePlatformGroup(false))
+		if (!MoveGroup(false))
 			return false;
 
 		return true;
 	}
 
 	//============================
-	// MovePlatformGroup
+	// MoveGroup
 	//============================
-	private bool MovePlatformGroup (bool teleMove)
+	private bool MoveGroup (bool teleMove)
 	{
 		if (!group)
 			return true;
@@ -1199,15 +1233,15 @@ extend class FCW_Platform
 			if (plat == self)
 				continue;
 
-			plat.oldPos = plat.pos;
-			plat.oldAngle = plat.angle;
-			plat.oldPitch = plat.pitch;
-			plat.oldRoll = plat.roll;
 			bool changeAng = (plat.args[ARG_OPTIONS] & OPTFLAG_ANGLE);
 			bool changePi = (plat.args[ARG_OPTIONS] & OPTFLAG_PITCH);
 			bool changeRo = (plat.args[ARG_OPTIONS] & OPTFLAG_ROLL);
 
 			vector3 newPos;
+			double newAngle = plat.angle;
+			double newPitch = plat.pitch;
+			double newRoll = plat.roll;
+
 			if (plat.args[ARG_OPTIONS] & OPTFLAG_MIRROR)
 			{
 				//The way we mirror movement is by getting the offset going
@@ -1220,11 +1254,11 @@ extend class FCW_Platform
 				newPos = level.Vec3Offset(plat.spawnPoint, offset);
 
 				if (changeAng)
-					plat.angle = plat.spawnAngle - delta;
+					newAngle = plat.spawnAngle - delta;
 				if (changePi)
-					plat.pitch = plat.spawnPitch - piDelta;
+					newPitch = plat.spawnPitch - piDelta;
 				if (changeRo)
-					plat.roll = plat.spawnRoll - roDelta;
+					newRoll = plat.spawnRoll - roDelta;
 			}
 			else //Non-mirror movement. Orbiting happens here.
 			{
@@ -1248,55 +1282,21 @@ extend class FCW_Platform
 				newPos = level.Vec3Offset(pos, offset);
 
 				if (changeAng)
-					plat.angle = plat.spawnAngle + delta;
+					newAngle = plat.spawnAngle + delta;
 
 				if (changePi || changeRo)
 				{
 					double diff = DeltaAngle(spawnAngle, plat.spawnAngle);
 					double c = cos(diff), s = sin(diff);
 					if (changePi)
-						plat.pitch = plat.spawnPitch + piDelta*c - roDelta*s;
+						newPitch = plat.spawnPitch + piDelta*c - roDelta*s;
 					if (changeRo)
-						plat.roll = plat.spawnRoll + piDelta*s + roDelta*c;
+						newRoll = plat.spawnRoll + piDelta*s + roDelta*c;
 				}
 			}
 
-			//Do a blockmap search once per tic if we're in motion.
-			//Otherwise, do one per 64 tics (almost 2 seconds).
-			if (newPos != plat.pos || !(level.mapTime & 63))
-			{
-				if (!plat.GetNewRiders(teleMove, teleMove))
-				{
-					plat.angle = plat.oldAngle;
-					plat.pitch = plat.oldPitch;
-					plat.roll = plat.oldRoll;
-					return false;
-				}
-			}
-
-			if (teleMove)
-			{
-				plat.SetOrigin(newPos, false);
-			}
-			else
-			{
-				if (!plat.PlatMove(newPos))
-				{
-					plat.angle = plat.oldAngle;
-					plat.pitch = plat.oldPitch;
-					plat.roll = plat.oldRoll;
-					return false;
-				}
-			}
-
-			if (!plat.MoveRiders(teleMove, teleMove))
-			{
-				plat.SetOrigin(plat.oldPos, true);
-				plat.angle = plat.oldAngle;
-				plat.pitch = plat.oldPitch;
-				plat.roll = plat.oldRoll;
+			if (!plat.PlatMove(newPos, newAngle, newPitch, newRoll, teleMove))
 				return false;
-			}
 		}
 		return true;
 	}
@@ -1374,24 +1374,21 @@ extend class FCW_Platform
 				if (bDestroyed || !currNode || currNode.bDestroyed)
 					return; //Abort if we or the node got Thing_Remove()'d
 
+				bActive = true;
 				if (group)
 					group.origin = self;
-				GetNewRiders(true, true);
-				SetOrigin(currNode.pos, false);
-				if (args[ARG_OPTIONS] & OPTFLAG_ANGLE)
-					angle = currNode.angle;
-				if (args[ARG_OPTIONS] & OPTFLAG_PITCH)
-					pitch = currNode.pitch;
-				if (args[ARG_OPTIONS] & OPTFLAG_ROLL)
-					roll = currNode.roll;
+
+				double newAngle = (args[ARG_OPTIONS] & OPTFLAG_ANGLE) ? currNode.angle : angle;
+				double newPitch = (args[ARG_OPTIONS] & OPTFLAG_PITCH) ? currNode.pitch : pitch;
+				double newRoll = (args[ARG_OPTIONS] & OPTFLAG_ROLL) ? currNode.roll : roll;
+				PlatMove(currNode.pos, newAngle, newPitch, newRoll, true);
+				MoveGroup(true);
+				bJustStepped = true;
+				SetInterpolationCoordinates();
+
+				SetTimeFraction(currNode.args[NODEARG_TRAVELTIME]);
 				time = 0;
 				holdTime = 0;
-				bJustStepped = true;
-				bActive = true;
-				SetInterpolationCoordinates();
-				SetTimeFraction(currNode.args[NODEARG_TRAVELTIME]);
-				MoveRiders(true, true);
-				MovePlatformGroup(true);
 			}
 		}
 	}
@@ -1410,9 +1407,9 @@ extend class FCW_Platform
 			delayedActivator = null;
 		}
 
-		if (group)
+		if (group && !(level.mapTime & 63))
 		{
-			if (group.origin == self || (!group.origin && group.GetFirst() == self))
+			if (group.GetFirst() == self)
 				group.VerifyMembers();
 		}
 
