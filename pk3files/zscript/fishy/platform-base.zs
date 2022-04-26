@@ -474,10 +474,10 @@ extend class FCW_Platform
 	//============================
 	// GetNewRiders
 	//============================
-	private bool GetNewRiders (bool ignoreObs, bool laxZCheck)
+	private bool GetNewRiders (bool ignoreObs)
 	{
-		//In addition to fetching riders, this is where corpses get crushed, too. (Items won't get destroyed.)
-		//Returns false if an actor is completely stuck inside platform.
+		//In addition to fetching riders, this is where corpses get crushed, too. Items won't get destroyed.
+		//Returns false if an actor is completely stuck inside platform unless 'ignoreObs' is true.
 
 		double top = pos.z + height;
 		Array<Actor> miscResults; //The actors on top of the riders (We'll move those, too)
@@ -518,8 +518,8 @@ extend class FCW_Platform
 			double blockDist = radius + mo.radius;
 			if (abs(it.position.x - mo.pos.x) < blockDist && abs(it.position.y - mo.pos.y) < blockDist)
 			{
-				//'laxZCheck' makes anything above our 'top' legit
-				if (mo.pos.z >= top && (laxZCheck || mo.pos.z <= top + TOPEPSILON)) //On top of us?
+				//'ignoreObs' makes anything above our 'top' legit
+				if (mo.pos.z >= top && (ignoreObs || mo.pos.z <= top + TOPEPSILON)) //On top of us?
 				{
 					if (canCarry && !oldRider)
 						onTopOfMe.Push(mo);
@@ -624,9 +624,9 @@ extend class FCW_Platform
 	//============================
 	// MoveRiders
 	//============================
-	private bool MoveRiders (bool ignoreObs, bool teleMove)
+	private bool MoveRiders (bool teleMove)
 	{
-		//Returns false if a blocked rider would block the platform's movement
+		//Returns false if a blocked rider would block the platform's movement unless 'teleMove' is true
 
 		if (!riders.Size())
 			return true; //No riders? Nothing to do
@@ -755,7 +755,7 @@ extend class FCW_Platform
 
 				//See if it would block the platform
 				double moTop = mo.pos.z + mo.height;
-				bool blocked = ( !ignoreObs && CollisionFlagChecks(mo, self) &&
+				bool blocked = ( !teleMove && CollisionFlagChecks(mo, self) &&
 					moTop > self.pos.z && top > mo.pos.z && //Overlaps Z?
 					mo.Distance2D(self) < mo.radius + self.radius && //Within XY range?
 					mo.CanCollideWith(self, false) && self.CanCollideWith(mo, true) );
@@ -775,7 +775,7 @@ extend class FCW_Platform
 					}
 
 					//Put 'otherMo' back at its old position
-					vector3 otherOldPos = (preMovePos[iOther*3], preMovePos[(iOther*3)+1], preMovePos[(iOther*3)+2]);
+					vector3 otherOldPos = (preMovePos[iOther*3], preMovePos[iOther*3 + 1], preMovePos[iOther*3 + 2]);
 					otherMo.SetOrigin(otherOldPos, true);
 
 					otherMo.A_ChangeLinkFlags(addToBmap);
@@ -1002,7 +1002,7 @@ extend class FCW_Platform
 		if (pos == newPos && angle == newAngle && pitch == newPitch && roll == newRoll)
 			return true;
 
-		if (!GetNewRiders(teleMove, teleMove))
+		if (!GetNewRiders(teleMove))
 			return false;
 
 		if (teleMove || pos == newPos)
@@ -1018,7 +1018,7 @@ extend class FCW_Platform
 			pitch = newPitch;
 			roll = newRoll;
 
-			if (!MoveRiders(teleMove, teleMove))
+			if (!MoveRiders(teleMove))
 			{
 				angle = oldAngle;
 				pitch = oldPitch;
@@ -1074,7 +1074,7 @@ extend class FCW_Platform
 				roll = newRoll;
 			}
 
-			if (!MoveRiders(false, false))
+			if (!MoveRiders(false))
 			{
 				SetOrigin(oldPos, true);
 				angle = oldAngle;
