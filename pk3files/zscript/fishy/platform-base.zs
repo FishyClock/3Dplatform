@@ -333,22 +333,9 @@ extend class FCW_Platform
 	}
 
 	//============================
-	// CrushObstacle
+	// FitsAtPosition
 	//============================
-	private void CrushObstacle (Actor victim)
-	{
-		int crushDamage = args[ARG_CRUSHDMG];
-		if (crushDamage <= 0 || (level.mapTime & 3)) //Only crush every 4th tic to allow victim's pain sound to be heard
-			return;
-
-		int doneDamage = victim.DamageMobj(null, null, crushDamage, 'Crush');
-		victim.TraceBleed(doneDamage > 0 ? doneDamage : crushDamage, self);
-	}
-
-	//============================
-	// PlatCheckPosition
-	//============================
-	private bool PlatCheckPosition (Actor mo, vector3 testPos)
+	private bool FitsAtPosition (Actor mo, vector3 testPos)
 	{
 		FCheckPosition tm;
 		let oldZ = mo.pos.z;
@@ -360,6 +347,20 @@ extend class FCW_Platform
 
 		mo.SetZ(oldZ);
 		return fits;
+	}
+
+
+	//============================
+	// CrushObstacle
+	//============================
+	private void CrushObstacle (Actor victim)
+	{
+		int crushDamage = args[ARG_CRUSHDMG];
+		if (crushDamage <= 0 || (level.mapTime & 3)) //Only crush every 4th tic to allow victim's pain sound to be heard
+			return;
+
+		int doneDamage = victim.DamageMobj(null, null, crushDamage, 'Crush');
+		victim.TraceBleed(doneDamage > 0 ? doneDamage : crushDamage, self);
 	}
 
 	//============================
@@ -389,7 +390,7 @@ extend class FCW_Platform
 		if (args[ARG_CRUSHDMG] <= 0)
 			return;
 
-		if (!PlatCheckPosition(pushed, pushed.Vec3Offset(pushForce.x, pushForce.y, pushForce.z)))
+		if (!FitsAtPosition(pushed, level.Vec3Offset(pushed.pos, pushForce)))
 			CrushObstacle(pushed);
 	}
 
@@ -550,17 +551,16 @@ extend class FCW_Platform
 						//Try to correct 'mo' Z so it can ride us, too.
 						//But only if its 'maxStepHeight' allows it.
 						bool blocked = true;
-						let moOldZ = mo.pos.z;
 						if (!(mo is "FCW_Platform") && top - mo.pos.z <= mo.maxStepHeight)
 						{
-							mo.SetZ(top);
-							blocked = !mo.CheckMove(mo.pos.xy);
+							blocked = !FitsAtPosition(mo, (mo.pos.xy, top));
+							if (!blocked)
+								mo.SetZ(top);
 						}
 						if (blocked)
 						{
 							if (!(mo is "FCW_Platform"))
 							{
-								mo.SetZ(moOldZ);
 								if (!ignoreObs)
 									CrushObstacle(mo);
 							}
@@ -676,7 +676,7 @@ extend class FCW_Platform
 			let mo = riders[i];
 			let moOldPos = mo.pos;
 
-			vector3 offset = level.Vec3Diff(oldPos, mo.pos);
+			vector3 offset = level.Vec3Diff(oldPos, moOldPos);
 			offset.xy = (offset.x*c - offset.y*s, offset.x*s + offset.y*c); //Rotate it
 			offset.xy += piAndRoOffset;
 			vector3 moNewPos = level.Vec3Offset(pos, offset);
@@ -688,13 +688,14 @@ extend class FCW_Platform
 			bool moved;
 			if (teleMove)
 			{
-				mo.SetOrigin(moNewPos, false);
-				moved = mo.CheckMove(moNewPos.xy);
+				moved = FitsAtPosition(mo, moNewPos);
+				if (moved)
+					mo.SetOrigin(moNewPos, false);
 			}
 			else
 			{
 				int maxSteps = 1;
-				vector3 stepMove = level.Vec3Diff(mo.pos, moNewPos);
+				vector3 stepMove = level.Vec3Diff(moOldPos, moNewPos);
 
 				//If the move is equal or larger than the rider's radius
 				//then it has to be split up into smaller steps.
@@ -708,18 +709,20 @@ extend class FCW_Platform
 					stepMove /= maxSteps;
 				}
 
-				//NODROPOFF overrides TryMove()'s second argument.
-				//the rider should be treated like a flying object.
+				//NODROPOFF overrides TryMove()'s second argument,
+				//but the rider should be treated like a flying object.
 				let moOldNoDropoff = mo.bNoDropoff;
 				mo.bNoDropoff = false;
 				moved = true;
 				for (int step = 0; step < maxSteps; ++step)
 				{
 					let moOldAngle = mo.angle;
+					let moOldZ = mo.pos.z;
 					mo.AddZ(stepMove.z);
 					vector2 tryPos = mo.pos.xy + stepMove.xy;
 					if (!mo.TryMove(tryPos, 1))
 					{
+						mo.SetZ(moOldZ);
 						moved = false;
 						break;
 					}
@@ -759,7 +762,8 @@ extend class FCW_Platform
 			}
 			else
 			{
-				mo.SetOrigin(moOldPos, true);
+				if (mo.pos != moOldPos)
+					mo.SetOrigin(moOldPos, true);
 
 				//This rider will be 'solid' for the others
 				mo.A_ChangeLinkFlags(addToBmap);
@@ -798,9 +802,9 @@ extend class FCW_Platform
 
 				if (blocked)
 				{
-					PushObstacle(mo, level.Vec3Diff(oldPos, pos));
 					for (i = 0; i < riders.Size(); ++i)
 						riders[i].A_ChangeLinkFlags(addToBmap); //Handle those that didn't get the chance to move
+					PushObstacle(mo, level.Vec3Diff(oldPos, pos));
 					return false;
 				}
 			}
@@ -815,6 +819,7 @@ extend class FCW_Platform
 			if (delta)
 				mo.angle = Normalize180(mo.angle + delta);
 		}
+
 		return true;
 	}
 
@@ -832,25 +837,7 @@ extend class FCW_Platform
 		// fall off of other actors just isn't good enough.
 		// This is only needed when the platform is moving.
 
-		double top;
-		bool isSteep = false;
-		if (riders.Size())
-		{
-			top = pos.z + height;
-
-			if (args[ARG_OPTIONS] & OPTFLAG_PITCH)
-			{
-				pitch = Normalize180(pitch);
-				isSteep = (abs(pitch) >= 45 && abs(pitch) <= 135);
-			}
-
-			if (!isSteep && (args[ARG_OPTIONS] & OPTFLAG_ROLL))
-			{
-				roll = Normalize180(roll);
-				isSteep = (abs(roll) >= 45 && abs(roll) <= 135);
-			}
-		}
-
+		double top = pos.z + height;
 		for (int i = 0; i < riders.Size(); ++i)
 		{
 			let mo = riders[i];
@@ -881,9 +868,6 @@ extend class FCW_Platform
 			}
 
 			//See if we should keep it away from the edge
-			if (isSteep) //We're a pitch/roll changing platform that's currently "steep"?
-				continue; //Then let the native AI handle it; if it wants to fall off, let it fall off.
-
 			if (!mo.bIsMonster || mo.bNoGravity || mo.bFloat || !mo.speed) //Is not a walking monster?
 				continue;
 
@@ -961,7 +945,6 @@ extend class FCW_Platform
 	//============================
 	private bool PlatTakeOneStep (vector3 newPos)
 	{
-		bPlatInMove = true; //Temporarily don't clip against riders
 		SetZ(newPos.z);
 		bool moved = TryMove(newPos.xy, 1);
 
@@ -972,23 +955,23 @@ extend class FCW_Platform
 			let moNewZ = newPos.z + self.height;
 
 			//Try to set the obstacle on top of us if its 'maxStepHeight' allows it
-			if (moNewZ > moOldZ && moNewZ - moOldZ <= mo.maxStepHeight &&
-				moNewZ >= mo.floorZ && moNewZ + mo.height <= mo.ceilingZ)
+			if (moNewZ > moOldZ && moNewZ - moOldZ <= mo.maxStepHeight)
 			{
-				mo.SetZ(moNewZ);
-				if (mo.CheckMove(mo.pos.xy)) //Obstacle fits at new Z even before we moved?
+				if (FitsAtPosition(mo, (mo.pos.xy, moNewZ))) //Obstacle fits at new Z even before we moved?
+				{
+					mo.SetZ(moNewZ);
 					moved = TryMove(newPos.xy, 1); //Try one more time
+					if (!moved)
+						mo.SetZ(moOldZ);
+				}
 			}
 
 			if (!moved) //Blocked by actor that isn't a platform?
 			{
-				bPlatInMove = false;
-				mo.SetZ(moOldZ);
-				self.SetZ(oldPos.z);
+				SetZ(oldPos.z);
 				return false;
 			}
 		}
-		bPlatInMove = false;
 
 		if (!moved) //Blocked by geometry or another platform?
 		{
@@ -1063,7 +1046,10 @@ extend class FCW_Platform
 			oldRoll = roll;
 
 			newPos = pos + stepMove;
-			if (!PlatTakeOneStep(newPos))
+			bPlatInMove = true; //Temporarily don't clip against riders
+			bool stepped = PlatTakeOneStep(newPos);
+			bPlatInMove = false;
+			if (!stepped)
 			{
 				if (blockingMobj && !(blockingMobj is "FCW_Platform"))
 					PushObstacle(blockingMobj, pushForce);
@@ -1216,10 +1202,7 @@ extend class FCW_Platform
 
 		//If one of our attached platforms is blocked, pretend
 		//we're blocked too. (Our move won't be cancelled.)
-		if (!MoveGroup(false))
-			return false;
-
-		return true;
+		return MoveGroup(false);
 	}
 
 	//============================
