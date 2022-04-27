@@ -575,6 +575,18 @@ extend class FCW_Platform
 						if (canCarry && !oldRider)
 							onTopOfMe.Push(mo);
 					}
+					else if (mo is "Inventory" && mo.bSpecial) //Item that can be picked up?
+					{
+						//Try to correct 'mo' Z so it can ride us, too.
+						//But only if its 'maxStepHeight' allows it.
+						if (top - mo.pos.z <= mo.maxStepHeight &&
+							FitsAtPosition(mo, (mo.pos.xy, top)))
+						{
+							mo.SetZ(top);
+							if (canCarry && !oldRider)
+								onTopOfMe.Push(mo);
+						}
+					}
 					continue;
 				}
 			}
