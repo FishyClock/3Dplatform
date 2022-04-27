@@ -346,6 +346,23 @@ extend class FCW_Platform
 	}
 
 	//============================
+	// PlatCheckPosition
+	//============================
+	private bool PlatCheckPosition (Actor mo, vector3 testPos)
+	{
+		FCheckPosition tm;
+		let oldZ = mo.pos.z;
+		mo.SetZ(testPos.z); //Because Z has an effect on CheckMove()'s outcome
+
+		bool fits = (mo.CheckMove(testPos.xy, 0, tm) &&
+			testPos.z >= tm.floorZ &&				//Yes, this is
+			testPos.z + mo.height <= tm.ceilingZ);	//also necessary.
+
+		mo.SetZ(oldZ);
+		return fits;
+	}
+
+	//============================
 	// PushObstacle
 	//============================
 	private void PushObstacle (Actor pushed, vector3 pushForce)
@@ -372,13 +389,8 @@ extend class FCW_Platform
 		if (args[ARG_CRUSHDMG] <= 0)
 			return;
 
-		double testZ = pushed.pos.z + pushForce.z;
-		if (testZ < pushed.floorZ ||
-			testZ + pushed.height > pushed.ceilingZ ||
-			!pushed.CheckMove(pushed.Vec2Offset(pushForce.x, pushForce.y)))
-		{
+		if (!PlatCheckPosition(pushed, pushed.Vec3Offset(pushForce.x, pushForce.y, pushForce.z)))
 			CrushObstacle(pushed);
-		}
 	}
 
 	//============================
