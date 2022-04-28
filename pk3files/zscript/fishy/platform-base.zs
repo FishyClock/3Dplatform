@@ -248,8 +248,14 @@ extend class FCW_Platform
 			}
 		}
 
+		//Print no warnings if we're not supposed to have a interpolation point
 		if (!args[ARG_NODETID])
-			return; //Print no warnings if we're not supposed to have a interpolation point
+		{
+			//In case the mapper placed walking monsters on the platform
+			//get something for HandleOldRiders() to monitor.
+			GetNewRiders(true);
+			return; 
+		}
 
 		String prefix = "\ckPlatform class '" .. GetClassName() .. "' with tid " .. tid .. ":\nat position " .. pos .. ":\n";
 
@@ -293,6 +299,8 @@ extend class FCW_Platform
 
 		if (args[ARG_OPTIONS] & OPTFLAG_STARTACTIVE)
 			Activate(self);
+		else if (firstNode)			//In case the mapper placed walking monsters on the platform
+			GetNewRiders(true);		//get something for HandleOldRiders() to monitor.
 	}
 
 	//============================
@@ -493,7 +501,7 @@ extend class FCW_Platform
 		//Returns false if an actor is completely stuck inside platform unless 'ignoreObs' is true.
 
 		double top = pos.z + height;
-		Array<Actor> miscResults; //The actors on top of the riders (We'll move those, too)
+		Array<Actor> miscActors; //The actors on top of the riders (We'll move those, too)
 		Array<Actor> onTopOfMe;
 		Array<FCW_Platform> otherPlats;
 
@@ -592,7 +600,7 @@ extend class FCW_Platform
 			}
 
 			if (canCarry && !oldRider)
-				miscResults.Push(mo); //We'll compare this later against the riders
+				miscActors.Push(mo); //We'll compare this later against the riders
 		}
 
 		for (int i = 0; i < corpses.Size(); ++i)
@@ -615,10 +623,10 @@ extend class FCW_Platform
 						onTopOfMe.Delete(i--);
 				}
 			}
-			for (int i = 0; i < miscResults.Size(); ++i)
+			for (int i = 0; i < miscActors.Size(); ++i)
 			{
-				if (plat.riders.Find(miscResults[i]) < plat.riders.Size())
-					miscResults.Delete(i--);
+				if (plat.riders.Find(miscActors[i]) < plat.riders.Size())
+					miscActors.Delete(i--);
 			}
 		}
 		riders.Append(onTopOfMe);
@@ -630,14 +638,14 @@ extend class FCW_Platform
 			let mo = riders[i];
 			double moTop = mo.pos.z + mo.height + TOPEPSILON;
 
-			for (int iOther = 0; iOther < miscResults.Size(); ++iOther)
+			for (int iOther = 0; iOther < miscActors.Size(); ++iOther)
 			{
-				let otherMo = miscResults[iOther];
+				let otherMo = miscActors[iOther];
 
 				if (moTop > otherMo.pos.z && otherMo.pos.z + otherMo.height > mo.pos.z && //Is 'otherMo' on top of or stuck inside 'mo'?
 					mo.Distance2D(otherMo) < mo.radius + otherMo.radius) //Within XY range?
 				{
-					miscResults.Delete(iOther--); //Don't compare this one against other riders anymore
+					miscActors.Delete(iOther--); //Don't compare this one against other riders anymore
 					riders.Push(otherMo);
 				}
 			}
@@ -847,7 +855,10 @@ extend class FCW_Platform
 		// Also keep non-flying monsters away from platform's edge.
 		// Because the AI's native handling of trying not to
 		// fall off of other actors just isn't good enough.
-		// This is only needed when the platform is moving.
+		//
+		// For example, if the platform moves and rotates
+		// at same time and a walker is right at the edge,
+		// it sometimes falls off.
 
 		double top = pos.z + height;
 		for (int i = 0; i < riders.Size(); ++i)
@@ -898,24 +909,19 @@ extend class FCW_Platform
 			if (mo.pos.z - mo.floorZ <= mo.maxDropoffHeight)
 				continue; //Monster is close to the ground (which includes 3D floors) so let it walk off
 
-			//Make your bog-standard idTech1 AI
-			//that uses A_Chase() or A_Wander()
-			//walk towards the platform's center.
-			//NOTE: This isn't fool proof if there
-			//are multiple riders moving on the
-			//same platform at the same time.
+			// Make your bog-standard idTech1 AI
+			// that uses A_Chase() or A_Wander()
+			// walk towards the platform's center.
+			//
+			// NOTE: This isn't fool proof if there
+			// are multiple riders moving on the
+			// same platform at the same time.
+			//
+			// Yes, this is a hack.
+
 			mo.moveDir = int(mo.AngleTo(self) / 45) & 7;
 			if (mo.moveCount < 1)
 				mo.moveCount = 1;
-		}
-
-		if (!group || group.origin != self)
-			return;
-
-		for (let plat = group.GetFirst(); plat; plat = group.GetNext())
-		{
-			if (plat != self)
-				plat.HandleOldRiders();
 		}
 	}
 
@@ -1339,18 +1345,6 @@ extend class FCW_Platform
 	override void Deactivate (Actor activator)
 	{
 		bActive = false;
-		if (group && group.origin != self)
-			return;
-
-		if (!group)
-		{
-			riders.Clear();
-		}
-		else
-		{
-			for (let plat = group.GetFirst(); plat; plat = group.GetNext())
-				plat.riders.Clear();
-		}
 	}
 
 	//============================
@@ -1420,6 +1414,8 @@ extend class FCW_Platform
 				group.VerifyMembers();
 		}
 
+		HandleOldRiders();
+
 		while (bActive && (!group || group.origin == self))
 		{
 			bPlatBlocked = false;
@@ -1437,8 +1433,6 @@ extend class FCW_Platform
 
 			if (holdTime > level.mapTime)
 				break;
-
-			HandleOldRiders();
 
 			if (!Interpolate())
 			{
@@ -1570,6 +1564,8 @@ extend class FCW_Platform
 		let it = level.CreateActorIterator(platTid, "FCW_Platform");
 		let plat = FCW_Platform(it.Next());
 
+		//When checking group members we only care about the origin.
+		//Either "every member is moving" or "every member is not moving."
 		if (plat && plat.group && plat.group.origin)
 			plat = plat.group.origin;
 
@@ -1577,7 +1573,7 @@ extend class FCW_Platform
 			plat.pos != plat.oldPos ||
 			plat.angle != plat.oldAngle ||
 			plat.pitch != plat.oldPitch ||
-			plat.roll != plat.oldRoll));
+			plat.roll != plat.oldRoll) );
 	}
 
 	//============================
@@ -1588,6 +1584,8 @@ extend class FCW_Platform
 		let it = level.CreateActorIterator(platTid, "FCW_Platform");
 		let plat = FCW_Platform(it.Next());
 
+		//When checking group members we only care about the origin.
+		//Either "every member is blocked" or "every member is not blocked."
 		if (plat && plat.group && plat.group.origin)
 			plat = plat.group.origin;
 
