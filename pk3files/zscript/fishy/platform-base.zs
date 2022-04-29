@@ -341,9 +341,9 @@ extend class FCW_Platform
 	}
 
 	//============================
-	// CanMoveToPosition
+	// FitsAtPosition
 	//============================
-	private bool CanMoveToPosition (Actor mo, vector3 testPos)
+	private bool FitsAtPosition (Actor mo, vector3 testPos)
 	{
 		// CheckMove() does more checks than TestMobjLocation().
 		// It takes into account floor/ceiling huggers and
@@ -352,13 +352,21 @@ extend class FCW_Platform
 		// It's useful if there's XY position changes while
 		// TestMobjLocation() is enough for Z changes only.
 
-		FCheckPosition tm;
+		bool result;
 		let oldZ = mo.pos.z;
-		mo.SetZ(testPos.z); //Because Z has an effect on CheckMove()'s outcome
+		mo.SetZ(testPos.z); //Set Z before anything else because Z also has an effect on CheckMove()'s outcome
 
-		bool result = (mo.CheckMove(testPos.xy, 0, tm) &&
-			testPos.z >= tm.floorZ &&				//This is something that TestMobjLocation() does
-			testPos.z + mo.height <= tm.ceilingZ);	//that CheckMove() does not account for.
+		if (mo.pos.xy == testPos.xy)
+		{
+			result = mo.TestMobjLocation();
+		}
+		else
+		{
+			FCheckPosition tm;
+			result = (mo.CheckMove(testPos.xy, 0, tm) &&
+				testPos.z >= tm.floorZ &&				//This is something that TestMobjLocation() checks
+				testPos.z + mo.height <= tm.ceilingZ);	//and that CheckMove() does not account for.
+		}
 
 		mo.SetZ(oldZ);
 		return result;
@@ -404,7 +412,7 @@ extend class FCW_Platform
 		if (args[ARG_CRUSHDMG] <= 0)
 			return;
 
-		if (!CanMoveToPosition(pushed, level.Vec3Offset(pushed.pos, pushForce)))
+		if (!FitsAtPosition(pushed, level.Vec3Offset(pushed.pos, pushForce)))
 			CrushObstacle(pushed);
 	}
 
@@ -568,11 +576,9 @@ extend class FCW_Platform
 						bool blocked = true;
 						if (!(mo is "FCW_Platform") && top - mo.pos.z <= mo.maxStepHeight)
 						{
-							let moOldZ = mo.pos.z;
-							mo.SetZ(top);
-							blocked = !mo.TestMobjLocation();
-							if (blocked)
-								mo.SetZ(moOldZ);
+							blocked = !FitsAtPosition(mo, (mo.pos.xy, top));
+							if (!blocked)
+								mo.SetZ(top);
 						}
 						if (blocked)
 						{
@@ -596,13 +602,11 @@ extend class FCW_Platform
 					{
 						//Try to correct 'mo' Z so it can ride us, too.
 						//But only if its 'maxStepHeight' allows it.
-						if (top - mo.pos.z <= mo.maxStepHeight)
+						if (top - mo.pos.z <= mo.maxStepHeight &&
+							FitsAtPosition(mo, (mo.pos.xy, top)))
 						{
-							let moOldZ = mo.pos.z;
 							mo.SetZ(top);
-							if (!mo.TestMobjLocation())
-								mo.SetZ(moOldZ);
-							else if (canCarry && !oldRider)
+							if (canCarry && !oldRider)
 								onTopOfMe.Push(mo);
 						}
 					}
@@ -719,7 +723,7 @@ extend class FCW_Platform
 			bool moved;
 			if (teleMove)
 			{
-				moved = CanMoveToPosition(mo, moNewPos);
+				moved = FitsAtPosition(mo, moNewPos);
 				if (moved)
 					mo.SetOrigin(moNewPos, false);
 			}
@@ -887,6 +891,7 @@ extend class FCW_Platform
 
 			//'floorZ' can be the top of a 3D floor that's right below an actor.
 			//No 3D floors means 'floorZ' is the current sector's floor height.
+			//(In other words 'floorZ' is not another actor's top that's below.)
 
 			//Is 'mo' below our 'top'? Or is there a 3D floor above our 'top' that's also below 'mo'?
 			if (mo.pos.z < top - TOPEPSILON || mo.floorZ > top + TOPEPSILON)
@@ -985,11 +990,11 @@ extend class FCW_Platform
 			let moNewZ = newPos.z + self.height;
 
 			//Try to set the obstacle on top of us if its 'maxStepHeight' allows it
-			if (moNewZ > moOldZ && moNewZ - moOldZ <= mo.maxStepHeight)
+			if (moNewZ > moOldZ && moNewZ - moOldZ <= mo.maxStepHeight &&
+				FitsAtPosition(mo, (mo.pos.xy, moNewZ)))
 			{
 				mo.SetZ(moNewZ);
-				if (mo.TestMobjLocation())
-					moved = TryMove(newPos.xy, 1); //Try one more time
+				moved = TryMove(newPos.xy, 1); //Try one more time
 				if (!moved)
 					mo.SetZ(moOldZ);
 			}
