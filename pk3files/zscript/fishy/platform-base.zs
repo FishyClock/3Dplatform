@@ -507,6 +507,32 @@ extend class FCW_Platform
 	}
 
 	//============================
+	// IsCarriable
+	//============================
+	private bool IsCarriable (Actor mo)
+	{
+		//Due to how the engine handles actor-to-actor interactions
+		//we can only carry things with the CANPASS or the
+		//SPECIAL flag. Anything else will just fall through.
+		//Even when we have ACTLIKEBRIDGE.
+		if (!mo.bCanPass && !mo.bSpecial)
+			return false;
+
+		//Don't bother with floor/ceiling huggers since
+		//they're not meant to be in mid-air.
+		if (mo.bFloorHugger || mo.bCeilingHugger)
+			return false;
+
+		//Apparently CANTLEAVEFLOORPIC is similiar to FLOORHUGGER?
+		//Because any move that results in its Z being different
+		//from its 'floorZ' is invalid according to CheckMove().
+		if (mo.bCantLeaveFloorPic)
+			return false;
+
+		return true;
+	}
+
+	//============================
 	// GetNewRiders
 	//============================
 	private bool GetNewRiders (bool ignoreObs)
@@ -537,15 +563,7 @@ extend class FCW_Platform
 			if (mo == self)
 				continue;
 
-			//Due to how the engine handles actor-to-actor interactions
-			//we can only carry things with the +CANPASS or the
-			//+SPECIAL flag. Anything else will just fall through.
-			//Even when we have +ACTLIKEBRIDGE.
-			bool canCarry = (!(mo is "FCW_Platform") && //Platforms shouldn't carry other platforms.
-				!mo.bFloorHugger && !mo.bCeilingHugger && //Don't bother with floor/ceiling huggers.
-				!mo.bCantLeaveFloorPic && //Apparently this treats going above the floor as a invalid move.
-				(mo.bCanPass || mo.bSpecial));
-
+			bool canCarry = (IsCarriable(mo) && !(mo is "FCW_Platform")); //Platforms shouldn't carry other platforms.
 			bool oldRider = (riders.Find(mo) < riders.Size());
 			if (mo is "FCW_Platform")
 				otherPlats.Push(FCW_Platform(mo));
@@ -574,7 +592,7 @@ extend class FCW_Platform
 						//Try to correct 'mo' Z so it can ride us, too.
 						//But only if its 'maxStepHeight' allows it.
 						bool blocked = true;
-						if (!(mo is "FCW_Platform") && top - mo.pos.z <= mo.maxStepHeight)
+						if (canCarry && top - mo.pos.z <= mo.maxStepHeight)
 						{
 							blocked = !FitsAtPosition(mo, (mo.pos.xy, top));
 							if (!blocked)
@@ -595,18 +613,18 @@ extend class FCW_Platform
 							}
 							else continue;
 						}
-						if (canCarry && !oldRider)
+						if (!oldRider)
 							onTopOfMe.Push(mo);
 					}
 					else if (mo is "Inventory" && mo.bSpecial) //Item that can be picked up?
 					{
 						//Try to correct 'mo' Z so it can ride us, too.
 						//But only if its 'maxStepHeight' allows it.
-						if (top - mo.pos.z <= mo.maxStepHeight &&
+						if (canCarry && top - mo.pos.z <= mo.maxStepHeight &&
 							FitsAtPosition(mo, (mo.pos.xy, top)))
 						{
 							mo.SetZ(top);
-							if (canCarry && !oldRider)
+							if (!oldRider)
 								onTopOfMe.Push(mo);
 						}
 					}
@@ -621,7 +639,7 @@ extend class FCW_Platform
 		for (int i = 0; i < corpses.Size(); ++i)
 			corpses[i].Grind(false);
 
-		//Do NOT take other platforms' riders! Unless...
+		//Do NOT take other platforms' riders unless our top is higher
 		for (int iPlat = 0; iPlat < otherPlats.Size(); ++iPlat)
 		{
 			let plat = otherPlats[iPlat];
@@ -880,10 +898,7 @@ extend class FCW_Platform
 		{
 			let mo = riders[i];
 			if (!mo || mo.bDestroyed || //Got Thing_Remove()'d?
-				mo.bNoBlockmap ||
-				mo.bFloorHugger || mo.bCeilingHugger || //Don't bother with floor/ceiling huggers.
-				mo.bCantLeaveFloorPic || //Apparently this treats going above the floor as a invalid move.
-				(!mo.bCanPass && !mo.bSpecial)) //Having neither of these will make the rider fall through us.
+				mo.bNoBlockmap || !IsCarriable(mo))
 			{
 				riders.Delete(i--);
 				continue;
@@ -989,9 +1004,10 @@ extend class FCW_Platform
 			let moOldZ = mo.pos.z;
 			let moNewZ = newPos.z + self.height;
 
-			//Try to set the obstacle on top of us if its 'maxStepHeight' allows it
+			//If we could carry it, try to set the obstacle on top of us
+			//if its 'maxStepHeight' allows it.
 			if (moNewZ > moOldZ && moNewZ - moOldZ <= mo.maxStepHeight &&
-				FitsAtPosition(mo, (mo.pos.xy, moNewZ)))
+				IsCarriable(mo) && FitsAtPosition(mo, (mo.pos.xy, moNewZ)))
 			{
 				mo.SetZ(moNewZ);
 				moved = TryMove(newPos.xy, 1); //Try one more time
