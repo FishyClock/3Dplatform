@@ -356,7 +356,8 @@ extend class FCW_Platform
 		let oldZ = mo.pos.z;
 		mo.SetZ(testPos.z); //Set Z before anything else because Z also has an effect on CheckMove()'s outcome
 
-		if (mo.pos.xy == testPos.xy)
+		//Even if XY is unaltered, having any of these flags means CheckMove() should handle it anyway
+		if (mo.pos.xy == testPos.xy && !mo.bFloorHugger && !mo.bCeilingHugger && !mo.bCantLeaveFloorPic)
 		{
 			result = mo.TestMobjLocation();
 		}
