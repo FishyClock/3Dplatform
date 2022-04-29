@@ -341,22 +341,28 @@ extend class FCW_Platform
 	}
 
 	//============================
-	// FitsAtPosition
+	// CanMoveToPosition
 	//============================
-	private bool FitsAtPosition (Actor mo, vector3 testPos)
+	private bool CanMoveToPosition (Actor mo, vector3 testPos)
 	{
+		// CheckMove() does more checks than TestMobjLocation().
+		// It takes into account floor/ceiling huggers and
+		// the CANTLEAVEFLOORPIC flag.
+		//
+		// It's useful if there's XY position changes while
+		// TestMobjLocation() is enough for Z changes only.
+
 		FCheckPosition tm;
 		let oldZ = mo.pos.z;
 		mo.SetZ(testPos.z); //Because Z has an effect on CheckMove()'s outcome
 
-		bool fits = (mo.CheckMove(testPos.xy, 0, tm) &&
-			testPos.z >= tm.floorZ &&				//Yes, this is
-			testPos.z + mo.height <= tm.ceilingZ);	//also necessary.
+		bool result = (mo.CheckMove(testPos.xy, 0, tm) &&
+			testPos.z >= tm.floorZ &&				//This is something that TestMobjLocation() does
+			testPos.z + mo.height <= tm.ceilingZ);	//that CheckMove() does not account for.
 
 		mo.SetZ(oldZ);
-		return fits;
+		return result;
 	}
-
 
 	//============================
 	// CrushObstacle
@@ -398,7 +404,7 @@ extend class FCW_Platform
 		if (args[ARG_CRUSHDMG] <= 0)
 			return;
 
-		if (!FitsAtPosition(pushed, level.Vec3Offset(pushed.pos, pushForce)))
+		if (!CanMoveToPosition(pushed, level.Vec3Offset(pushed.pos, pushForce)))
 			CrushObstacle(pushed);
 	}
 
@@ -529,6 +535,7 @@ extend class FCW_Platform
 			//Even when we have +ACTLIKEBRIDGE.
 			bool canCarry = (!(mo is "FCW_Platform") && //Platforms shouldn't carry other platforms.
 				!mo.bFloorHugger && !mo.bCeilingHugger && //Don't bother with floor/ceiling huggers.
+				!mo.bCantLeaveFloorPic && //Apparently this treats going above the floor as a invalid move.
 				(mo.bCanPass || mo.bSpecial));
 
 			bool oldRider = (riders.Find(mo) < riders.Size());
@@ -561,9 +568,11 @@ extend class FCW_Platform
 						bool blocked = true;
 						if (!(mo is "FCW_Platform") && top - mo.pos.z <= mo.maxStepHeight)
 						{
-							blocked = !FitsAtPosition(mo, (mo.pos.xy, top));
-							if (!blocked)
-								mo.SetZ(top);
+							let moOldZ = mo.pos.z;
+							mo.SetZ(top);
+							blocked = !mo.TestMobjLocation();
+							if (blocked)
+								mo.SetZ(moOldZ);
 						}
 						if (blocked)
 						{
@@ -587,11 +596,13 @@ extend class FCW_Platform
 					{
 						//Try to correct 'mo' Z so it can ride us, too.
 						//But only if its 'maxStepHeight' allows it.
-						if (top - mo.pos.z <= mo.maxStepHeight &&
-							FitsAtPosition(mo, (mo.pos.xy, top)))
+						if (top - mo.pos.z <= mo.maxStepHeight)
 						{
+							let moOldZ = mo.pos.z;
 							mo.SetZ(top);
-							if (canCarry && !oldRider)
+							if (!mo.TestMobjLocation())
+								mo.SetZ(moOldZ);
+							else if (canCarry && !oldRider)
 								onTopOfMe.Push(mo);
 						}
 					}
@@ -708,7 +719,7 @@ extend class FCW_Platform
 			bool moved;
 			if (teleMove)
 			{
-				moved = FitsAtPosition(mo, moNewPos);
+				moved = CanMoveToPosition(mo, moNewPos);
 				if (moved)
 					mo.SetOrigin(moNewPos, false);
 			}
@@ -864,10 +875,11 @@ extend class FCW_Platform
 		for (int i = 0; i < riders.Size(); ++i)
 		{
 			let mo = riders[i];
-			if (!mo || mo.bDestroyed ||
+			if (!mo || mo.bDestroyed || //Got Thing_Remove()'d?
 				mo.bNoBlockmap ||
-				mo.bFloorHugger || mo.bCeilingHugger ||
-				(!mo.bCanPass && !mo.bSpecial))
+				mo.bFloorHugger || mo.bCeilingHugger || //Don't bother with floor/ceiling huggers.
+				mo.bCantLeaveFloorPic || //Apparently this treats going above the floor as a invalid move.
+				(!mo.bCanPass && !mo.bSpecial)) //Having neither of these will make the rider fall through us.
 			{
 				riders.Delete(i--);
 				continue;
@@ -975,13 +987,11 @@ extend class FCW_Platform
 			//Try to set the obstacle on top of us if its 'maxStepHeight' allows it
 			if (moNewZ > moOldZ && moNewZ - moOldZ <= mo.maxStepHeight)
 			{
-				if (FitsAtPosition(mo, (mo.pos.xy, moNewZ))) //Obstacle fits at new Z even before we moved?
-				{
-					mo.SetZ(moNewZ);
+				mo.SetZ(moNewZ);
+				if (mo.TestMobjLocation())
 					moved = TryMove(newPos.xy, 1); //Try one more time
-					if (!moved)
-						mo.SetZ(moOldZ);
-				}
+				if (!moved)
+					mo.SetZ(moOldZ);
 			}
 
 			if (!moved) //Blocked by actor that isn't a platform?
