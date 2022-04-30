@@ -341,6 +341,16 @@ extend class FCW_Platform
 	}
 
 	//============================
+	// OverlapXY
+	//============================
+	private bool OverlapXY (Actor a, Actor b)
+	{
+		double blockDist = a.radius + b.radius;
+		vector2 vec = level.Vec2Diff(a.pos.xy, b.pos.xy);
+		return (abs(vec.x) < blockDist && abs(vec.y) < blockDist);
+	}
+
+	//============================
 	// FitsAtPosition
 	//============================
 	private bool FitsAtPosition (Actor mo, vector3 testPos)
@@ -396,7 +406,7 @@ extend class FCW_Platform
 		if (pushForce.y ~== 0) pushForce.y = 0;
 		if (pushForce.z ~== 0) pushForce.z = 0;
 
-		if (pushForce.z && Distance2D(pushed) >= radius + pushed.radius) //Out of range?
+		if (pushForce.z && !OverlapXY(self, pushed)) //Out of range?
 			pushForce.z = 0;
 
 		if (pushForce == (0, 0, 0))
@@ -677,7 +687,7 @@ extend class FCW_Platform
 				let otherMo = miscActors[iOther];
 
 				if (moTop > otherMo.pos.z && otherMo.pos.z + otherMo.height > mo.pos.z && //Is 'otherMo' on top of or stuck inside 'mo'?
-					mo.Distance2D(otherMo) < mo.radius + otherMo.radius) //Within XY range?
+					OverlapXY(mo, otherMo)) //Within XY range?
 				{
 					miscActors.Delete(iOther--); //Don't compare this one against other riders anymore
 					riders.Push(otherMo);
@@ -827,7 +837,7 @@ extend class FCW_Platform
 				double moTop = mo.pos.z + mo.height;
 				bool blocked = ( !teleMove && CollisionFlagChecks(mo, self) &&
 					moTop > self.pos.z && top > mo.pos.z && //Overlaps Z?
-					mo.Distance2D(self) < mo.radius + self.radius && //Within XY range?
+					OverlapXY(mo, self) && //Within XY range?
 					mo.CanCollideWith(self, false) && self.CanCollideWith(mo, true) );
 
 				//See if the ones we moved already will collide with this one
@@ -838,7 +848,7 @@ extend class FCW_Platform
 					let otherMo = riders[iOther];
 					if ( !blocked && ( !CollisionFlagChecks(otherMo, mo) ||
 						moTop <= otherMo.pos.z || otherMo.pos.z + otherMo.height <= mo.pos.z || //No Z overlap?
-						otherMo.Distance2D(mo) >= otherMo.radius + mo.radius || //Out of XY range?
+						!OverlapXY(otherMo, mo) || //Out of XY range?
 						!otherMo.CanCollideWith(mo, false) || !mo.CanCollideWith(otherMo, true) ) )
 					{
 						continue;
@@ -916,8 +926,7 @@ extend class FCW_Platform
 				continue;
 			}
 
-			double dist = Distance2D(mo);
-			if (dist >= radius + mo.radius) //Is out of XY range?
+			if (!OverlapXY(self, mo)) //Is out of XY range?
 			{
 				riders.Delete(i--);
 				continue;
@@ -936,11 +945,11 @@ extend class FCW_Platform
 			if (mo.pos.z > top + TOPEPSILON)
 				continue; //Not exactly on top of us
 
-			if (dist < radius - mo.speed)
-				continue; //Not close to platform's edge
-
 			if (mo.pos.z - mo.floorZ <= mo.maxDropoffHeight)
 				continue; //Monster is close to the ground (which includes 3D floors) so let it walk off
+
+			if (Distance2D(mo) < radius - mo.speed)
+				continue; //Not close to platform's edge
 
 			// Make your bog-standard idTech1 AI
 			// that uses A_Chase() or A_Wander()
