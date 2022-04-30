@@ -1022,7 +1022,10 @@ extend class FCW_Platform
 				mo.SetZ(moNewZ);
 				moved = TryMove(newPos.xy, 1); //Try one more time
 				if (!moved)
+				{
 					mo.SetZ(moOldZ);
+					blockingMobj = mo; //Needed for obstacle pushing; TryMove() might have nulled it
+				}
 			}
 
 			if (!moved) //Blocked by actor that isn't a platform?
