@@ -1,5 +1,7 @@
 DoomEdNums
 {
+	15000 = FCW_PlatformNode
+
 	//Testmap material
 	15500 = TESTMooPlatform
 	15501 = TESTFloaty

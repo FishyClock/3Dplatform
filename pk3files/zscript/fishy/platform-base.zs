@@ -37,22 +37,18 @@ class FCW_Platform : Actor abstract
 
 		//$Arg0 Interpolation Point
 		//$Arg0Type 14
+		//$Arg0Tooltip Must be 'Platform Interpolation Point' or GZDoom's 'Interpolation Point' class.\nWhichever is more convenient.\n'Interpolation Special' works with both.
 
 		//$Arg1 Options
 		//$Arg1Type 12
 		//$Arg1Enum {1 = "Linear path"; 2 = "Use point angle / Group move: Rotate angle"; 4 = "Use point pitch / Group move: Rotate pitch"; 8 = "Use point roll / Group move: Rotate roll"; 16 = "Face movement direction"; 32 = "Don't clip against geometry and other platforms"; 64 = "Start active"; 128 = "Group move: Mirror group origin's movement";}
 		//$Arg1Tooltip Anything with 'Group move' affects movement imposed by the group origin.\nIt does nothing for the group origin itself.\nThe 'group origin' is the platform that the others move with and orbit around.
 
-		//$Arg2 Travel/Hold Time Unit
-		//$Arg2Type 11
-		//$Arg2Enum {0 = "Octics (default)"; 1 = "Tics"; 2 = "Seconds";}
-		//$Arg2Tooltip Does nothing if being moved by group origin.\nThe 'group origin' is the platform that the others move with and orbit around.
+		//$Arg2 Platform(s) To Group With
+		//$Arg2Type 14
 
-		//$Arg3 Platform(s) To Group With
-		//$Arg3Type 14
-
-		//$Arg4 Crush Damage
-		//$Arg4Tooltip The damage is applied once per 4 tics.
+		//$Arg3 Crush Damage
+		//$Arg3Tooltip The damage is applied once per 4 tics.
 
 		+ACTLIKEBRIDGE;
 		+NOGRAVITY;
@@ -68,8 +64,87 @@ class FCW_Platform : Actor abstract
 	}
 }
 
+class FCW_PlatformNode : Actor
+{
+	Default
+	{
+		//$Title Platform Interpolation Point
+		//$Sprite internal:interpolationpoint
+
+		//$Arg0 Next Point
+		//$Arg0Type 14
+
+		//$Arg1 Travel Time
+
+		//$Arg2 Hold Time
+
+		//$Arg3 Travel Time Unit
+		//$Arg3Type 11
+		//$Arg3Enum {0 = "Octics"; 1 = "Tics"; 2 = "Seconds";}
+
+		//$Arg4 Hold Time Unit
+		//$Arg4Type 11
+		//$Arg4Enum {0 = "Octics"; 1 = "Tics"; 2 = "Seconds";}
+
+		//For UDB
+		Radius 14;
+		Height 0;
+
+		+NOINTERACTION;
+		+NOBLOCKMAP;
+		+NOSECTOR;
+	}
+}
+
 //Ultimate Doom Builder doesn't need to read the rest
 //$GZDB_SKIP
+
+extend class FCW_PlatformNode
+{
+	bool visited;
+	FCW_PlatformNode next;
+
+	override void BeginPlay ()
+	{
+		Super.BeginPlay();
+		visited = false;
+		next = null;
+	}
+
+	override void Tick () {}
+
+	void FormChain ()
+	{
+		for (let node = self; node; node = node.next)
+		{
+			if (node.visited)
+				return;
+			node.visited = true;
+
+			let it = level.CreateActorIterator(node.args[0], "FCW_PlatformNode");
+			do
+			{
+				node.next = FCW_PlatformNode(it.Next());
+			} while (node.next == node); //Don't link to self
+
+			if (!node.next && node.args[0])
+				Console.Printf("\ckPlatform interpolation point with tid " .. node.tid .. " at position " ..node.pos ..
+				":\ncannot find next platform interpolation point with tid " .. node.args[0] .. ".");
+		}
+	}
+
+	Actor ScanForLoop ()
+	{
+		let node = self;
+		Array<Actor> foundNodes;
+		while (node.next && node.next != self && foundNodes.Find(node) >= foundNodes.Size())
+		{
+			foundNodes.Push(node);
+			node = node.next;
+		}
+		return (node.next == self) ? node : null;
+	}
+}
 
 class FCW_PlatformGroup play
 {
@@ -135,9 +210,8 @@ extend class FCW_Platform
 	{
 		ARG_NODETID			= 0,
 		ARG_OPTIONS			= 1,
-		ARG_TIMEUNIT		= 2,
-		ARG_GROUPTID		= 3,
-		ARG_CRUSHDMG		= 4,
+		ARG_GROUPTID		= 2,
+		ARG_CRUSHDMG		= 3,
 
 		//For "ARG_OPTIONS"
 		OPTFLAG_LINEAR			= 1,
@@ -149,14 +223,16 @@ extend class FCW_Platform
 		OPTFLAG_STARTACTIVE		= 64,
 		OPTFLAG_MIRROR			= 128,
 
-		//For "ARG_TIMEUNIT"
+		//FCW_PlatformNode args that we check
+		NODEARG_TRAVELTIME		= 1, //Also applies to InterpolationPoint
+		NODEARG_HOLDTIME		= 2, //Ditto
+		NODEARG_TRAVELTUNIT		= 3,
+		NODEARG_HOLDTUNIT		= 4,
+
+		//For FCW_PlatformNode's "NODEARG_TRAVELTUNIT" and "NODEARG_HOLDTUNIT"
 		TIMEUNIT_OCTICS		= 0,
 		TIMEUNIT_TICS		= 1,
 		TIMEUNIT_SECS		= 2,
-
-		//"InterpolationPoint" args that we check
-		NODEARG_TRAVELTIME	= 1,
-		NODEARG_HOLDTIME	= 2,
 	};
 
 	const TOPEPSILON = 1.0;
@@ -174,8 +250,8 @@ extend class FCW_Platform
 	bool bJustStepped;
 	bool bPlatBlocked; //Only useful for ACS. (See utility functions below.)
 	transient bool bPlatInMove; //No collision between a platform and its riders during said platform's move.
-	InterpolationPoint currNode, firstNode;
-	InterpolationPoint prevNode, firstPrevNode;
+	Actor currNode, firstNode;
+	Actor prevNode, firstPrevNode;
 	Array<Actor> riders;
 	FCW_PlatformGroup group;
 	Actor delayedActivator;
@@ -257,10 +333,14 @@ extend class FCW_Platform
 			return; 
 		}
 
-		String prefix = "\ckPlatform class '" .. GetClassName() .. "' with tid " .. tid .. ":\nat position " .. pos .. ":\n";
+		String prefix = "\ckPlatform class '" .. GetClassName() .. "' with tid " .. tid .. " at position " .. pos .. ":\n";
 
-		it = level.CreateActorIterator(args[ARG_NODETID], "InterpolationPoint");
-		firstNode = InterpolationPoint(it.Next());
+		it = level.CreateActorIterator(args[ARG_NODETID]);
+		do
+		{
+			firstNode = Actor(it.Next());
+		} while (firstNode && !(firstNode is "FCW_PlatformNode") && !(firstNode is "InterpolationPoint"));
+
 		if (!firstNode)
 		{
 			Console.Printf(prefix .. "Can't find interpolation point with tid " .. args[ARG_NODETID] .. ".");
@@ -268,10 +348,14 @@ extend class FCW_Platform
 		}
 
 		//Verify the path has enough nodes
-		firstNode.FormChain();
+		if (firstNode is "FCW_PlatformNode")
+			FCW_PlatformNode(firstNode).FormChain();
+		else
+			InterpolationPoint(firstNode).FormChain();
+
 		if (args[ARG_OPTIONS] & OPTFLAG_LINEAR)
 		{
-			if (!firstNode.next) //Linear path; need 2 nodes
+			if (!GetNextNode(firstNode)) //Linear path; need 2 nodes
 			{
 				Console.Printf(prefix .. "Path needs at least 2 nodes.");
 				return;
@@ -279,9 +363,10 @@ extend class FCW_Platform
 		}
 		else //Spline path; need 4 nodes
 		{
-			if (!firstNode.next ||
-				!firstNode.next.next ||
-				!firstNode.next.next.next)
+			Actor next;
+			if (!(next = GetNextNode(firstNode)) ||
+				!(next = GetNextNode(next)) ||
+				!(next = GetNextNode(next)) )
 			{
 				Console.Printf(prefix .. "Path needs at least 4 nodes.");
 				return;
@@ -289,18 +374,36 @@ extend class FCW_Platform
 
 			//If the first node is in a loop, we can start there.
 			//Otherwise, we need to start at the second node in the path.
-			firstPrevNode = firstNode.ScanForLoop();
-			if (!firstPrevNode || firstPrevNode.next != firstNode)
+			if (firstNode is "FCW_PlatformNode")
+				firstPrevNode = FCW_PlatformNode(firstNode).ScanForLoop();
+			else
+				firstPrevNode = InterpolationPoint(firstNode).ScanForLoop();
+
+			if (!firstPrevNode || GetNextNode(firstPrevNode) != firstNode)
 			{
 				firstPrevNode = firstNode;
-				firstNode = firstNode.next;
+				firstNode = GetNextNode(firstNode);
 			}
 		}
 
 		if (args[ARG_OPTIONS] & OPTFLAG_STARTACTIVE)
 			Activate(self);
-		else if (firstNode)			//In case the mapper placed walking monsters on the platform
+		else						//In case the mapper placed walking monsters on the platform
 			GetNewRiders(true);		//get something for HandleOldRiders() to monitor.
+	}
+
+	//============================
+	// GetNextNode
+	//============================
+	private Actor GetNextNode (Actor node)
+	{
+		if (node is "FCW_PlatformNode")
+			return FCW_PlatformNode(node).next;
+
+		if (node is "InterpolationPoint")
+			return InterpolationPoint(node).next;
+
+		return null;
 	}
 
 	//============================
@@ -430,43 +533,66 @@ extend class FCW_Platform
 	//============================
 	// SetTimeFraction
 	//============================
-	private void SetTimeFraction (int newTime)
+	private void SetTimeFraction ()
 	{
-		switch (args[ARG_TIMEUNIT])
+		if (!currNode)
+			return;
+
+		int newTime = max(1, currNode.args[NODEARG_TRAVELTIME]);
+
+		if (currNode is "FCW_PlatformNode")
 		{
-			default:
-			case TIMEUNIT_OCTICS:
-				timeFrac = 8.0 / (max(1, newTime) * TICRATE); //Interpret 'newTime' as octics
-				break;
-			case TIMEUNIT_TICS:
-				timeFrac = 1.0 / max(1, newTime); //Interpret 'newTime' as tics
-				break;
-			case TIMEUNIT_SECS:
-				timeFrac = 1.0 / (max(1, newTime) * TICRATE); //Interpret 'newTime' as seconds
-				break;
+			switch (currNode.args[NODEARG_TRAVELTUNIT])
+			{
+				default:
+				case TIMEUNIT_OCTICS:
+					timeFrac = 8.0 / (newTime * TICRATE);
+					break;
+				case TIMEUNIT_TICS:
+					timeFrac = 1.0 / newTime;
+					break;
+				case TIMEUNIT_SECS:
+					timeFrac = 1.0 / (newTime * TICRATE);
+					break;
+			}
+		}
+		else // Old InterpolationPoint class, always in octics
+		{
+			timeFrac = 8.0 / (max(1, newTime) * TICRATE);
 		}
 	}
 
 	//============================
 	// SetHoldTime
 	//============================
-	private void SetHoldTime (int newTime)
+	private void SetHoldTime ()
 	{
+		if (!currNode)
+			return;
+
+		int newTime = currNode.args[NODEARG_HOLDTIME];
 		if (newTime <= 0)
 			return;
 
-		switch (args[ARG_TIMEUNIT])
+		if (currNode is "FCW_PlatformNode")
 		{
-			default:
-			case TIMEUNIT_OCTICS:
-				holdTime = level.mapTime + newTime * TICRATE / 8; //Interpret 'newTime' as octics
-				break;
-			case TIMEUNIT_TICS:
-				holdTime = level.mapTime + newTime; //Interpret 'newTime' as tics
-				break;
-			case TIMEUNIT_SECS:
-				holdTime = level.mapTime + newTime * TICRATE; //Interpret 'newTime' as seconds
-				break;
+			switch (currNode.args[NODEARG_HOLDTUNIT])
+			{
+				default:
+				case TIMEUNIT_OCTICS:
+					holdTime = level.mapTime + newTime * TICRATE / 8;
+					break;
+				case TIMEUNIT_TICS:
+					holdTime = level.mapTime + newTime;
+					break;
+				case TIMEUNIT_SECS:
+					holdTime = level.mapTime + newTime * TICRATE;
+					break;
+			}
+		}
+		else // Old InterpolationPoint class, always in octics
+		{
+			holdTime = level.mapTime + newTime * TICRATE / 8;
 		}
 	}
 
@@ -475,45 +601,76 @@ extend class FCW_Platform
 	//============================
 	private void SetInterpolationCoordinates ()
 	{
+		bool changeAng = (args[ARG_OPTIONS] & OPTFLAG_ANGLE);
+		bool changePi = (args[ARG_OPTIONS] & OPTFLAG_PITCH);
+		bool changeRo = (args[ARG_OPTIONS] & OPTFLAG_ROLL);
+		pPrev = pCurr = pNext = pNextNext = pos;
+		pPrevAngs = pCurrAngs = pNextAngs = pNextNextAngs = (angle, pitch, roll);
+
 		if (prevNode)
 		{
 			pPrev = pos + Vec3To(prevNode); //Make it portal aware
-			pPrevAngs = (
-				Normalize180(prevNode.angle),
-				Normalize180(prevNode.pitch),
-				Normalize180(prevNode.roll));
+			if (changeAng) pPrevAngs.x = Normalize180(prevNode.angle);
+			if (changePi) pPrevAngs.y = Normalize180(prevNode.pitch);
+			if (changeRo) pPrevAngs.z = Normalize180(prevNode.roll);
 		}
+
 		if (currNode)
 		{
-			pCurr = pos + Vec3To(currNode); //Ditto
+			pCurr = pos + Vec3To(currNode); //Make it portal aware
 			if (!prevNode)
-				pCurrAngs = (
-				Normalize180(currNode.angle),
-				Normalize180(currNode.pitch),
-				Normalize180(currNode.roll));
-			else
-				pCurrAngs = pPrevAngs + (
-				DeltaAngle(pPrevAngs.x, currNode.angle),
-				DeltaAngle(pPrevAngs.y, currNode.pitch),
-				DeltaAngle(pPrevAngs.z, currNode.roll));
-
-			if (currNode.next)
 			{
-				pNext = pos + Vec3To(currNode.next); //Ditto
-				pNextAngs = pCurrAngs + (
-				DeltaAngle(pCurrAngs.x, currNode.next.angle),
-				DeltaAngle(pCurrAngs.y, currNode.next.pitch),
-				DeltaAngle(pCurrAngs.z, currNode.next.roll));
+				if (changeAng) pCurrAngs.x = Normalize180(currNode.angle);
+				if (changePi) pCurrAngs.y = Normalize180(currNode.pitch);
+				if (changeRo) pCurrAngs.z = Normalize180(currNode.roll);
+			}
+			else
+			{
+				pCurrAngs = pPrevAngs + (
+				changeAng ? DeltaAngle(pPrevAngs.x, currNode.angle) : 0,
+				changePi  ? DeltaAngle(pPrevAngs.y, currNode.pitch) : 0,
+				changeRo  ? DeltaAngle(pPrevAngs.z, currNode.roll)  : 0);
+			}
 
-				if (currNode.next.next)
+			Actor next;
+			if (next = GetNextNode(currNode)) //currNode.next
+			{
+				pNext = pos + Vec3To(next); //Make it portal aware
+				pNextAngs = pCurrAngs + (
+				changeAng ? DeltaAngle(pCurrAngs.x, next.angle) : 0,
+				changePi  ? DeltaAngle(pCurrAngs.y, next.pitch) : 0,
+				changeRo  ? DeltaAngle(pCurrAngs.z, next.roll)  : 0);
+
+				if (next = GetNextNode(next)) //currNode.next.next
 				{
-					pNextNext = pos + Vec3To(currNode.next.next); //Ditto
+					pNextNext = pos + Vec3To(next); //Make it portal aware
 					pNextNextAngs = pNextAngs + (
-					DeltaAngle(pNextAngs.x, currNode.next.next.angle),
-					DeltaAngle(pNextAngs.y, currNode.next.next.pitch),
-					DeltaAngle(pNextAngs.z, currNode.next.next.roll));
+					changeAng ? DeltaAngle(pNextAngs.x, next.angle) : 0,
+					changePi  ? DeltaAngle(pNextAngs.y, next.pitch) : 0,
+					changeRo  ? DeltaAngle(pNextAngs.z, next.roll)  : 0);
+				}
+				else //No currNode.next.next
+				{
+					pNextNext = pNext;
+					pNextNextAngs = pNextAngs;
 				}
 			}
+			else //No currNode.next
+			{
+				pNextNext = pNext = pCurr;
+				pNextNextAngs = pNextAngs = pCurrAngs;
+			}
+		}
+		else //No currNode
+		{
+			pNextNext = pNext = pCurr;
+			pNextNextAngs = pNextAngs = pCurrAngs;
+		}
+
+		if (!prevNode)
+		{
+			pPrev = pCurr;
+			pPrevAngs = pCurrAngs;
 		}
 	}
 
@@ -968,17 +1125,17 @@ extend class FCW_Platform
 	}
 
 	//============================
-	// PlatLerp
+	// Lerp
 	//============================
-	private double PlatLerp (double p1, double p2)
+	private double Lerp (double p1, double p2)
 	{
 		return (p1 ~== p2) ? p1 : (p1 + time * (p2 - p1));
 	}
 
 	//============================
-	// PlatSplerp
+	// Splerp
 	//============================
-	private double PlatSplerp (double p1, double p2, double p3, double p4)
+	private double Splerp (double p1, double p2, double p3, double p4)
 	{
 		if (p2 ~== p3)
 			return p2;
@@ -1166,85 +1323,81 @@ extend class FCW_Platform
 
 		if (args[ARG_OPTIONS] & OPTFLAG_LINEAR)
 		{
-			newPos.x = PlatLerp(pCurr.x, pNext.x);
-			newPos.y = PlatLerp(pCurr.y, pNext.y);
-			newPos.z = PlatLerp(pCurr.z, pNext.z);
+			newPos.x = Lerp(pCurr.x, pNext.x);
+			newPos.y = Lerp(pCurr.y, pNext.y);
+			newPos.z = Lerp(pCurr.z, pNext.z);
 		}
 		else //Spline
 		{
-			newPos.x = PlatSplerp(pPrev.x, pCurr.x, pNext.x, pNextNext.x);
-			newPos.y = PlatSplerp(pPrev.y, pCurr.y, pNext.y, pNextNext.y);
-			newPos.z = PlatSplerp(pPrev.z, pCurr.z, pNext.z, pNextNext.z);
+			newPos.x = Splerp(pPrev.x, pCurr.x, pNext.x, pNextNext.x);
+			newPos.y = Splerp(pPrev.y, pCurr.y, pNext.y, pNextNext.y);
+			newPos.z = Splerp(pPrev.z, pCurr.z, pNext.z, pNextNext.z);
 		}
 
-		if (args[ARG_OPTIONS] & (OPTFLAG_ANGLE | OPTFLAG_PITCH | OPTFLAG_ROLL))
+		if (currNode && (args[ARG_OPTIONS] & OPTFLAG_FACEMOVE))
 		{
-			if (args[ARG_OPTIONS] & OPTFLAG_FACEMOVE)
+			if (args[ARG_OPTIONS] & OPTFLAG_LINEAR)
 			{
-				if (args[ARG_OPTIONS] & OPTFLAG_LINEAR)
-				{
-					dpos = pNext - pCurr;
-				}
-				else if (time > 0) //Spline
-				{
-					dpos = newPos - dpos;
-				}
-				else if (args[ARG_OPTIONS] & (OPTFLAG_ANGLE | OPTFLAG_PITCH))
-				{	//Spline but with time <= 0
-					dpos = newPos;
-					time = timeFrac;
-					newPos.x = PlatSplerp(pPrev.x, pCurr.x, pNext.x, pNextNext.x);
-					newPos.y = PlatSplerp(pPrev.y, pCurr.y, pNext.y, pNextNext.y);
-					newPos.z = PlatSplerp(pPrev.z, pCurr.z, pNext.z, pNextNext.z);
-					time = 0;
-					dpos = newPos - dpos;
-					newPos -= dpos;
-				}
-
-				//Adjust angle
-				if (args[ARG_OPTIONS] & OPTFLAG_ANGLE)
-					newAngle = VectorAngle(dpos.x, dpos.y);
-
-				//Adjust pitch
-				if (args[ARG_OPTIONS] & OPTFLAG_PITCH)
-				{
-					double dist = dpos.xy.Length();
-					newPitch = dist ? VectorAngle(dist, -dpos.z) : 0;
-				}
-				//Adjust roll
-				if (args[ARG_OPTIONS] & OPTFLAG_ROLL)
-					newRoll = 0;
+				dpos = pNext - pCurr;
 			}
-			else
+			else if (time > 0) //Spline
 			{
-				if (args[ARG_OPTIONS] & OPTFLAG_LINEAR)
-				{
-					//Interpolate angle
-					if (args[ARG_OPTIONS] & OPTFLAG_ANGLE)
-						newAngle = PlatLerp(pCurrAngs.x, pNextAngs.x);
+				dpos = newPos - dpos;
+			}
+			else if (args[ARG_OPTIONS] & (OPTFLAG_ANGLE | OPTFLAG_PITCH))
+			{	//Spline but with time <= 0
+				dpos = newPos;
+				time = timeFrac;
+				newPos.x = Splerp(pPrev.x, pCurr.x, pNext.x, pNextNext.x);
+				newPos.y = Splerp(pPrev.y, pCurr.y, pNext.y, pNextNext.y);
+				newPos.z = Splerp(pPrev.z, pCurr.z, pNext.z, pNextNext.z);
+				time = 0;
+				dpos = newPos - dpos;
+				newPos -= dpos;
+			}
 
-					//Interpolate pitch
-					if (args[ARG_OPTIONS] & OPTFLAG_PITCH)
-						newPitch = PlatLerp(pCurrAngs.y, pNextAngs.y);
+			//Adjust angle
+			if (args[ARG_OPTIONS] & OPTFLAG_ANGLE)
+				newAngle = VectorAngle(dpos.x, dpos.y);
 
-					//Interpolate roll
-					if (args[ARG_OPTIONS] & OPTFLAG_ROLL)
-						newRoll = PlatLerp(pCurrAngs.z, pNextAngs.z);
-				}
-				else //Spline
-				{
-					//Interpolate angle
-					if (args[ARG_OPTIONS] & OPTFLAG_ANGLE)
-						newAngle = PlatSplerp(pPrevAngs.x, pCurrAngs.x, pNextAngs.x, pNextNextAngs.x);
+			//Adjust pitch
+			if (args[ARG_OPTIONS] & OPTFLAG_PITCH)
+			{
+				double dist = dpos.xy.Length();
+				newPitch = dist ? VectorAngle(dist, -dpos.z) : 0;
+			}
 
-					//Interpolate pitch
-					if (args[ARG_OPTIONS] & OPTFLAG_PITCH)
-						newPitch = PlatSplerp(pPrevAngs.y, pCurrAngs.y, pNextAngs.y, pNextNextAngs.y);
+			//Adjust roll
+			if (args[ARG_OPTIONS] & OPTFLAG_ROLL)
+				newRoll = 0;
+		}
+		else
+		{
+			//Whether angle/pitch/roll changes or not is
+			//determined in the interpolation coordinates.
+			//That way the ACS functions aren't restricted
+			//by the OPTFLAG_ANGLE/PITCH/ROLL flags.
+			if (args[ARG_OPTIONS] & OPTFLAG_LINEAR)
+			{
+				//Interpolate angle
+				newAngle = Lerp(pCurrAngs.x, pNextAngs.x);
 
-					//Interpolate roll
-					if (args[ARG_OPTIONS] & OPTFLAG_ROLL)
-						newRoll = PlatSplerp(pPrevAngs.z, pCurrAngs.z, pNextAngs.z, pNextNextAngs.z);
-				}
+				//Interpolate pitch
+				newPitch = Lerp(pCurrAngs.y, pNextAngs.y);
+
+				//Interpolate roll
+				newRoll = Lerp(pCurrAngs.z, pNextAngs.z);
+			}
+			else //Spline
+			{
+				//Interpolate angle
+				newAngle = Splerp(pPrevAngs.x, pCurrAngs.x, pNextAngs.x, pNextNextAngs.x);
+
+				//Interpolate pitch
+				newPitch = Splerp(pPrevAngs.y, pCurrAngs.y, pNextAngs.y, pNextNextAngs.y);
+
+				//Interpolate roll
+				newRoll = Splerp(pPrevAngs.z, pCurrAngs.z, pNextAngs.z, pNextNextAngs.z);
 			}
 		}
 
@@ -1431,7 +1584,7 @@ extend class FCW_Platform
 				bJustStepped = true;
 				SetInterpolationCoordinates();
 
-				SetTimeFraction(currNode.args[NODEARG_TRAVELTIME]);
+				SetTimeFraction();
 				time = 0;
 				holdTime = 0;
 			}
@@ -1471,8 +1624,7 @@ extend class FCW_Platform
 			if (bJustStepped)
 			{
 				bJustStepped = false;
-				if (currNode)
-					SetHoldTime(currNode.args[NODEARG_HOLDTIME]);
+				SetHoldTime();
 			}
 
 			if (holdTime > level.mapTime)
@@ -1491,7 +1643,7 @@ extend class FCW_Platform
 				bJustStepped = true;
 				prevNode = currNode;
 				if (currNode)
-					currNode = currNode.next;
+					currNode = GetNextNode(currNode);
 
 				if (currNode)
 				{
@@ -1505,12 +1657,13 @@ extend class FCW_Platform
 						break; //Our node got Thing_Remove()'d
 					}
 					SetInterpolationCoordinates();
-					SetTimeFraction(currNode.args[NODEARG_TRAVELTIME]);
+					SetTimeFraction();
 				}
 
-				if (!currNode || !currNode.next)
+				Actor next;
+				if (!currNode || !(next = GetNextNode(currNode)))
 					Deactivate(self);
-				else if (!(args[ARG_OPTIONS] & OPTFLAG_LINEAR) && !currNode.next.next)
+				else if (!(args[ARG_OPTIONS] & OPTFLAG_LINEAR) && !GetNextNode(next))
 					Deactivate(self);
 			}
 			break;
@@ -1524,10 +1677,16 @@ extend class FCW_Platform
 			SetState(curState.nextState);
 	}
 
+	//
+	//
+	// Everything below this point is ACS centric
+	//
+	//
+
 	//============================
 	// CommonACSSetup
 	//============================
-	private void CommonACSSetup (int newTime)
+	private void CommonACSSetup (int travelTime)
 	{
 		if (group)
 			group.origin = self;
@@ -1535,7 +1694,7 @@ extend class FCW_Platform
 		prevNode = null;
 		time = 0;
 		holdTime = 0;
-		SetTimeFraction(newTime);
+		timeFrac = 1.0 / max(1, travelTime); //Time unit is always in tics from the ACS side
 		bActive = true;
 		pPrev = pCurr = pos;
 		pPrevAngs = pCurrAngs = (
@@ -1547,13 +1706,13 @@ extend class FCW_Platform
 	//============================
 	// Move (ACS utility)
 	//============================
-	static void Move (int platTid, double offX, double offY, double offZ, int newTime, double offAng = 0, double offPi = 0, double offRo = 0)
+	static void Move (int platTid, double offX, double offY, double offZ, int travelTime, double offAng = 0, double offPi = 0, double offRo = 0)
 	{
 		let it = level.CreateActorIterator(platTid, "FCW_Platform");
 		FCW_Platform plat;
 		while (plat = FCW_Platform(it.Next()))
 		{
-			plat.CommonACSSetup(newTime);
+			plat.CommonACSSetup(travelTime);
 			plat.pNext = plat.pNextNext = plat.Vec3Offset(offX, offY, offZ);
 			plat.pNextAngs = plat.pNextNextAngs = plat.pCurrAngs + (offAng, offPi, offRo);
 		}
@@ -1562,7 +1721,7 @@ extend class FCW_Platform
 	//============================
 	// MoveTo (ACS utility)
 	//============================
-	static void MoveTo (int platTid, double newX, double newY, double newZ, int newTime, double offAng = 0, double offPi = 0, double offRo = 0)
+	static void MoveTo (int platTid, double newX, double newY, double newZ, int travelTime, double offAng = 0, double offPi = 0, double offRo = 0)
 	{
 		//ACS itself has no 'vector3' variable type so it has to be 3 doubles (floats/fixed point numbers)
 		vector3 newPos = (newX, newY, newZ);
@@ -1570,7 +1729,7 @@ extend class FCW_Platform
 		FCW_Platform plat;
 		while (plat = FCW_Platform(it.Next()))
 		{
-			plat.CommonACSSetup(newTime);
+			plat.CommonACSSetup(travelTime);
 			plat.pNext = plat.pNextNext = plat.pos + level.Vec3Diff(plat.pos, newPos); //Make it portal aware
 			plat.pNextAngs = plat.pNextNextAngs = plat.pCurrAngs + (offAng, offPi, offRo);
 		}
@@ -1579,7 +1738,7 @@ extend class FCW_Platform
 	//============================
 	// MoveToSpot (ACS utility)
 	//============================
-	static void MoveToSpot (int platTid, int spotTid, int newTime)
+	static void MoveToSpot (int platTid, int spotTid, int travelTime)
 	{
 		//This is the only place you can make a platform use any actor as a travel destination
 		let it = level.CreateActorIterator(spotTid);
@@ -1591,7 +1750,7 @@ extend class FCW_Platform
 		FCW_Platform plat;
 		while (plat = FCW_Platform(it.Next()))
 		{
-			plat.CommonACSSetup(newTime);
+			plat.CommonACSSetup(travelTime);
 			plat.pNext = plat.pNextNext = plat.pos + plat.Vec3To(spot); //Make it portal aware
 			plat.pNextAngs = plat.pNextNextAngs = plat.pCurrAngs + (
 				DeltaAngle(plat.pCurrAngs.x, spot.angle),
@@ -1634,30 +1793,5 @@ extend class FCW_Platform
 			plat = plat.group.origin;
 
 		return (plat && plat.bActive && plat.bPlatBlocked);
-	}
-
-	//============================
-	// SetTimeUnitTo* (ACS utility)
-	//============================
-	static void SetTimeUnitToOctics (int platTid)
-	{
-		let it = level.CreateActorIterator(platTid, "FCW_Platform");
-		Actor plat;
-		while (plat = it.Next())
-			plat.args[ARG_TIMEUNIT] = TIMEUNIT_OCTICS;
-	}
-	static void SetTimeUnitToTics (int platTid)
-	{
-		let it = level.CreateActorIterator(platTid, "FCW_Platform");
-		Actor plat;
-		while (plat = it.Next())
-			plat.args[ARG_TIMEUNIT] = TIMEUNIT_TICS;
-	}
-	static void SetTimeUnitToSeconds (int platTid)
-	{
-		let it = level.CreateActorIterator(platTid, "FCW_Platform");
-		Actor plat;
-		while (plat = it.Next())
-			plat.args[ARG_TIMEUNIT] = TIMEUNIT_SECS;
 	}
 }
