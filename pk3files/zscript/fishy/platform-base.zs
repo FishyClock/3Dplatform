@@ -94,8 +94,11 @@ extend class FCW_PlatformNode
 {
 	void PNodeFormChain ()
 	{
-		//The differences here are the archaic tid/hi-tid lookup is gone
-		//and the tid to look for is on a different argument.
+		// The relevant differences from InterpolationPoint's FormChain() are:
+		// 1) The archaic tid/hi-tid lookup is gone.
+		// 2) The tid to look for is on a different argument.
+		// 3) The pitch isn't clamped.
+
 		for (FCW_PlatformNode node = self; node; node = FCW_PlatformNode(node.next))
 		{
 			if (node.bVisited)
