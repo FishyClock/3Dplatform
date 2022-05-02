@@ -64,12 +64,11 @@ class FCW_Platform : Actor abstract
 	}
 }
 
-class FCW_PlatformNode : Actor
+class FCW_PlatformNode : InterpolationPoint
 {
 	Default
 	{
 		//$Title Platform Interpolation Point
-		//$Sprite internal:interpolationpoint
 
 		//$Arg0 Next Point
 		//$Arg0Type 14
@@ -85,14 +84,6 @@ class FCW_PlatformNode : Actor
 		//$Arg4 Hold Time Unit
 		//$Arg4Type 11
 		//$Arg4Enum {0 = "Octics"; 1 = "Tics"; 2 = "Seconds";}
-
-		//For UDB
-		Radius 14;
-		Height 0;
-
-		+NOINTERACTION;
-		+NOBLOCKMAP;
-		+NOSECTOR;
 	}
 }
 
@@ -101,25 +92,15 @@ class FCW_PlatformNode : Actor
 
 extend class FCW_PlatformNode
 {
-	bool visited;
-	FCW_PlatformNode next;
-
-	override void BeginPlay ()
+	void PNodeFormChain ()
 	{
-		Super.BeginPlay();
-		visited = false;
-		next = null;
-	}
-
-	override void Tick () {}
-
-	void FormChain ()
-	{
-		for (let node = self; node; node = node.next)
+		//The differences here are the archaic tid/hi-tid lookup is gone
+		//and the tid to look for is on a different argument.
+		for (FCW_PlatformNode node = self; node; node = FCW_PlatformNode(node.next))
 		{
-			if (node.visited)
+			if (node.bVisited)
 				return;
-			node.visited = true;
+			node.bVisited = true;
 
 			let it = level.CreateActorIterator(node.args[0], "FCW_PlatformNode");
 			do
@@ -131,18 +112,6 @@ extend class FCW_PlatformNode
 				Console.Printf("\ckPlatform interpolation point with tid " .. node.tid .. " at position " ..node.pos ..
 				":\ncannot find next platform interpolation point with tid " .. node.args[0] .. ".");
 		}
-	}
-
-	Actor ScanForLoop ()
-	{
-		let node = self;
-		Array<Actor> foundNodes;
-		while (node.next && node.next != self && foundNodes.Find(node) >= foundNodes.Size())
-		{
-			foundNodes.Push(node);
-			node = node.next;
-		}
-		return (node.next == self) ? node : null;
 	}
 }
 
@@ -250,8 +219,8 @@ extend class FCW_Platform
 	bool bJustStepped;
 	bool bPlatBlocked; //Only useful for ACS. (See utility functions below.)
 	transient bool bPlatInMove; //No collision between a platform and its riders during said platform's move.
-	Actor currNode, firstNode;
-	Actor prevNode, firstPrevNode;
+	InterpolationPoint currNode, firstNode;
+	InterpolationPoint prevNode, firstPrevNode;
 	Array<Actor> riders;
 	FCW_PlatformGroup group;
 	Actor delayedActivator;
@@ -335,12 +304,8 @@ extend class FCW_Platform
 
 		String prefix = "\ckPlatform class '" .. GetClassName() .. "' with tid " .. tid .. " at position " .. pos .. ":\n";
 
-		it = level.CreateActorIterator(args[ARG_NODETID]);
-		do
-		{
-			firstNode = Actor(it.Next());
-		} while (firstNode && !(firstNode is "FCW_PlatformNode") && !(firstNode is "InterpolationPoint"));
-
+		it = level.CreateActorIterator(args[ARG_NODETID], "InterpolationPoint");
+		firstNode = InterpolationPoint(it.Next());
 		if (!firstNode)
 		{
 			Console.Printf(prefix .. "Can't find interpolation point with tid " .. args[ARG_NODETID] .. ".");
@@ -349,13 +314,13 @@ extend class FCW_Platform
 
 		//Verify the path has enough nodes
 		if (firstNode is "FCW_PlatformNode")
-			FCW_PlatformNode(firstNode).FormChain();
+			FCW_PlatformNode(firstNode).PNodeFormChain();
 		else
-			InterpolationPoint(firstNode).FormChain();
+			firstNode.FormChain();
 
 		if (args[ARG_OPTIONS] & OPTFLAG_LINEAR)
 		{
-			if (!GetNextNode(firstNode)) //Linear path; need 2 nodes
+			if (!firstNode.next) //Linear path; need 2 nodes
 			{
 				Console.Printf(prefix .. "Path needs at least 2 nodes.");
 				return;
@@ -363,10 +328,9 @@ extend class FCW_Platform
 		}
 		else //Spline path; need 4 nodes
 		{
-			Actor next;
-			if (!(next = GetNextNode(firstNode)) ||
-				!(next = GetNextNode(next)) ||
-				!(next = GetNextNode(next)) )
+			if (!firstNode.next ||
+				!firstNode.next.next ||
+				!firstNode.next.next.next)
 			{
 				Console.Printf(prefix .. "Path needs at least 4 nodes.");
 				return;
@@ -374,15 +338,11 @@ extend class FCW_Platform
 
 			//If the first node is in a loop, we can start there.
 			//Otherwise, we need to start at the second node in the path.
-			if (firstNode is "FCW_PlatformNode")
-				firstPrevNode = FCW_PlatformNode(firstNode).ScanForLoop();
-			else
-				firstPrevNode = InterpolationPoint(firstNode).ScanForLoop();
-
-			if (!firstPrevNode || GetNextNode(firstPrevNode) != firstNode)
+			firstPrevNode = firstNode.ScanForLoop();
+			if (!firstPrevNode || firstPrevNode.next != firstNode)
 			{
 				firstPrevNode = firstNode;
-				firstNode = GetNextNode(firstNode);
+				firstNode = firstNode.next;
 			}
 		}
 
@@ -390,20 +350,6 @@ extend class FCW_Platform
 			Activate(self);
 		else						//In case the mapper placed walking monsters on the platform
 			GetNewRiders(true);		//get something for HandleOldRiders() to monitor.
-	}
-
-	//============================
-	// GetNextNode
-	//============================
-	private Actor GetNextNode (Actor node)
-	{
-		if (node is "FCW_PlatformNode")
-			return FCW_PlatformNode(node).next;
-
-		if (node is "InterpolationPoint")
-			return InterpolationPoint(node).next;
-
-		return null;
 	}
 
 	//============================
@@ -632,22 +578,21 @@ extend class FCW_Platform
 				changeRo  ? DeltaAngle(pPrevAngs.z, currNode.roll)  : 0);
 			}
 
-			Actor next;
-			if (next = GetNextNode(currNode)) //currNode.next
+			if (currNode.next)
 			{
-				pNext = pos + Vec3To(next); //Make it portal aware
+				pNext = pos + Vec3To(currNode.next); //Make it portal aware
 				pNextAngs = pCurrAngs + (
-				changeAng ? DeltaAngle(pCurrAngs.x, next.angle) : 0,
-				changePi  ? DeltaAngle(pCurrAngs.y, next.pitch) : 0,
-				changeRo  ? DeltaAngle(pCurrAngs.z, next.roll)  : 0);
+				changeAng ? DeltaAngle(pCurrAngs.x, currNode.next.angle) : 0,
+				changePi  ? DeltaAngle(pCurrAngs.y, currNode.next.pitch) : 0,
+				changeRo  ? DeltaAngle(pCurrAngs.z, currNode.next.roll)  : 0);
 
-				if (next = GetNextNode(next)) //currNode.next.next
+				if (currNode.next.next)
 				{
-					pNextNext = pos + Vec3To(next); //Make it portal aware
+					pNextNext = pos + Vec3To(currNode.next.next); //Make it portal aware
 					pNextNextAngs = pNextAngs + (
-					changeAng ? DeltaAngle(pNextAngs.x, next.angle) : 0,
-					changePi  ? DeltaAngle(pNextAngs.y, next.pitch) : 0,
-					changeRo  ? DeltaAngle(pNextAngs.z, next.roll)  : 0);
+					changeAng ? DeltaAngle(pNextAngs.x, currNode.next.next.angle) : 0,
+					changePi  ? DeltaAngle(pNextAngs.y, currNode.next.next.pitch) : 0,
+					changeRo  ? DeltaAngle(pNextAngs.z, currNode.next.next.roll)  : 0);
 				}
 				else //No currNode.next.next
 				{
@@ -1643,7 +1588,7 @@ extend class FCW_Platform
 				bJustStepped = true;
 				prevNode = currNode;
 				if (currNode)
-					currNode = GetNextNode(currNode);
+					currNode = currNode.next;
 
 				if (currNode)
 				{
@@ -1660,10 +1605,9 @@ extend class FCW_Platform
 					SetTimeFraction();
 				}
 
-				Actor next;
-				if (!currNode || !(next = GetNextNode(currNode)))
+				if (!currNode || !currNode.next)
 					Deactivate(self);
-				else if (!(args[ARG_OPTIONS] & OPTFLAG_LINEAR) && !GetNextNode(next))
+				else if (!(args[ARG_OPTIONS] & OPTFLAG_LINEAR) && !currNode.next.next)
 					Deactivate(self);
 			}
 			break;
