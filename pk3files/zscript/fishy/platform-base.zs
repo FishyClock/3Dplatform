@@ -220,7 +220,8 @@ extend class FCW_Platform
 	int holdTime;
 	bool bActive;
 	bool bJustStepped;
-	bool bPlatBlocked; //Only useful for ACS. (See utility functions below.)
+	bool bPlatBlocked;	//Only useful for ACS. (See utility functions below.)
+	int moveCmdTime;	//Ditto
 	transient bool bPlatInMove; //No collision between a platform and its riders during said platform's move.
 	InterpolationPoint currNode, firstNode;
 	InterpolationPoint prevNode, firstPrevNode;
@@ -254,6 +255,7 @@ extend class FCW_Platform
 		bActive = false;
 		bJustStepped = false;
 		bPlatBlocked = false;
+		moveCmdTime = 0;
 		bPlatInMove = false;
 		currNode = firstNode = null;
 		prevNode = firstPrevNode = null;
@@ -1535,6 +1537,9 @@ extend class FCW_Platform
 				SetTimeFraction();
 				time = 0;
 				holdTime = 0;
+
+				moveCmdTime = level.mapTime + 1; //If IsMoving() gets called in this tic and the next tic, have it return true
+				bPlatBlocked = false; //If IsBlocked() gets called in this tic, have it return false
 			}
 		}
 	}
@@ -1635,14 +1640,15 @@ extend class FCW_Platform
 	//============================
 	private void CommonACSSetup (int travelTime)
 	{
-		if (group)
-			group.origin = self;
 		currNode = null; //Deactivate when done moving
 		prevNode = null;
 		time = 0;
 		holdTime = 0;
 		timeFrac = 1.0 / max(1, travelTime); //Time unit is always in tics from the ACS side
 		bActive = true;
+		if (group) group.origin = self;
+		moveCmdTime = level.mapTime + 1; //If IsMoving() gets called in this tic and the next tic, have it return true
+		bPlatBlocked = false; //If IsBlocked() gets called in this tic, have it return false
 		pPrev = pCurr = pos;
 		pPrevAngs = pCurrAngs = (
 			Normalize180(angle),
@@ -1723,7 +1729,8 @@ extend class FCW_Platform
 			plat.pos != plat.oldPos ||
 			plat.angle != plat.oldAngle ||
 			plat.pitch != plat.oldPitch ||
-			plat.roll != plat.oldRoll) );
+			plat.roll != plat.oldRoll ||
+			plat.moveCmdTime >= level.mapTime) );
 	}
 
 	//============================
