@@ -308,17 +308,21 @@ extend class FCW_Platform
 				Console.Printf(prefix .. "Can't find platform(s) with tid " .. args[ARG_GROUPTID] .. " to group with.");
 				prefix = "\ck";
 			}
-			else if (group.origin)
+		}
+
+		if (group && group.origin)
+		{
+			let ori = group.origin;
+			if (ori.pos != ori.spawnPoint ||
+				ori.angle != ori.spawnAngle ||
+				ori.pitch != ori.spawnPitch ||
+				ori.roll != ori.spawnRoll)
 			{
-				let ori = group.origin;
-				if (ori != self && (
-					ori.pos != ori.spawnPoint ||
-					ori.angle != ori.spawnAngle ||
-					ori.pitch != ori.spawnPitch ||
-					ori.roll != ori.spawnRoll) )
-				{
-					ori.MoveGroup(true); //Get going if the group origin is already active
-				}
+				//If the group origin is already active then call MoveGroup() now.
+				//This matters if the origin's first interpolation point has a defined hold time
+				//because depending on who ticks first some members might have already moved
+				//and some might have not.
+				ori.MoveGroup(true);
 			}
 		}
 
