@@ -208,7 +208,6 @@ extend class FCW_Platform
 	};
 
 	const TOPEPSILON = 1.0;
-	const ACTIVATION_AGE = 1;
 
 	vector3 oldPos;
 	double oldAngle;
@@ -227,7 +226,6 @@ extend class FCW_Platform
 	InterpolationPoint prevNode, firstPrevNode;
 	Array<Actor> riders;
 	FCW_PlatformGroup group;
-	Actor delayedActivator;
 
 	//Unlike PathFollower classes, our interpolations are done with
 	//vector3 coordinates rather than checking InterpolationPoint positions.
@@ -261,7 +259,6 @@ extend class FCW_Platform
 		prevNode = firstPrevNode = null;
 		riders.Clear();
 		group = null;
-		delayedActivator = null;
 
 		pCurr = pPrev = pNext = pNextNext = (0, 0, 0);
 		pCurrAngs = pPrevAngs = pNextAngs = pNextNextAngs = (0, 0, 0);
@@ -274,31 +271,59 @@ extend class FCW_Platform
 	{
 		Super.PostBeginPlay();
 
-		let it = level.CreateActorIterator(args[ARG_GROUPTID], "FCW_Platform");
-		FCW_Platform plat;
-		while (plat = FCW_Platform(it.Next()))
+		String prefix = "\ckPlatform class '" .. GetClassName() .. "' with tid " .. tid .. " at position " .. pos .. ":\n";
+
+		if (args[ARG_GROUPTID])
 		{
-			if (plat.group) //Target is in its own group?
+			let it = level.CreateActorIterator(args[ARG_GROUPTID], "FCW_Platform");
+			FCW_Platform plat;
+			bool foundOne = false;
+			while (plat = FCW_Platform(it.Next()))
 			{
-				if (!group) //We don't have a group?
-					plat.group.Add(self);
-				else if (plat.group != group) //Both are in different groups?
-					plat.group.MergeWith(group);
-				//else - nothing happens because it's the same group or plat == self
+				if (plat != self)
+					foundOne = true;
+
+				if (plat.group) //Target is in its own group?
+				{
+					if (!group) //We don't have a group?
+						plat.group.Add(self);
+					else if (plat.group != group) //Both are in different groups?
+						plat.group.MergeWith(group);
+					//else - nothing happens because it's the same group or plat == self
+				}
+				else if (group) //We're in a group but target doesn't have a group?
+				{
+					group.Add(plat);
+				}
+				else if (plat != self) //Neither are in a group
+				{
+					let newGroup = FCW_PlatformGroup.Create();
+					newGroup.Add(self);
+					newGroup.Add(plat);
+				}
 			}
-			else if (group) //We're in a group but target doesn't have a group?
+
+			if (!foundOne)
 			{
-				group.Add(plat);
+				Console.Printf(prefix .. "Can't find platform(s) with tid " .. args[ARG_GROUPTID] .. " to group with.");
+				prefix = "\ck";
 			}
-			else if (plat != self) //Neither are in a group
+			else if (group.origin)
 			{
-				let newGroup = FCW_PlatformGroup.Create();
-				newGroup.Add(self);
-				newGroup.Add(plat);
+				let ori = group.origin;
+				if (ori != self && (
+					ori.pos != ori.spawnPoint ||
+					ori.angle != ori.spawnAngle ||
+					ori.pitch != ori.spawnPitch ||
+					ori.roll != ori.spawnRoll) )
+				{
+					ori.MoveGroup(true); //Get going if the group origin is already active
+				}
 			}
 		}
 
-		//Print no warnings if we're not supposed to have a interpolation point
+
+		//Print no (additional) warnings if we're not supposed to have a interpolation point
 		if (!args[ARG_NODETID])
 		{
 			//In case the mapper placed walking monsters on the platform
@@ -307,9 +332,7 @@ extend class FCW_Platform
 			return; 
 		}
 
-		String prefix = "\ckPlatform class '" .. GetClassName() .. "' with tid " .. tid .. " at position " .. pos .. ":\n";
-
-		it = level.CreateActorIterator(args[ARG_NODETID], "InterpolationPoint");
+		let it = level.CreateActorIterator(args[ARG_NODETID], "InterpolationPoint");
 		firstNode = InterpolationPoint(it.Next());
 		if (!firstNode)
 		{
@@ -1501,18 +1524,6 @@ extend class FCW_Platform
 	{
 		if (!bActive || (group && group.origin != self))
 		{
-			//Do not activate too early because it's possible
-			//there are platforms that have yet to attach
-			//themselves to our group which means not all of
-			//them would move with the origin (self) in the
-			//first tic after activation.
-			//This problem is apparent if the first interpolation
-			//point has a defined hold time.
-			if (GetAge() < ACTIVATION_AGE)
-			{
-				delayedActivator = activator ? activator : Actor(self);
-				return;
-			}
 			currNode = firstNode;
 			prevNode = firstPrevNode;
 
@@ -1551,12 +1562,6 @@ extend class FCW_Platform
 	{
 		if (IsFrozen())
 			return;
-
-		if (delayedActivator && GetAge() >= ACTIVATION_AGE)
-		{
-			Activate(delayedActivator);
-			delayedActivator = null;
-		}
 
 		if (group && !(level.mapTime & 63))
 		{
