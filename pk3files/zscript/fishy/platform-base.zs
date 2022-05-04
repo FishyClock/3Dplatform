@@ -436,29 +436,17 @@ extend class FCW_Platform
 	//============================
 	private bool FitsAtPosition (Actor mo, vector3 testPos)
 	{
-		// CheckMove() does more checks than TestMobjLocation().
-		// It takes into account floor/ceiling huggers and
-		// the CANTLEAVEFLOORPIC flag.
-		//
-		// It's useful if there's XY position changes while
-		// TestMobjLocation() is enough for Z changes only.
+		//Unlike TestMobjLocation(), CheckMove() takes into account
+		//actors that have the flags FLOORHUGGER, CEILINGHUGGER
+		//and CANTLEAVEFLOORPIC.
 
-		bool result;
 		let oldZ = mo.pos.z;
-		mo.SetZ(testPos.z); //Set Z before anything else because Z also has an effect on CheckMove()'s outcome
+		mo.SetZ(testPos.z); //Because setting Z has an effect on CheckMove()'s outcome
 
-		//Even if XY is unaltered, having any of these flags means CheckMove() should handle it anyway
-		if (mo.pos.xy == testPos.xy && !mo.bFloorHugger && !mo.bCeilingHugger && !mo.bCantLeaveFloorPic)
-		{
-			result = mo.TestMobjLocation();
-		}
-		else
-		{
-			FCheckPosition tm;
-			result = (mo.CheckMove(testPos.xy, 0, tm) &&
-				testPos.z >= tm.floorZ &&				//This is something that TestMobjLocation() checks
-				testPos.z + mo.height <= tm.ceilingZ);	//and that CheckMove() does not account for.
-		}
+		FCheckPosition tm;
+		bool result = (mo.CheckMove(testPos.xy, 0, tm) &&
+			testPos.z >= tm.floorZ &&				//This is something that TestMobjLocation() checks
+			testPos.z + mo.height <= tm.ceilingZ);	//and that CheckMove() does not account for.
 
 		mo.SetZ(oldZ);
 		return result;
