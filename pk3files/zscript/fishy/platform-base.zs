@@ -326,7 +326,6 @@ extend class FCW_Platform
 			}
 		}
 
-
 		//Print no (additional) warnings if we're not supposed to have a interpolation point
 		if (!args[ARG_NODETID])
 		{
