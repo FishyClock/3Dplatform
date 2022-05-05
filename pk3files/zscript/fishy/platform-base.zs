@@ -1338,7 +1338,7 @@ extend class FCW_Platform
 		}
 		else
 		{
-			//Whether angle/pitch/roll changes or not is
+			//Whether angle/pitch/roll interpolates or not is
 			//determined in the interpolation coordinates.
 			//That way the ACS functions aren't restricted
 			//by the OPTFLAG_ANGLE/PITCH/ROLL flags.
