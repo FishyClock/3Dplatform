@@ -704,8 +704,9 @@ extend class FCW_Platform
 			double blockDist = radius + mo.radius;
 			if (abs(it.position.x - mo.pos.x) < blockDist && abs(it.position.y - mo.pos.y) < blockDist)
 			{
-				//'ignoreObs' makes anything above our 'top' legit
-				if (mo.pos.z >= top && (ignoreObs || mo.pos.z <= top + TOPEPSILON)) //On top of us?
+				//'ignoreObs' makes anything above our 'top' legit unless there's a 3D floor in the way.
+				if (mo.pos.z >= top && (ignoreObs || mo.pos.z <= top + TOPEPSILON) && //On top of us?
+					mo.floorZ < top) //No 3D floor above our 'top' that's below 'mo'?
 				{
 					if (canCarry && !oldRider)
 						onTopOfMe.Push(mo);
