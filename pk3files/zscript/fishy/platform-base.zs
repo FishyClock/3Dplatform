@@ -1439,11 +1439,14 @@ extend class FCW_Platform
 			{
 				if (cFirst == sFirst) //Not called cos() and sin() yet?
 				{
-					cFirst = cos(-spawnAngle); sFirst = sin(-spawnAngle);
+					//'spawnAngle' is a uint16 but we need it
+					//as a double to get the intended orbit result.
+					double sAng = spawnAngle;
+					cFirst = cos(-sAng); sFirst = sin(-sAng);
 					cY = cos(delta);   sY = sin(delta);
 					cP = cos(piDelta); sP = sin(piDelta);
 					cR = cos(roDelta); sR = sin(roDelta);
-					cLast = cos(spawnAngle);   sLast = sin(spawnAngle);
+					cLast = cos(sAng);   sLast = sin(sAng);
 				}
 				vector3 offset = level.Vec3Diff(spawnPoint, plat.spawnPoint);
 
