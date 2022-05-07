@@ -5,6 +5,8 @@ DoomEdNums
 	//Demomap
 	15100 = DemoCavePlat
 	15101 = DemoTwistingLift
+	15102 = DemoSpinningSegment1
+	15103 = DemoSpinningSegment2
 
 	//Testmap
 	15500 = TESTMooPlatform

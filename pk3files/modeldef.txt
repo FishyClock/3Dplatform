@@ -51,3 +51,23 @@ Model DemoTwistingLift
 	Model 0 "DemoTwistingLift.obj"
 	FrameIndex MODL A 0 0
 }
+
+Model DemoSpinningSegment1
+{
+	USEACTORPITCH
+	USEACTORROLL
+
+	Path "models"
+	Model 0 "DemoSpinningSegment1.obj"
+	FrameIndex MODL A 0 0
+}
+
+Model DemoSpinningSegment2
+{
+	USEACTORPITCH
+	USEACTORROLL
+
+	Path "models"
+	Model 0 "DemoSpinningSegment2.obj"
+	FrameIndex MODL A 0 0
+}

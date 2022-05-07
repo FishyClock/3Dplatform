@@ -813,6 +813,12 @@ extend class FCW_Platform
 		for (int i = 0; i < riders.Size(); ++i)
 		{
 			let mo = riders[i];
+			if (!mo)
+			{
+				riders.Delete(i--);
+				continue;
+			}
+
 			double moTop = mo.pos.z + mo.height + TOPEPSILON;
 
 			for (int iOther = 0; iOther < miscActors.Size(); ++iOther)
