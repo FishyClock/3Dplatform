@@ -369,8 +369,19 @@ extend class FCW_Platform
 
 			//If the first node is in a loop, we can start there.
 			//Otherwise, we need to start at the second node in the path.
-			firstPrevNode = firstNode.ScanForLoop();
-			if (!firstPrevNode || firstPrevNode.next != firstNode)
+			let node = firstNode;
+			Array<InterpolationPoint> foundNodes;
+			while (node.next && foundNodes.Find(node) >= foundNodes.Size())
+			{
+				foundNodes.Push(node);
+				node = node.next;
+			}
+
+			if (node && node.next == firstNode)
+			{
+				firstPrevNode = node;
+			}
+			else
 			{
 				firstPrevNode = firstNode;
 				firstNode = firstNode.next;
