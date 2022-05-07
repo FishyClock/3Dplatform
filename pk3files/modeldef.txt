@@ -31,3 +31,13 @@ Model TESTFlyingDoor
 	Model 0 "FlyingDoor.obj"
 	FrameIndex MODL A 0 0
 }
+
+Model DemoCavePlat
+{
+	USEACTORPITCH
+	USEACTORROLL
+
+	Path "models"
+	Model 0 "DemoCavePlat.obj"
+	FrameIndex MODL A 0 0
+}

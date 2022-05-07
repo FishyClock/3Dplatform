@@ -2,11 +2,18 @@ DoomEdNums
 {
 	15000 = FCW_PlatformNode
 
-	//Testmap material
+	//Demomap
+	15100 = DemoCavePlat
+
+	//Testmap
 	15500 = TESTMooPlatform
 	15501 = TESTFloaty
 	15502 = TESTFlyingDoor
 	15503 = TESTSprite
+}
+
+map MAP01 "Fishy's Fishy Platforms Demo"
+{
 }
 
 map TEST01 "Pretending To Be a Build Engine Map: Take Two!"
