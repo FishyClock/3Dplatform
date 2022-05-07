@@ -377,7 +377,7 @@ extend class FCW_Platform
 				node = node.next;
 			}
 
-			if (node && node.next == firstNode)
+			if (node.next == firstNode)
 			{
 				firstPrevNode = node;
 			}
