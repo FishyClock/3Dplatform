@@ -41,3 +41,13 @@ Model DemoCavePlat
 	Model 0 "DemoCavePlat.obj"
 	FrameIndex MODL A 0 0
 }
+
+Model DemoTwistingLift
+{
+	USEACTORPITCH
+	USEACTORROLL
+
+	Path "models"
+	Model 0 "DemoTwistingLift.obj"
+	FrameIndex MODL A 0 0
+}

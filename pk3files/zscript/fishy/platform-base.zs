@@ -370,10 +370,10 @@ extend class FCW_Platform
 			//If the first node is in a loop, we can start there.
 			//Otherwise, we need to start at the second node in the path.
 			let node = firstNode;
-			Array<InterpolationPoint> foundNodes;
-			while (node.next && node.next != firstNode && foundNodes.Find(node) >= foundNodes.Size())
+			Array<InterpolationPoint> checkedNodes;
+			while (node.next && node.next != firstNode && checkedNodes.Find(node) >= checkedNodes.Size())
 			{
-				foundNodes.Push(node);
+				checkedNodes.Push(node);
 				node = node.next;
 			}
 
@@ -1640,6 +1640,21 @@ extend class FCW_Platform
 			SetState(curState.nextState);
 	}
 
+	//============================
+	// PlatIsMoving
+	//============================
+	bool PlatIsMoving ()
+	{
+		//For scripting convenience with subclasses
+		return (bActive && (
+			pos != oldPos ||
+			angle != oldAngle ||
+			pitch != oldPitch ||
+			roll != oldRoll ||
+			moveCmdTime >= level.mapTime) );
+	}
+
+
 	//
 	//
 	// Everything below this point is ACS centric
@@ -1736,12 +1751,7 @@ extend class FCW_Platform
 		if (plat && plat.group && plat.group.origin)
 			plat = plat.group.origin;
 
-		return (plat && plat.bActive && (
-			plat.pos != plat.oldPos ||
-			plat.angle != plat.oldAngle ||
-			plat.pitch != plat.oldPitch ||
-			plat.roll != plat.oldRoll ||
-			plat.moveCmdTime >= level.mapTime) );
+		return (plat && plat.PlatIsMoving());
 	}
 
 	//============================
