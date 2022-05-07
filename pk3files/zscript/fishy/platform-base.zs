@@ -371,7 +371,7 @@ extend class FCW_Platform
 			//Otherwise, we need to start at the second node in the path.
 			let node = firstNode;
 			Array<InterpolationPoint> foundNodes;
-			while (node.next && foundNodes.Find(node) >= foundNodes.Size())
+			while (node.next && node.next != firstNode && foundNodes.Find(node) >= foundNodes.Size())
 			{
 				foundNodes.Push(node);
 				node = node.next;
