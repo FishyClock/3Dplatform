@@ -30,16 +30,14 @@ class DemoTwistingLift : FCW_Platform
 		MODL A 1 NoDelay { wasMoving = false; }
 		MODL A 1
 		{
-			if (!wasMoving && PlatIsMoving())
-			{
+			bool isMoving = (PlatHasMoved() && PlatIsActive());
+			if (isMoving == wasMoving)
+				return;
+
+			if (wasMoving = isMoving)
 				StartSoundSequence('Platform', 0);
-				wasMoving = true;
-			}
-			else if (wasMoving && !bPlatBlocked && !PlatIsMoving())
-			{
+			else
 				StopSoundSequence();
-				wasMoving = false;
-			}
 		}
 		Wait;
 	}

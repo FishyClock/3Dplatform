@@ -220,7 +220,6 @@ extend class FCW_Platform
 	bool bActive;
 	bool bJustStepped;
 	bool bPlatBlocked;	//Only useful for ACS. (See utility functions below.)
-	int moveCmdTime;	//Ditto
 	transient bool bPlatInMove; //No collision between a platform and its riders during said platform's move.
 	InterpolationPoint currNode, firstNode;
 	InterpolationPoint prevNode, firstPrevNode;
@@ -253,7 +252,6 @@ extend class FCW_Platform
 		bActive = false;
 		bJustStepped = false;
 		bPlatBlocked = false;
-		moveCmdTime = 0;
 		bPlatInMove = false;
 		currNode = firstNode = null;
 		prevNode = firstPrevNode = null;
@@ -1565,7 +1563,6 @@ extend class FCW_Platform
 				time = 0;
 				holdTime = 0;
 
-				moveCmdTime = level.mapTime + 1; //If IsMoving() gets called in this tic and the next tic, have it return true
 				bPlatBlocked = false; //If IsBlocked() gets called in this tic, have it return false
 			}
 		}
@@ -1585,7 +1582,15 @@ extend class FCW_Platform
 				group.VerifyMembers();
 		}
 
-		HandleOldRiders();
+		if (!group || !group.origin)
+		{
+			HandleOldRiders();
+		}
+		else if (group.origin == self)
+		{
+			for (let plat = group.GetFirst(); plat; plat = group.GetNext())
+				plat.HandleOldRiders();
+		}
 
 		while (bActive && (!group || group.origin == self))
 		{
@@ -1642,28 +1647,78 @@ extend class FCW_Platform
 			break;
 		}
 
+		if (!group || !group.origin)
+		{
+			AdvanceStates();
+		}
+		else if (group.origin == self)
+		{
+			for (let plat = group.GetFirst(); plat; plat = group.GetNext())
+				plat.AdvanceStates();
+		}
+	}
+
+	//============================
+	// AdvanceStates
+	//============================
+	private void AdvanceStates ()
+	{
 		if (!CheckNoDelay())
 			return; //Freed itself (ie got destroyed)
 
-		//Advance states
 		if (tics != -1 && --tics <= 0)
 			SetState(curState.nextState);
 	}
 
+	//
+	//
+	// For scripting convenience with subclasses
+	//
+	//
+
 	//============================
-	// PlatIsMoving
+	// PlatHasMoved
 	//============================
-	bool PlatIsMoving ()
+	bool PlatHasMoved ()
 	{
-		//For scripting convenience with subclasses
-		return (bActive && (
-			pos != oldPos ||
-			angle != oldAngle ||
-			pitch != oldPitch ||
-			roll != oldRoll ||
-			moveCmdTime >= level.mapTime) );
+		//When checking group members we only care about the origin.
+		//Either "every member has moved" or "every member has not moved."
+		let plat = self;
+		if (group && group.origin)
+			plat = group.origin;
+
+		return (plat.pos != plat.oldPos ||
+				plat.angle != plat.oldAngle ||
+				plat.pitch != plat.oldPitch ||
+				plat.roll != plat.oldRoll);
+	}
+	//============================
+	// PlatIsActive
+	//============================
+	bool PlatIsActive ()
+	{
+		//When checking group members we only care about the origin.
+		//Either "every member is active" or "every member is not active."
+		let plat = self;
+		if (group && group.origin)
+			plat = group.origin;
+
+		return plat.bActive;
 	}
 
+	//============================
+	// PlatIsBlocked
+	//============================
+	bool PlatIsBlocked ()
+	{
+		//When checking group members we only care about the origin.
+		//Either "every member is blocked" or "every member is not blocked."
+		let plat = self;
+		if (group && group.origin)
+			plat = group.origin;
+
+		return plat.bPlatBlocked;
+	}
 
 	//
 	//
@@ -1683,7 +1738,6 @@ extend class FCW_Platform
 		timeFrac = 1.0 / max(1, travelTime); //Time unit is always in tics from the ACS side
 		bActive = true;
 		if (group) group.origin = self;
-		moveCmdTime = level.mapTime + 1; //If IsMoving() gets called in this tic and the next tic, have it return true
 		bPlatBlocked = false; //If IsBlocked() gets called in this tic, have it return false
 		pPrev = pCurr = pos;
 		pPrevAngs = pCurrAngs = (
@@ -1727,7 +1781,7 @@ extend class FCW_Platform
 	//============================
 	// MoveToSpot (ACS utility)
 	//============================
-	static void MoveToSpot (int platTid, int spotTid, int travelTime)
+	static void MoveToSpot (int platTid, int spotTid, int travelTime, bool dontRotate = false)
 	{
 		//This is the only place you can make a platform use any actor as a travel destination
 		let it = level.CreateActorIterator(spotTid);
@@ -1742,26 +1796,30 @@ extend class FCW_Platform
 			plat.CommonACSSetup(travelTime);
 			plat.pNext = plat.pNextNext = plat.pos + plat.Vec3To(spot); //Make it portal aware
 			plat.pNextAngs = plat.pNextNextAngs = plat.pCurrAngs + (
-				DeltaAngle(plat.pCurrAngs.x, spot.angle),
-				DeltaAngle(plat.pCurrAngs.y, spot.pitch),
-				DeltaAngle(plat.pCurrAngs.z, spot.roll));
+				!dontRotate ? DeltaAngle(plat.pCurrAngs.x, spot.angle) : 0,
+				!dontRotate ? DeltaAngle(plat.pCurrAngs.y, spot.pitch) : 0,
+				!dontRotate ? DeltaAngle(plat.pCurrAngs.z, spot.roll) : 0);
 		}
 	}
 
 	//============================
-	// IsMoving (ACS utility)
+	// HasMoved (ACS utility)
 	//============================
-	static bool IsMoving (int platTid)
+	static bool HasMoved (int platTid)
 	{
 		let it = level.CreateActorIterator(platTid, "FCW_Platform");
 		let plat = FCW_Platform(it.Next());
+		return (plat && plat.PlatHasMoved());
+	}
 
-		//When checking group members we only care about the origin.
-		//Either "every member is moving" or "every member is not moving."
-		if (plat && plat.group && plat.group.origin)
-			plat = plat.group.origin;
-
-		return (plat && plat.PlatIsMoving());
+	//============================
+	// IsActive (ACS utility)
+	//============================
+	static bool IsActive (int platTid)
+	{
+		let it = level.CreateActorIterator(platTid, "FCW_Platform");
+		let plat = FCW_Platform(it.Next());
+		return (plat && plat.PlatIsActive());
 	}
 
 	//============================
@@ -1771,12 +1829,6 @@ extend class FCW_Platform
 	{
 		let it = level.CreateActorIterator(platTid, "FCW_Platform");
 		let plat = FCW_Platform(it.Next());
-
-		//When checking group members we only care about the origin.
-		//Either "every member is blocked" or "every member is not blocked."
-		if (plat && plat.group && plat.group.origin)
-			plat = plat.group.origin;
-
-		return (plat && plat.bActive && plat.bPlatBlocked);
+		return (plat && plat.PlatIsBlocked());
 	}
 }
