@@ -228,7 +228,7 @@ extend class FCW_Platform
 	FCW_PlatformGroup group;
 
 	//Unlike PathFollower classes, our interpolations are done with
-	//vector3 coordinates rather than checking InterpolationPoint positions.
+	//vector3 coordinates instead of checking InterpolationPoint positions.
 	//This is done for 2 reasons:
 	//1) Making it portal aware.
 	//2) Can be arbitrarily set through ACS (See utility functions below).
@@ -414,7 +414,7 @@ extend class FCW_Platform
 	//============================
 	// CollisionFlagChecks
 	//============================
-	private bool CollisionFlagChecks (Actor a, Actor b)
+	static bool CollisionFlagChecks (Actor a, Actor b)
 	{
 		if (a.bThruActors || b.bThruActors)
 			return false;
@@ -434,7 +434,7 @@ extend class FCW_Platform
 	//============================
 	// OverlapXY
 	//============================
-	private bool OverlapXY (Actor a, Actor b)
+	static bool OverlapXY (Actor a, Actor b)
 	{
 		double blockDist = a.radius + b.radius;
 		vector2 vec = level.Vec2Diff(a.pos.xy, b.pos.xy);
@@ -442,9 +442,18 @@ extend class FCW_Platform
 	}
 
 	//============================
+	// OverlapZ
+	//============================
+	static bool OverlapZ (Actor a, Actor b)
+	{
+		return (a.pos.z + a.height > b.pos.z &&
+				b.pos.z + b.height > a.pos.z);
+	}
+
+	//============================
 	// FitsAtPosition
 	//============================
-	private bool FitsAtPosition (Actor mo, vector3 testPos)
+	static bool FitsAtPosition (Actor mo, vector3 testPos)
 	{
 		//Unlike TestMobjLocation(), CheckMove() takes into account
 		//actors that have the flags FLOORHUGGER, CEILINGHUGGER
@@ -652,7 +661,7 @@ extend class FCW_Platform
 	//============================
 	// IsCarriable
 	//============================
-	private bool IsCarriable (Actor mo)
+	static bool IsCarriable (Actor mo)
 	{
 		//Due to how the engine handles actor-to-actor interactions
 		//we can only carry things with the CANPASS or the
@@ -716,15 +725,15 @@ extend class FCW_Platform
 			if (abs(it.position.x - mo.pos.x) < blockDist && abs(it.position.y - mo.pos.y) < blockDist)
 			{
 				//'ignoreObs' makes anything above our 'top' legit unless there's a 3D floor in the way.
-				if (mo.pos.z >= top && (ignoreObs || mo.pos.z <= top + TOPEPSILON) && //On top of us?
-					mo.floorZ < top) //No 3D floor above our 'top' that's below 'mo'?
+				if (mo.pos.z >= top - TOPEPSILON && (ignoreObs || mo.pos.z <= top + TOPEPSILON) && //On top of us?
+					mo.floorZ <= top + TOPEPSILON) //No 3D floor above our 'top' that's below 'mo'?
 				{
 					if (canCarry && !oldRider)
 						onTopOfMe.Push(mo);
 					continue;
 				}
 
-				if (mo.pos.z + mo.height > pos.z && top > mo.pos.z) //Overlaps Z?
+				if (OverlapZ(self, mo))
 				{
 					if (mo.bCorpse && !mo.bDontGib && mo.tics == -1) //Let dying actors finish their death sequence
 					{
@@ -819,14 +828,14 @@ extend class FCW_Platform
 				continue;
 			}
 
-			double moTop = mo.pos.z + mo.height + TOPEPSILON;
+			double moTop = mo.pos.z + mo.height;
 
 			for (int iOther = 0; iOther < miscActors.Size(); ++iOther)
 			{
 				let otherMo = miscActors[iOther];
 
-				if (moTop > otherMo.pos.z && otherMo.pos.z + otherMo.height > mo.pos.z && //Is 'otherMo' on top of or stuck inside 'mo'?
-					OverlapXY(mo, otherMo)) //Within XY range?
+				if ( ( abs(otherMo.pos.z - moTop) <= TOPEPSILON || OverlapZ(mo, otherMo) ) && //Is 'otherMo' on top of 'mo' or stuck inside 'mo'?
+					OverlapXY(mo, otherMo) ) //Within XY range?
 				{
 					miscActors.Delete(iOther--); //Don't compare this one against other riders anymore
 					riders.Push(otherMo);
@@ -973,9 +982,8 @@ extend class FCW_Platform
 				riders.Delete(i--);
 
 				//See if it would block the platform
-				double moTop = mo.pos.z + mo.height;
 				bool blocked = ( !teleMove && CollisionFlagChecks(mo, self) &&
-					moTop > self.pos.z && top > mo.pos.z && //Overlaps Z?
+					OverlapZ(mo, self) && //Within Z range?
 					OverlapXY(mo, self) && //Within XY range?
 					mo.CanCollideWith(self, false) && self.CanCollideWith(mo, true) );
 
@@ -986,7 +994,7 @@ extend class FCW_Platform
 				{
 					let otherMo = riders[iOther];
 					if ( !blocked && ( !CollisionFlagChecks(otherMo, mo) ||
-						moTop <= otherMo.pos.z || otherMo.pos.z + otherMo.height <= mo.pos.z || //No Z overlap?
+						!OverlapZ(otherMo, mo) || //Out of Z range?
 						!OverlapXY(otherMo, mo) || //Out of XY range?
 						!otherMo.CanCollideWith(mo, false) || !mo.CanCollideWith(otherMo, true) ) )
 					{
@@ -1038,10 +1046,6 @@ extend class FCW_Platform
 		// Also keep non-flying monsters away from platform's edge.
 		// Because the AI's native handling of trying not to
 		// fall off of other actors just isn't good enough.
-		//
-		// For example, if the platform moves and rotates
-		// at same time and a walker is right at the edge,
-		// it sometimes falls off.
 
 		double top = pos.z + height;
 		for (int i = 0; i < riders.Size(); ++i)
@@ -1358,7 +1362,7 @@ extend class FCW_Platform
 			//Whether angle/pitch/roll interpolates or not is
 			//determined in the interpolation coordinates.
 			//That way the ACS functions aren't restricted
-			//by the OPTFLAG_ANGLE/PITCH/ROLL flags.
+			//by the lack of OPTFLAG_ANGLE/PITCH/ROLL.
 			if (args[ARG_OPTIONS] & OPTFLAG_LINEAR)
 			{
 				//Interpolate angle
