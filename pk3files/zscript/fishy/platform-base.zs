@@ -213,6 +213,7 @@ extend class FCW_Platform
 	double oldAngle;
 	double oldPitch;
 	double oldRoll;
+	double spawnZ; //This is not the same as spawnPoint.z
 	double spawnPitch;
 	double spawnRoll;
 	double time, timeFrac;
@@ -245,6 +246,7 @@ extend class FCW_Platform
 		oldAngle = angle;
 		oldPitch = pitch;
 		oldRoll = roll;
+		spawnZ = pos.z;
 		spawnPitch = pitch;
 		spawnRoll = roll;
 		time = timeFrac = 0;
@@ -311,7 +313,8 @@ extend class FCW_Platform
 		if (group && group.origin)
 		{
 			let ori = group.origin;
-			if (ori.pos != ori.spawnPoint ||
+			if (ori.pos.xy != ori.spawnPoint.xy ||
+				ori.pos.z != ori.spawnZ ||
 				ori.angle != ori.spawnAngle ||
 				ori.pitch != ori.spawnPitch ||
 				ori.roll != ori.spawnRoll)
@@ -1444,8 +1447,8 @@ extend class FCW_Platform
 				//the attached platform's 'spawnPoint'.
 				//So we pretty much always go in the opposite direction
 				//using our 'spawnPoint' as a reference point.
-				vector3 offset = level.Vec3Diff(pos, spawnPoint);
-				newPos = level.Vec3Offset(plat.spawnPoint, offset);
+				vector3 offset = level.Vec3Diff(pos, (spawnPoint.xy, spawnZ));
+				newPos = level.Vec3Offset((plat.spawnPoint.xy, plat.spawnZ), offset);
 
 				if (changeAng)
 					newAngle = plat.spawnAngle - delta;
@@ -1467,7 +1470,7 @@ extend class FCW_Platform
 					cR = cos(roDelta); sR = sin(roDelta);
 					cLast = cos(sAng);   sLast = sin(sAng);
 				}
-				vector3 offset = level.Vec3Diff(spawnPoint, plat.spawnPoint);
+				vector3 offset = level.Vec3Diff((spawnPoint.xy, spawnZ), (plat.spawnPoint.xy, plat.spawnZ));
 
 				//Rotate the offset. The order here matters.
 				offset.xy = (offset.x*cFirst - offset.y*sFirst, offset.x*sFirst + offset.y*cFirst); //Rotate to 0 angle degrees of origin
