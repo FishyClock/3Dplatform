@@ -71,3 +71,13 @@ Model DemoSpinningSegment2
 	Model 0 "DemoSpinningSegment2.obj"
 	FrameIndex MODL A 0 0
 }
+
+Model DemoSlidingFloor
+{
+	USEACTORPITCH
+	USEACTORROLL
+
+	Path "models"
+	Model 0 "DemoSlidingFloor.obj"
+	FrameIndex MODL A 0 0
+}

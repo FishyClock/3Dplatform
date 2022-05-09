@@ -1,11 +1,5 @@
-class DemoCavePlat : FCW_Platform
+class DemoGenericPlat : FCW_Platform abstract
 {
-	Default
-	{
-		Radius 32;
-		Height 24;
-	}
-
 	States
 	{
 	Spawn:
@@ -14,15 +8,11 @@ class DemoCavePlat : FCW_Platform
 	}
 }
 
-class DemoTwistingLift : FCW_Platform
+class DemoPlatWithSnd : FCW_Platform abstract
 {
-	Default
-	{
-		Radius 64;
-		Height 128;
-	}
-
 	bool wasMoving;
+	Name sndSeq;
+	Property Seq: sndSeq;
 
 	States
 	{
@@ -35,7 +25,7 @@ class DemoTwistingLift : FCW_Platform
 				return;
 
 			if (wasMoving = isMoving)
-				StartSoundSequence('Platform', 0);
+				StartSoundSequence(sndSeq, 0);
 			else
 				StopSoundSequence();
 		}
@@ -43,34 +33,53 @@ class DemoTwistingLift : FCW_Platform
 	}
 }
 
-class DemoSpinningSegment1 : FCW_Platform
+//
+//
+//
+
+class DemoCavePlat : DemoGenericPlat
+{
+	Default
+	{
+		Radius 32;
+		Height 24;
+	}
+}
+
+class DemoTwistingLift : DemoPlatWithSnd
+{
+	Default
+	{
+		Radius 64;
+		Height 128;
+		DemoPlatWithSnd.Seq 'Platform';
+	}
+}
+
+class DemoSpinningSegment1 : DemoGenericPlat
 {
 	Default
 	{
 		Radius 40;
 		Height 136;
 	}
-
-	States
-	{
-	Spawn:
-		MODL A -1;
-		Stop;
-	}
 }
 
-class DemoSpinningSegment2 : FCW_Platform
+class DemoSpinningSegment2 : DemoGenericPlat
 {
 	Default
 	{
 		Radius 32;
 		Height 128;
 	}
+}
 
-	States
+class DemoSlidingFloor : DemoPlatWithSnd
+{
+	Default
 	{
-	Spawn:
-		MODL A -1;
-		Stop;
+		Radius 32;
+		Height 16;
+		DemoPlatWithSnd.Seq 'Floor';
 	}
 }
