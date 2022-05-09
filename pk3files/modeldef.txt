@@ -81,3 +81,15 @@ Model DemoSlidingFloor
 	Model 0 "DemoSlidingFloor.obj"
 	FrameIndex MODL A 0 0
 }
+
+Model DemoWobblyMeatFloor
+{
+	USEACTORPITCH
+	USEACTORROLL
+
+	Path "models"
+	Model 0 "DemoWobblyMeatFloorA.obj"
+	FrameIndex MODL A 0 0
+	Model 0 "DemoWobblyMeatFloorB.obj"
+	FrameIndex MODL B 0 0
+}

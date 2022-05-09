@@ -1579,10 +1579,13 @@ extend class FCW_Platform
 		if (IsFrozen())
 			return;
 
-		if (group && !(level.mapTime & 63))
+		if (group)
 		{
-			if (group.GetFirst() == self)
+			if (!(level.mapTime & 63) && group.GetFirst() == self)
 				group.VerifyMembers();
+
+			if (!group.origin && bActive)
+				group.origin = self;
 		}
 
 		if (!group || !group.origin)
