@@ -88,15 +88,24 @@ class DemoWobblyMeatFloor : FCW_Platform
 {
 	Default
 	{
-		Radius 192;
-		Height 64;
+		Radius 96;
+		Height 248;
 	}
 
 	States
 	{
 	Spawn:
-		MODL A random(50, 70); //Eyes open.
+		MODL A random(40, 70); //Eyes open.
 		MODL B random(3, 15);  //Eyes closed.
 		Loop;
+	}
+}
+
+class DemoWobblyMeatFloorNoEyes : DemoGenericPlat
+{
+	Default
+	{
+		Radius 96;
+		Height 248;
 	}
 }

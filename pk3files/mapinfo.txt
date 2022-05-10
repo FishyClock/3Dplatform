@@ -9,6 +9,7 @@ DoomEdNums
 	15103 = DemoSpinningSegment2
 	15104 = DemoSlidingFloor
 	15105 = DemoWobblyMeatFloor
+	15106 = DemoWobblyMeatFloorNoEyes
 
 	//Testmap
 	15500 = TESTMooPlatform
