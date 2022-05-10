@@ -120,15 +120,14 @@ extend class FCW_PlatformNode
 
 class FCW_PlatformGroup play
 {
-	private Array<FCW_Platform> members;
-	transient uint index;
-	FCW_Platform origin; //Group mover that does most of the thinking for the others. Other members are always "inactive" platforms.
+	Array<FCW_Platform> members;
+	FCW_Platform origin;	//Called so because every other member orbits around and follows this one.
+							//Also, the "origin" does most of the thinking for the other members. See Tick().
 
 	static FCW_PlatformGroup Create ()
 	{
 		let group = new("FCW_PlatformGroup");
 		group.members.Clear();
-		group.index = 0;
 		group.origin = null;
 		return group;
 	}
@@ -140,39 +139,28 @@ class FCW_PlatformGroup play
 			members.Push(plat);
 	}
 
-	FCW_Platform GetFirst ()
-	{
-		index = 0;
-		return GetNext();
-	}
-
-	FCW_Platform GetNext ()
+	FCW_Platform GetMember (uint index)
 	{
 		//Handle invalid entries
 		while (index < members.Size() && !members[index])
 			members.Delete(index);
 
 		if (index < members.Size())
-			return members[index++];
-
+		{
+			members[index].group = self; //Ensure members point to the correct group
+			return members[index];
+		}
 		return null;
-	}
-
-	void VerifyMembers ()
-	{
-		//Ensure all members point to this group
-		for (let plat = GetFirst(); plat; plat = GetNext())
-			plat.group = self;
-
-		//Ensure 'origin' is a member and points to this group
-		if (origin)
-			Add(origin);
 	}
 
 	void MergeWith (FCW_PlatformGroup otherGroup)
 	{
-		for (let plat = otherGroup.GetFirst(); plat; plat = otherGroup.GetNext())
-			Add(plat);
+		for (uint i = 0; i < otherGroup.members.Size(); ++i)
+		{
+			let plat = otherGroup.GetMember(i);
+			if (plat)
+				Add(plat);
+		}
 	}
 }
 
@@ -761,7 +749,7 @@ extend class FCW_Platform
 							}
 							if (!ignoreObs)
 							{
-								for (int i = 0; i < corpses.Size(); ++i)
+								for (uint i = 0; i < corpses.Size(); ++i)
 									corpses[i].Grind(false);
 								return false; //Try again in the next tic
 							}
@@ -790,18 +778,17 @@ extend class FCW_Platform
 				miscActors.Push(mo); //We'll compare this later against the passengers
 		}
 
-		for (int i = 0; i < corpses.Size(); ++i)
+		for (uint i = 0; i < corpses.Size(); ++i)
 			corpses[i].Grind(false);
 
-		for (int iPlat = 0; iPlat < otherPlats.Size(); ++iPlat)
+		for (uint iPlat = 0; iPlat < otherPlats.Size(); ++iPlat)
 		{
 			let plat = otherPlats[iPlat];
 
 			//Do NOT take other platforms' passengers unless our top is higher.
-			//(Never take a groupmate's passenger.)
-			bool stealPassenger = ((!group || group != plat.group) && top > plat.pos.z + plat.height);
+			bool stealPassenger = (top > plat.pos.z + plat.height);
 
-			for (int i = 0; i < onTopOfMe.Size(); ++i)
+			for (uint i = 0; i < onTopOfMe.Size(); ++i)
 			{
 				let index = plat.passengers.Find(onTopOfMe[i]);
 				if (index < plat.passengers.Size())
@@ -812,7 +799,7 @@ extend class FCW_Platform
 						onTopOfMe.Delete(i--);
 				}
 			}
-			for (int i = 0; i < miscActors.Size(); ++i)
+			for (uint i = 0; i < miscActors.Size(); ++i)
 			{
 				if (plat.passengers.Find(miscActors[i]) < plat.passengers.Size())
 					miscActors.Delete(i--);
@@ -822,7 +809,7 @@ extend class FCW_Platform
 
 		//Now figure out which of the misc actors are on top of/stuck inside
 		//established passengers.
-		for (int i = 0; i < passengers.Size(); ++i)
+		for (uint i = 0; i < passengers.Size(); ++i)
 		{
 			let mo = passengers[i];
 			if (!mo)
@@ -833,7 +820,7 @@ extend class FCW_Platform
 
 			double moTop = mo.pos.z + mo.height;
 
-			for (int iOther = 0; iOther < miscActors.Size(); ++iOther)
+			for (uint iOther = 0; iOther < miscActors.Size(); ++iOther)
 			{
 				let otherMo = miscActors[iOther];
 
@@ -869,7 +856,7 @@ extend class FCW_Platform
 
 		int addToBmap = 0, removeFromBmap = 1;
 
-		for (int i = 0; i < passengers.Size(); ++i)
+		for (uint i = 0; i < passengers.Size(); ++i)
 			passengers[i].A_ChangeLinkFlags(removeFromBmap);
 
 		//Move our passengers (platform rotation is taken into account)
@@ -886,7 +873,7 @@ extend class FCW_Platform
 		}
 
 		Array<double> preMovePos; //Sadly we can't have a vector2/3 dyn array
-		for (int i = 0; i < passengers.Size(); ++i)
+		for (uint i = 0; i < passengers.Size(); ++i)
 		{
 			let mo = passengers[i];
 			let moOldPos = mo.pos;
@@ -993,7 +980,7 @@ extend class FCW_Platform
 				//See if the ones we moved already will collide with this one
 				//and if yes, move them back to their old positions.
 				//(If the platform's "blocked" then move everyone back unconditionally.)
-				for (int iOther = 0; iOther <= i; ++iOther)
+				for (uint iOther = 0; iOther <= i; ++iOther)
 				{
 					let otherMo = passengers[iOther];
 					if ( !blocked && ( !CollisionFlagChecks(otherMo, mo) ||
@@ -1026,7 +1013,7 @@ extend class FCW_Platform
 
 		//Anyone left in the 'passengers' array has moved successfully.
 		//Change their angles.
-		for (int i = 0; i < passengers.Size(); ++i)
+		for (uint i = 0; i < passengers.Size(); ++i)
 		{
 			let mo = passengers[i];
 			mo.A_ChangeLinkFlags(addToBmap);
@@ -1051,7 +1038,7 @@ extend class FCW_Platform
 		// fall off of other actors just isn't good enough.
 
 		double top = pos.z + height;
-		for (int i = 0; i < passengers.Size(); ++i)
+		for (uint i = 0; i < passengers.Size(); ++i)
 		{
 			let mo = passengers[i];
 			if (!mo || mo.bDestroyed || //Got Thing_Remove()'d?
@@ -1427,9 +1414,10 @@ extend class FCW_Platform
 		double cR, sR;
 		double cLast, sLast;
 
-		for (let plat = group.GetFirst(); plat; plat = group.GetNext())
+		for (uint iPlat = 0; iPlat < group.members.Size(); ++iPlat)
 		{
-			if (plat == self)
+			let plat = group.GetMember(iPlat);
+			if (!plat || plat == self)
 				continue;
 
 			bool changeAng = (plat.args[ARG_OPTIONS] & OPTFLAG_ANGLE);
@@ -1520,11 +1508,11 @@ extend class FCW_Platform
 		while ((spec = it.Next()) && spec.special)
 		{
 			specList.Push(spec.special);
-			for (int i = 0; i < 5; ++i)
+			for (uint i = 0; i < 5; ++i)
 				specList.Push(spec.args[i]);
 		}
 
-		for (int i = 0; i < specList.Size(); i += 6)
+		for (uint i = 0; i < specList.Size(); i += 6)
 			level.ExecuteSpecial(specList[i], null, null, false, specList[i+1], specList[i+2], specList[i+3], specList[i+4], specList[i+5]);
 	}
 
@@ -1583,8 +1571,8 @@ extend class FCW_Platform
 
 		if (group)
 		{
-			if (!(level.mapTime & 63) && group.GetFirst() == self)
-				group.VerifyMembers();
+			if (group.members.Find(self) >= group.members.Size())
+				group.members.Push(self); //Ensure we're in the group array
 
 			if (!group.origin && bActive)
 				group.origin = self;
@@ -1596,8 +1584,12 @@ extend class FCW_Platform
 		}
 		else if (group.origin == self)
 		{
-			for (let plat = group.GetFirst(); plat; plat = group.GetNext())
-				plat.HandleOldPassengers();
+			for (uint iPlat = 0; iPlat < group.members.Size(); ++iPlat)
+			{
+				let plat = group.GetMember(iPlat);
+				if (plat)
+					plat.HandleOldPassengers();
+			}
 		}
 
 		while (bActive && (!group || group.origin == self))
@@ -1661,8 +1653,12 @@ extend class FCW_Platform
 		}
 		else if (group.origin == self)
 		{
-			for (let plat = group.GetFirst(); plat; plat = group.GetNext())
-				plat.AdvanceStates();
+			for (uint iPlat = 0; iPlat < group.members.Size(); ++iPlat)
+			{
+				let plat = group.GetMember(iPlat);
+				if (plat)
+					plat.AdvanceStates();
+			}
 		}
 	}
 
