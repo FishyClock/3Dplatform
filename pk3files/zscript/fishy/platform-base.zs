@@ -221,10 +221,10 @@ extend class FCW_Platform
 	bool bActive;
 	bool bJustStepped;
 	bool bPlatBlocked;	//Only useful for ACS. (See utility functions below.)
-	transient bool bPlatInMove; //No collision between a platform and its riders during said platform's move.
+	transient bool bPlatInMove; //No collision between a platform and its passengers during said platform's move.
 	InterpolationPoint currNode, firstNode;
 	InterpolationPoint prevNode, firstPrevNode;
-	Array<Actor> riders;
+	Array<Actor> passengers;
 	FCW_PlatformGroup group;
 
 	//Unlike PathFollower classes, our interpolations are done with
@@ -257,7 +257,7 @@ extend class FCW_Platform
 		bPlatInMove = false;
 		currNode = firstNode = null;
 		prevNode = firstPrevNode = null;
-		riders.Clear();
+		passengers.Clear();
 		group = null;
 
 		pCurr = pPrev = pNext = pNextNext = (0, 0, 0);
@@ -331,8 +331,8 @@ extend class FCW_Platform
 		if (!args[ARG_NODETID])
 		{
 			//In case the mapper placed walking monsters on the platform
-			//get something for HandleOldRiders() to monitor.
-			GetNewRiders(true);
+			//get something for HandleOldPassengers() to monitor.
+			GetNewPassengers(true);
 			return; 
 		}
 
@@ -391,8 +391,8 @@ extend class FCW_Platform
 
 		if (args[ARG_OPTIONS] & OPTFLAG_STARTACTIVE)
 			Activate(self);
-		else						//In case the mapper placed walking monsters on the platform
-			GetNewRiders(true);		//get something for HandleOldRiders() to monitor.
+		else							//In case the mapper placed walking monsters on the platform
+			GetNewPassengers(true);		//get something for HandleOldPassengers() to monitor.
 	}
 
 	//============================
@@ -406,7 +406,7 @@ extend class FCW_Platform
 		if (plat && ((plat.group && plat.group == group) || (args[ARG_OPTIONS] & OPTFLAG_IGNOREGEO)))
 			return false;
 
-		if (bPlatInMove && riders.Find(other) < riders.Size())
+		if (bPlatInMove && passengers.Find(other) < passengers.Size())
 			return false;
 
 		return true;
@@ -686,15 +686,15 @@ extend class FCW_Platform
 	}
 
 	//============================
-	// GetNewRiders
+	// GetNewPassengers
 	//============================
-	private bool GetNewRiders (bool ignoreObs)
+	private bool GetNewPassengers (bool ignoreObs)
 	{
-		//In addition to fetching riders, this is where corpses get crushed, too. Items won't get destroyed.
+		//In addition to fetching passengers, this is where corpses get crushed, too. Items won't get destroyed.
 		//Returns false if an actor is completely stuck inside platform unless 'ignoreObs' is true.
 
 		double top = pos.z + height;
-		Array<Actor> miscActors; //The actors on top of the riders (We'll move those, too)
+		Array<Actor> miscActors; //The actors on top of the passengers (We'll move those, too)
 		Array<Actor> onTopOfMe;
 		Array<FCW_Platform> otherPlats;
 
@@ -703,7 +703,7 @@ extend class FCW_Platform
 		Array<Actor> corpses;
 
 		//Three things to do here when iterating:
-		//1) Gather eligible riders.
+		//1) Gather eligible passengers.
 		//2) Damage any non-platform actors that are stuck inside platform (and can't be placed on top of platform)
 		//3) If said actors are corpses, "grind" them instead.
 
@@ -717,7 +717,7 @@ extend class FCW_Platform
 				continue;
 
 			bool canCarry = (IsCarriable(mo) && !(mo is "FCW_Platform")); //Platforms shouldn't carry other platforms.
-			bool oldRider = (riders.Find(mo) < riders.Size());
+			bool oldPassenger = (passengers.Find(mo) < passengers.Size());
 			if (mo is "FCW_Platform")
 				otherPlats.Push(FCW_Platform(mo));
 
@@ -729,7 +729,7 @@ extend class FCW_Platform
 				if (mo.pos.z >= top - TOPEPSILON && (ignoreObs || mo.pos.z <= top + TOPEPSILON) && //On top of us?
 					mo.floorZ <= top + TOPEPSILON) //No 3D floor above our 'top' that's below 'mo'?
 				{
-					if (canCarry && !oldRider)
+					if (canCarry && !oldPassenger)
 						onTopOfMe.Push(mo);
 					continue;
 				}
@@ -767,7 +767,7 @@ extend class FCW_Platform
 							}
 							else continue;
 						}
-						if (!oldRider)
+						if (!oldPassenger)
 							onTopOfMe.Push(mo);
 					}
 					else if (mo is "Inventory" && mo.bSpecial) //Item that can be picked up?
@@ -778,7 +778,7 @@ extend class FCW_Platform
 							FitsAtPosition(mo, (mo.pos.xy, top)))
 						{
 							mo.SetZ(top);
-							if (!oldRider)
+							if (!oldPassenger)
 								onTopOfMe.Push(mo);
 						}
 					}
@@ -786,8 +786,8 @@ extend class FCW_Platform
 				}
 			}
 
-			if (canCarry && !oldRider)
-				miscActors.Push(mo); //We'll compare this later against the riders
+			if (canCarry && !oldPassenger)
+				miscActors.Push(mo); //We'll compare this later against the passengers
 		}
 
 		for (int i = 0; i < corpses.Size(); ++i)
@@ -797,37 +797,37 @@ extend class FCW_Platform
 		{
 			let plat = otherPlats[iPlat];
 
-			//Do NOT take other platforms' riders unless our top is higher.
-			//(Never take a groupmate's rider.)
-			bool stealRider = ((!group || group != plat.group) && top > plat.pos.z + plat.height);
+			//Do NOT take other platforms' passengers unless our top is higher.
+			//(Never take a groupmate's passenger.)
+			bool stealPassenger = ((!group || group != plat.group) && top > plat.pos.z + plat.height);
 
 			for (int i = 0; i < onTopOfMe.Size(); ++i)
 			{
-				let index = plat.riders.Find(onTopOfMe[i]);
-				if (index < plat.riders.Size())
+				let index = plat.passengers.Find(onTopOfMe[i]);
+				if (index < plat.passengers.Size())
 				{
-					if (stealRider)
-						plat.riders.Delete(index);
+					if (stealPassenger)
+						plat.passengers.Delete(index);
 					else
 						onTopOfMe.Delete(i--);
 				}
 			}
 			for (int i = 0; i < miscActors.Size(); ++i)
 			{
-				if (plat.riders.Find(miscActors[i]) < plat.riders.Size())
+				if (plat.passengers.Find(miscActors[i]) < plat.passengers.Size())
 					miscActors.Delete(i--);
 			}
 		}
-		riders.Append(onTopOfMe);
+		passengers.Append(onTopOfMe);
 
 		//Now figure out which of the misc actors are on top of/stuck inside
-		//established riders.
-		for (int i = 0; i < riders.Size(); ++i)
+		//established passengers.
+		for (int i = 0; i < passengers.Size(); ++i)
 		{
-			let mo = riders[i];
+			let mo = passengers[i];
 			if (!mo)
 			{
-				riders.Delete(i--);
+				passengers.Delete(i--);
 				continue;
 			}
 
@@ -840,8 +840,8 @@ extend class FCW_Platform
 				if ( ( abs(otherMo.pos.z - moTop) <= TOPEPSILON || OverlapZ(mo, otherMo) ) && //Is 'otherMo' on top of 'mo' or stuck inside 'mo'?
 					OverlapXY(mo, otherMo) ) //Within XY range?
 				{
-					miscActors.Delete(iOther--); //Don't compare this one against other riders anymore
-					riders.Push(otherMo);
+					miscActors.Delete(iOther--); //Don't compare this one against other passengers anymore
+					passengers.Push(otherMo);
 				}
 			}
 		}
@@ -849,19 +849,19 @@ extend class FCW_Platform
 	}
 
 	//============================
-	// MoveRiders
+	// MovePassengers
 	//============================
-	private bool MoveRiders (bool teleMove)
+	private bool MovePassengers (bool teleMove)
 	{
-		//Returns false if a blocked rider would block the platform's movement unless 'teleMove' is true
+		//Returns false if a blocked passenger would block the platform's movement unless 'teleMove' is true
 
-		if (!riders.Size())
-			return true; //No riders? Nothing to do
+		if (!passengers.Size())
+			return true; //No passengers? Nothing to do
 
-		//The goal is to move all riders as if they were one entity.
+		//The goal is to move all passengers as if they were one entity.
 		//The only things that should block any of them are
-		//non-riders and geometry.
-		//The exception is if a rider can't fit at its new position
+		//non-passengers and geometry.
+		//The exception is if a passenger can't fit at its new position
 		//in which case it will be "solid" for the others.
 		//
 		//To accomplish this each of them will temporarily
@@ -869,10 +869,10 @@ extend class FCW_Platform
 
 		int addToBmap = 0, removeFromBmap = 1;
 
-		for (int i = 0; i < riders.Size(); ++i)
-			riders[i].A_ChangeLinkFlags(removeFromBmap);
+		for (int i = 0; i < passengers.Size(); ++i)
+			passengers[i].A_ChangeLinkFlags(removeFromBmap);
 
-		//Move our riders (platform rotation is taken into account)
+		//Move our passengers (platform rotation is taken into account)
 		double top = pos.z + height;
 		double delta = DeltaAngle(oldAngle, angle);
 		double c = cos(delta), s = sin(delta);
@@ -886,9 +886,9 @@ extend class FCW_Platform
 		}
 
 		Array<double> preMovePos; //Sadly we can't have a vector2/3 dyn array
-		for (int i = 0; i < riders.Size(); ++i)
+		for (int i = 0; i < passengers.Size(); ++i)
 		{
-			let mo = riders[i];
+			let mo = passengers[i];
 			let moOldPos = mo.pos;
 
 			vector3 offset = level.Vec3Diff(oldPos, moOldPos);
@@ -912,7 +912,7 @@ extend class FCW_Platform
 				int maxSteps = 1;
 				vector3 stepMove = level.Vec3Diff(moOldPos, moNewPos);
 
-				//If the move is equal or larger than the rider's radius
+				//If the move is equal or larger than the passenger's radius
 				//then it has to be split up into smaller steps.
 				//This is needed for proper collision and to ensure
 				//lines with specials aren't skipped.
@@ -925,7 +925,7 @@ extend class FCW_Platform
 				}
 
 				//NODROPOFF overrides TryMove()'s second argument,
-				//but the rider should be treated like a flying object.
+				//but the passenger should be treated like a flying object.
 				let moOldNoDropoff = mo.bNoDropoff;
 				mo.bNoDropoff = false;
 				moved = true;
@@ -942,7 +942,7 @@ extend class FCW_Platform
 						break;
 					}
 
-					//Take into account riders getting Thing_Remove()'d
+					//Take into account passengers getting Thing_Remove()'d
 					//when they activate lines.
 					if (!mo || mo.bDestroyed)
 						break;
@@ -957,11 +957,11 @@ extend class FCW_Platform
 					}
 				}
 
-				//Take into account riders getting Thing_Remove()'d
+				//Take into account passengers getting Thing_Remove()'d
 				//when they activate lines.
 				if (!mo || mo.bDestroyed)
 				{
-					riders.Delete(i--);
+					passengers.Delete(i--);
 					continue;
 				}
 				mo.bNoDropoff = moOldNoDropoff;
@@ -970,7 +970,7 @@ extend class FCW_Platform
 			if (moved)
 			{
 				//Only remember the old position if 'mo' was moved.
-				//(Else we delete the 'riders' entry containing 'mo', see below.)
+				//(Else we delete the 'passengers' entry containing 'mo', see below.)
 				preMovePos.Push(moOldPos.x);
 				preMovePos.Push(moOldPos.y);
 				preMovePos.Push(moOldPos.z);
@@ -980,9 +980,9 @@ extend class FCW_Platform
 				if (mo.pos != moOldPos)
 					mo.SetOrigin(moOldPos, true);
 
-				//This rider will be 'solid' for the others
+				//This passenger will be 'solid' for the others
 				mo.A_ChangeLinkFlags(addToBmap);
-				riders.Delete(i--);
+				passengers.Delete(i--);
 
 				//See if it would block the platform
 				bool blocked = ( !teleMove && CollisionFlagChecks(mo, self) &&
@@ -995,7 +995,7 @@ extend class FCW_Platform
 				//(If the platform's "blocked" then move everyone back unconditionally.)
 				for (int iOther = 0; iOther <= i; ++iOther)
 				{
-					let otherMo = riders[iOther];
+					let otherMo = passengers[iOther];
 					if ( !blocked && ( !CollisionFlagChecks(otherMo, mo) ||
 						!OverlapZ(otherMo, mo) || //Out of Z range?
 						!OverlapXY(otherMo, mo) || //Out of XY range?
@@ -1010,25 +1010,25 @@ extend class FCW_Platform
 
 					otherMo.A_ChangeLinkFlags(addToBmap);
 					preMovePos.Delete(iOther*3, 3);
-					riders.Delete(iOther--);
+					passengers.Delete(iOther--);
 					i--;
 				}
 
 				if (blocked)
 				{
-					for (i = 0; i < riders.Size(); ++i)
-						riders[i].A_ChangeLinkFlags(addToBmap); //Handle those that didn't get the chance to move
+					for (i = 0; i < passengers.Size(); ++i)
+						passengers[i].A_ChangeLinkFlags(addToBmap); //Handle those that didn't get the chance to move
 					PushObstacle(mo, level.Vec3Diff(oldPos, pos));
 					return false;
 				}
 			}
 		}
 
-		//Anyone left in the 'riders' array has moved successfully.
+		//Anyone left in the 'passengers' array has moved successfully.
 		//Change their angles.
-		for (int i = 0; i < riders.Size(); ++i)
+		for (int i = 0; i < passengers.Size(); ++i)
 		{
-			let mo = riders[i];
+			let mo = passengers[i];
 			mo.A_ChangeLinkFlags(addToBmap);
 			if (delta)
 				mo.angle = Normalize180(mo.angle + delta);
@@ -1038,11 +1038,11 @@ extend class FCW_Platform
 	}
 
 	//============================
-	// HandleOldRiders
+	// HandleOldPassengers
 	//============================
-	private void HandleOldRiders ()
+	private void HandleOldPassengers ()
 	{
-		// Tracks established riders and doesn't forget them even if
+		// Tracks established passengers and doesn't forget them even if
 		// they're above our 'top' (with no 3D floors in between).
 		// Such actors are mostly jumpy players and custom AI.
 		//
@@ -1051,13 +1051,13 @@ extend class FCW_Platform
 		// fall off of other actors just isn't good enough.
 
 		double top = pos.z + height;
-		for (int i = 0; i < riders.Size(); ++i)
+		for (int i = 0; i < passengers.Size(); ++i)
 		{
-			let mo = riders[i];
+			let mo = passengers[i];
 			if (!mo || mo.bDestroyed || //Got Thing_Remove()'d?
 				mo.bNoBlockmap || !IsCarriable(mo))
 			{
-				riders.Delete(i--);
+				passengers.Delete(i--);
 				continue;
 			}
 
@@ -1068,13 +1068,13 @@ extend class FCW_Platform
 			//Is 'mo' below our 'top'? Or is there a 3D floor above our 'top' that's also below 'mo'?
 			if (mo.pos.z < top - TOPEPSILON || mo.floorZ > top + TOPEPSILON)
 			{
-				riders.Delete(i--);
+				passengers.Delete(i--);
 				continue;
 			}
 
 			if (!OverlapXY(self, mo)) //Is out of XY range?
 			{
-				riders.Delete(i--);
+				passengers.Delete(i--);
 				continue;
 			}
 
@@ -1102,7 +1102,7 @@ extend class FCW_Platform
 			// walk towards the platform's center.
 			//
 			// NOTE: This isn't fool proof if there
-			// are multiple riders moving on the
+			// are multiple passengers moving on the
 			// same platform at the same time.
 			//
 			// Yes, this is a hack.
@@ -1205,7 +1205,7 @@ extend class FCW_Platform
 		if (pos == newPos && angle == newAngle && pitch == newPitch && roll == newRoll)
 			return true;
 
-		if (!GetNewRiders(teleMove))
+		if (!GetNewPassengers(teleMove))
 			return false;
 
 		if (teleMove || pos == newPos)
@@ -1221,7 +1221,7 @@ extend class FCW_Platform
 			pitch = newPitch;
 			roll = newRoll;
 
-			if (!MoveRiders(teleMove))
+			if (!MovePassengers(teleMove))
 			{
 				angle = oldAngle;
 				pitch = oldPitch;
@@ -1254,7 +1254,7 @@ extend class FCW_Platform
 			oldRoll = roll;
 
 			newPos = pos + stepMove;
-			bPlatInMove = true; //Temporarily don't clip against riders
+			bPlatInMove = true; //Temporarily don't clip against passengers
 			bool stepped = PlatTakeOneStep(newPos);
 			bPlatInMove = false;
 			if (!stepped)
@@ -1280,7 +1280,7 @@ extend class FCW_Platform
 				roll = newRoll;
 			}
 
-			if (!MoveRiders(false))
+			if (!MovePassengers(false))
 			{
 				SetOrigin(oldPos, true);
 				angle = oldAngle;
@@ -1592,12 +1592,12 @@ extend class FCW_Platform
 
 		if (!group || !group.origin)
 		{
-			HandleOldRiders();
+			HandleOldPassengers();
 		}
 		else if (group.origin == self)
 		{
 			for (let plat = group.GetFirst(); plat; plat = group.GetNext())
-				plat.HandleOldRiders();
+				plat.HandleOldPassengers();
 		}
 
 		while (bActive && (!group || group.origin == self))
