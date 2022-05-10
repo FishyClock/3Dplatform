@@ -793,19 +793,21 @@ extend class FCW_Platform
 		for (int i = 0; i < corpses.Size(); ++i)
 			corpses[i].Grind(false);
 
-		//Do NOT take other platforms' riders unless our top is higher
 		for (int iPlat = 0; iPlat < otherPlats.Size(); ++iPlat)
 		{
 			let plat = otherPlats[iPlat];
-			bool myTopIsHigher = (top > plat.pos.z + plat.height);
+
+			//Do NOT take other platforms' riders unless our top is higher.
+			//(Never take a groupmate's rider.)
+			bool stealRider = ((!group || group != plat.group) && top > plat.pos.z + plat.height);
 
 			for (int i = 0; i < onTopOfMe.Size(); ++i)
 			{
 				let index = plat.riders.Find(onTopOfMe[i]);
 				if (index < plat.riders.Size())
 				{
-					if (myTopIsHigher)
-						plat.riders.Delete(index); //Steal it!
+					if (stealRider)
+						plat.riders.Delete(index);
 					else
 						onTopOfMe.Delete(i--);
 				}
