@@ -970,6 +970,9 @@ extend class FCW_Platform
 					if (!mo || mo.bDestroyed)
 						break;
 
+					if (stepMove.z)
+						mo.CheckPortalTransition(); //Handle sector portals properly
+
 					if (tryPos != mo.pos.xy && step < maxSteps-1)
 					{
 						//If 'mo' has passed through a portal then
@@ -1217,6 +1220,9 @@ extend class FCW_Platform
 			}
 		}
 
+		if (newPos.z != oldPos.z)
+			CheckPortalTransition(); //Handle sector portals properly
+
 		return true;
 	}
 
@@ -1417,7 +1423,7 @@ extend class FCW_Platform
 		if (!PlatMove(newPos, newAngle, newPitch, newRoll, false))
 			return false;
 
-		if (curSector.portalGroup != oldPGroup && pos != newPos) //Crossed a portal?
+		if (curSector.portalGroup != oldPGroup) //Crossed a portal?
 		{
 			//Offset the coordinates
 			vector3 offset = pos - newPos;
