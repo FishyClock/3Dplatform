@@ -12,6 +12,7 @@ DoomEdNums
 	15106 = DemoWobblyMeatFloorNoEyes
 	15107 = DemoFirebluSegment
 	15108 = DemoFirebluSegmentTiny
+	15109 = DemoDiabolicalCube
 
 	//Testmap
 	15500 = TESTMooPlatform

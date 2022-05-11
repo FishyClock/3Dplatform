@@ -128,3 +128,20 @@ class DemoFirebluSegmentTiny : DemoGenericPlat
 		Height 3.2;
 	}
 }
+
+class DemoDiabolicalCube : FCW_Platform //This one isn't a model user. Oooh!
+{
+	Default
+	{
+		Radius 32;
+		Height 24;
+		+FORCEXYBILLBOARD;
+	}
+
+	States
+	{
+	Spawn:
+		BOSF ABCD 5;
+		Loop;
+	}
+}
