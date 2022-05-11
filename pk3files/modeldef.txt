@@ -90,8 +90,8 @@ Model DemoWobblyMeatFloor
 	Path "models"
 	Model 0 "DemoWobblyMeatFloorA.obj"
 	FrameIndex MODL A 0 0
-	Model 0 "DemoWobblyMeatFloorB.obj"
-	FrameIndex MODL B 0 0
+	Model 1 "DemoWobblyMeatFloorB.obj"
+	FrameIndex MODL B 1 0
 }
 
 Model DemoWobblyMeatFloorNoEyes
@@ -101,5 +101,25 @@ Model DemoWobblyMeatFloorNoEyes
 
 	Path "models"
 	Model 0 "DemoWobblyMeatFloorC.obj"
+	FrameIndex MODL A 0 0
+}
+
+Model DemoFirebluSegment
+{
+	USEACTORPITCH
+	USEACTORROLL
+
+	Path "models"
+	Model 0 "DemoFirebluSegment.obj"
+	FrameIndex MODL A 0 0
+}
+
+Model DemoFirebluSegmentTiny
+{
+	USEACTORPITCH
+	USEACTORROLL
+
+	Path "models"
+	Model 0 "DemoFirebluSegment.obj"
 	FrameIndex MODL A 0 0
 }

@@ -109,3 +109,22 @@ class DemoWobblyMeatFloorNoEyes : DemoGenericPlat
 		Height 248;
 	}
 }
+
+class DemoFirebluSegment : DemoGenericPlat
+{
+	Default
+	{
+		Radius 30;
+		Height 16;
+	}
+}
+
+class DemoFirebluSegmentTiny : DemoGenericPlat
+{
+	Default
+	{
+		Scale 0.2;
+		Radius 6;
+		Height 3.2;
+	}
+}

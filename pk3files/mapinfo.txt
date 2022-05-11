@@ -10,6 +10,8 @@ DoomEdNums
 	15104 = DemoSlidingFloor
 	15105 = DemoWobblyMeatFloor
 	15106 = DemoWobblyMeatFloorNoEyes
+	15107 = DemoFirebluSegment
+	15108 = DemoFirebluSegmentTiny
 
 	//Testmap
 	15500 = TESTMooPlatform
@@ -18,7 +20,7 @@ DoomEdNums
 	15503 = TESTSprite
 }
 
-map MAP01 "Fishy's Fishy Platforms Demo"
+map MAP01 "Fishy's Fishy 3D Platforms: Demo"
 {
 }
 

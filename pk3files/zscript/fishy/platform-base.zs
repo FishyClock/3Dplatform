@@ -928,7 +928,11 @@ extend class FCW_Platform
 			{
 				moved = FitsAtPosition(mo, moNewPos);
 				if (moved)
+				{
 					mo.SetOrigin(moNewPos, false);
+					if (moNewPos.z != moOldPos.z)
+						mo.CheckPortalTransition(); //Handle sector portals properly
+				}
 			}
 			else
 			{
@@ -1245,7 +1249,11 @@ extend class FCW_Platform
 			oldRoll = roll;
 
 			if (pos != newPos)
+			{
 				SetOrigin(newPos, !teleMove);
+				if (newPos.z != oldPos.z)
+					CheckPortalTransition(); //Handle sector portals properly
+			}
 			angle = newAngle;
 			pitch = newPitch;
 			roll = newRoll;
