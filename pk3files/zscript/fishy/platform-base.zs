@@ -930,8 +930,7 @@ extend class FCW_Platform
 				if (moved)
 				{
 					mo.SetOrigin(moNewPos, false);
-					if (moNewPos.z != moOldPos.z)
-						mo.CheckPortalTransition(); //Handle sector portals properly
+					mo.CheckPortalTransition(); //Handle sector portals properly
 				}
 			}
 			else
@@ -974,8 +973,7 @@ extend class FCW_Platform
 					if (!mo || mo.bDestroyed)
 						break;
 
-					if (stepMove.z)
-						mo.CheckPortalTransition(); //Handle sector portals properly
+					mo.CheckPortalTransition(); //Handle sector portals properly
 
 					if (tryPos != mo.pos.xy && step < maxSteps-1)
 					{
@@ -1224,8 +1222,7 @@ extend class FCW_Platform
 			}
 		}
 
-		if (newPos.z != oldPos.z)
-			CheckPortalTransition(); //Handle sector portals properly
+		CheckPortalTransition(); //Handle sector portals properly
 
 		return true;
 	}
@@ -1251,8 +1248,7 @@ extend class FCW_Platform
 			if (pos != newPos)
 			{
 				SetOrigin(newPos, !teleMove);
-				if (newPos.z != oldPos.z)
-					CheckPortalTransition(); //Handle sector portals properly
+				CheckPortalTransition(); //Handle sector portals properly
 			}
 			angle = newAngle;
 			pitch = newPitch;
