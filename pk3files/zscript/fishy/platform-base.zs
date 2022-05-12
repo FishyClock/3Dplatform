@@ -1687,9 +1687,12 @@ extend class FCW_Platform
 
 					if (currNode && currNode.bDestroyed)
 						currNode = null; //Our node got Thing_Remove()'d
+					if (prevNode && prevNode.bDestroyed)
+						prevNode = null; //Prev node got Thing_Remove()'d
 				}
 
-				if (!currNode || !currNode.next || (!(args[ARG_OPTIONS] & OPTFLAG_LINEAR) && !currNode.next.next))
+				if (!currNode || !currNode.next ||
+					(!(args[ARG_OPTIONS] & OPTFLAG_LINEAR) && (!currNode.next.next || !prevNode)) )
 				{
 					Deactivate(self);
 					if (pos != pNext || angle != pNextAngs.x || pitch != pNextAngs.y || roll != pNextAngs.z)
