@@ -1654,6 +1654,11 @@ extend class FCW_Platform
 			{
 				bJustStepped = false;
 				SetHoldTime();
+				if (holdTime > level.mapTime && (pos != pCurr || angle != pCurrAngs.x || pitch != pCurrAngs.y || roll != pCurrAngs.z))
+				{
+					if (PlatMove(pCurr, pCurrAngs.x, pCurrAngs.y, pCurrAngs.z, false))
+						MoveGroup(false);
+				}
 			}
 
 			if (holdTime > level.mapTime)
@@ -1680,19 +1685,24 @@ extend class FCW_Platform
 					if (bDestroyed)
 						return; //Abort if we got Thing_Remove()'d
 
-					if (!currNode || currNode.bDestroyed)
+					if (currNode && currNode.bDestroyed)
+						currNode = null; //Our node got Thing_Remove()'d
+				}
+
+				if (!currNode || !currNode.next || (!(args[ARG_OPTIONS] & OPTFLAG_LINEAR) && !currNode.next.next))
+				{
+					Deactivate(self);
+					if (pos != pNext || angle != pNextAngs.x || pitch != pNextAngs.y || roll != pNextAngs.z)
 					{
-						Deactivate(self);
-						break; //Our node got Thing_Remove()'d
+						if (PlatMove(pNext, pNextAngs.x, pNextAngs.y, pNextAngs.z, false))
+							MoveGroup(false);
 					}
+				}
+				else if (currNode)
+				{
 					SetInterpolationCoordinates();
 					SetTimeFraction();
 				}
-
-				if (!currNode || !currNode.next)
-					Deactivate(self);
-				else if (!(args[ARG_OPTIONS] & OPTFLAG_LINEAR) && !currNode.next.next)
-					Deactivate(self);
 			}
 			break;
 		}
