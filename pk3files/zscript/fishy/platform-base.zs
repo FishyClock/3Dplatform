@@ -739,7 +739,10 @@ extend class FCW_Platform
 						{
 							blocked = !FitsAtPosition(mo, (mo.pos.xy, top));
 							if (!blocked)
+							{
 								mo.SetZ(top);
+								mo.CheckPortalTransition(); //Handle sector portals properly
+							}
 						}
 						if (blocked)
 						{
@@ -767,6 +770,7 @@ extend class FCW_Platform
 							FitsAtPosition(mo, (mo.pos.xy, top)))
 						{
 							mo.SetZ(top);
+							mo.CheckPortalTransition(); //Handle sector portals properly
 							if (!oldPassenger)
 								onTopOfMe.Push(mo);
 						}
@@ -1199,6 +1203,10 @@ extend class FCW_Platform
 				{
 					mo.SetZ(moOldZ);
 					blockingMobj = mo; //Needed for obstacle pushing; TryMove() might have nulled it
+				}
+				else
+				{
+					mo.CheckPortalTransition(); //Handle sector portals properly
 				}
 			}
 
