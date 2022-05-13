@@ -1748,6 +1748,20 @@ extend class FCW_Platform
 	//
 
 	//============================
+	// PlatIsActive
+	//============================
+	bool PlatIsActive ()
+	{
+		//When checking group members we only care about the origin.
+		//Either "every member is active" or "every member is not active."
+		let plat = self;
+		if (group && group.origin)
+			plat = group.origin;
+
+		return plat.bActive;
+	}
+
+	//============================
 	// PlatHasMoved
 	//============================
 	bool PlatHasMoved ()
@@ -1763,19 +1777,6 @@ extend class FCW_Platform
 				plat.angle != plat.oldAngle ||
 				plat.pitch != plat.oldPitch ||
 				plat.roll != plat.oldRoll) );
-	}
-	//============================
-	// PlatIsActive
-	//============================
-	bool PlatIsActive ()
-	{
-		//When checking group members we only care about the origin.
-		//Either "every member is active" or "every member is not active."
-		let plat = self;
-		if (group && group.origin)
-			plat = group.origin;
-
-		return plat.bActive;
 	}
 
 	//============================
@@ -1875,16 +1876,6 @@ extend class FCW_Platform
 	}
 
 	//============================
-	// HasMoved (ACS utility)
-	//============================
-	static bool HasMoved (int platTid)
-	{
-		let it = level.CreateActorIterator(platTid, "FCW_Platform");
-		let plat = FCW_Platform(it.Next());
-		return (plat && plat.PlatHasMoved());
-	}
-
-	//============================
 	// IsActive (ACS utility)
 	//============================
 	static bool IsActive (int platTid)
@@ -1892,6 +1883,16 @@ extend class FCW_Platform
 		let it = level.CreateActorIterator(platTid, "FCW_Platform");
 		let plat = FCW_Platform(it.Next());
 		return (plat && plat.PlatIsActive());
+	}
+
+	//============================
+	// HasMoved (ACS utility)
+	//============================
+	static bool HasMoved (int platTid)
+	{
+		let it = level.CreateActorIterator(platTid, "FCW_Platform");
+		let plat = FCW_Platform(it.Next());
+		return (plat && plat.PlatHasMoved());
 	}
 
 	//============================
