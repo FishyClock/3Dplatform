@@ -41,8 +41,8 @@ class FCW_Platform : Actor abstract
 
 		//$Arg1 Options
 		//$Arg1Type 12
-		//$Arg1Enum {1 = "Linear path"; 2 = "Use point angle / Group move: Rotate angle"; 4 = "Use point pitch / Group move: Rotate pitch"; 8 = "Use point roll / Group move: Rotate roll"; 16 = "Face movement direction"; 32 = "Don't clip against geometry and other platforms"; 64 = "Start active"; 128 = "Group move: Mirror group origin's movement";}
-		//$Arg1Tooltip Anything with 'Group move' affects movement imposed by the group origin.\nIt does nothing for the group origin itself.\nThe 'group origin' is the platform that the others move with and orbit around.
+		//$Arg1Enum {1 = "Linear path / (Does nothing for non-origin group members)"; 2 = "Use point angle / Group move: Rotate angle / (ACS commands don't need this)"; 4 = "Use point pitch / Group move: Rotate pitch / (ACS commands don't need this)"; 8 = "Use point roll / Group move: Rotate roll / (ACS commands don't need this)"; 16 = "Face movement direction / (Does nothing for non-origin group members)"; 32 = "Don't clip against geometry and other platforms"; 64 = "Start active / (Activating any group member will turn it into the new origin)"; 128 = "Group move: Mirror group origin's movement";}
+		//$Arg1Tooltip 'Group move' affects movement imposed by the group origin.\nThe 'group origin' is the platform that other members move with and orbit around.
 
 		//$Arg2 Platform(s) To Group With
 		//$Arg2Type 14
@@ -1364,7 +1364,7 @@ extend class FCW_Platform
 			newPos.z = Splerp(pPrev.z, pCurr.z, pNext.z, pNextNext.z);
 		}
 
-		if (currNode && (args[ARG_OPTIONS] & OPTFLAG_FACEMOVE))
+		if ((args[ARG_OPTIONS] & OPTFLAG_FACEMOVE) && (args[ARG_OPTIONS] & (OPTFLAG_ANGLE | OPTFLAG_PITCH | OPTFLAG_ROLL)))
 		{
 			if (args[ARG_OPTIONS] & OPTFLAG_LINEAR)
 			{
