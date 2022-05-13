@@ -1758,10 +1758,11 @@ extend class FCW_Platform
 		if (group && group.origin)
 			plat = group.origin;
 
-		return (plat.pos != plat.oldPos ||
+		return (plat.bActive && (
+				plat.pos != plat.oldPos ||
 				plat.angle != plat.oldAngle ||
 				plat.pitch != plat.oldPitch ||
-				plat.roll != plat.oldRoll);
+				plat.roll != plat.oldRoll) );
 	}
 	//============================
 	// PlatIsActive
@@ -1788,7 +1789,7 @@ extend class FCW_Platform
 		if (group && group.origin)
 			plat = group.origin;
 
-		return plat.bPlatBlocked;
+		return (plat.bActive && plat.bPlatBlocked);
 	}
 
 	//

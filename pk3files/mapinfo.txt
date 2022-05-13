@@ -23,6 +23,7 @@ DoomEdNums
 
 map MAP01 "Fishy's Fishy 3D Platforms: Demo"
 {
+	music = D_ROMERO
 }
 
 map TEST01 "Pretending To Be a Build Engine Map: Take Two!"

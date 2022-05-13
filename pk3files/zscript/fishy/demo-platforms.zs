@@ -20,7 +20,7 @@ class DemoPlatWithSnd : FCW_Platform abstract
 		MODL A 1 NoDelay { wasMoving = false; }
 		MODL A 1
 		{
-			bool isMoving = (PlatHasMoved() && PlatIsActive());
+			bool isMoving = PlatHasMoved();
 			if (isMoving == wasMoving)
 				return;
 
