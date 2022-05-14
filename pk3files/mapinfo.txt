@@ -21,12 +21,12 @@ DoomEdNums
 	15503 = TESTSprite
 }
 
-map MAP01 "Fishy's Fishy 3D Platforms: Demo"
+map MAP01 "Fishy's 3D Platforms: Demo"
 {
 	Music = D_ROMERO
 }
 
-map TEST01 "Pretending To Be a Build Engine Map: Take Two!"
+map TEST01 "A very crappy test map"
 {
 	UsePlayerStartZ
 }
