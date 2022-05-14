@@ -41,8 +41,8 @@ class FCW_Platform : Actor abstract
 
 		//$Arg1 Options
 		//$Arg1Type 12
-		//$Arg1Enum {1 = "Linear path / (Does nothing for non-origin group members)"; 2 = "Use point angle / Group move: Rotate angle / (ACS commands don't need this)"; 4 = "Use point pitch / Group move: Rotate pitch / (ACS commands don't need this)"; 8 = "Use point roll / Group move: Rotate roll / (ACS commands don't need this)"; 16 = "Face movement direction / (Does nothing for non-origin group members)"; 32 = "Don't clip against geometry and other platforms"; 64 = "Start active / (Activating any group member will turn it into the new origin)"; 128 = "Group move: Mirror group origin's movement";}
-		//$Arg1Tooltip 'Group move' affects movement imposed by the group origin.\nThe 'group origin' is the platform that other members move with and orbit around.
+		//$Arg1Enum {1 = "Linear path / (Does nothing for non-origin group members)"; 2 = "Use point angle / Group move: Rotate angle / (ACS commands don't need this)"; 4 = "Use point pitch / Group move: Rotate pitch / (ACS commands don't need this)"; 8 = "Use point roll / Group move: Rotate roll / (ACS commands don't need this)"; 16 = "Face movement direction / (Does nothing for non-origin group members)"; 32 = "Don't clip against geometry and other platforms"; 64 = "Start active"; 128 = "Group move: Mirror group origin's movement";}
+		//$Arg1Tooltip 'Group move' affects movement imposed by the group origin.\nThe 'group origin' is the platform that other members move with and orbit around.\nActivating any group member will turn it into the group origin.
 
 		//$Arg2 Platform(s) To Group With
 		//$Arg2Type 14
@@ -208,7 +208,6 @@ extend class FCW_Platform
 	int holdTime;
 	bool bActive;
 	bool bJustStepped;
-	bool bPlatBlocked;	//Only useful for ACS. (See utility functions below.)
 	transient bool bPlatInMove; //No collision between a platform and its passengers during said platform's move.
 	InterpolationPoint currNode, firstNode;
 	InterpolationPoint prevNode, firstPrevNode;
@@ -241,7 +240,6 @@ extend class FCW_Platform
 		holdTime = 0;
 		bActive = false;
 		bJustStepped = false;
-		bPlatBlocked = false;
 		bPlatInMove = false;
 		currNode = firstNode = null;
 		prevNode = firstPrevNode = null;
@@ -311,7 +309,7 @@ extend class FCW_Platform
 				//This matters if the origin's first interpolation point has a defined hold time
 				//because depending on who ticks first some members might have already moved
 				//and some might have not.
-				ori.MoveGroup(true);
+				ori.MoveGroup(1);
 			}
 		}
 
@@ -390,7 +388,6 @@ extend class FCW_Platform
 	{
 		let plat = FCW_Platform(other);
 
-		//For speed's sake assume they're both in the group array without actually checking
 		if (plat && ((plat.group && plat.group == group) || (args[ARG_OPTIONS] & OPTFLAG_IGNOREGEO)))
 			return false;
 
@@ -484,7 +481,7 @@ extend class FCW_Platform
 		if (pushForce.y ~== 0) pushForce.y = 0;
 		if (pushForce.z ~== 0) pushForce.z = 0;
 
-		if (pushForce.z && !OverlapXY(self, pushed)) //Out of range?
+		if (pushForce.z && !OverlapXY(self, pushed)) //Out of XY range?
 			pushForce.z = 0;
 
 		if (pushForce == (0, 0, 0))
@@ -533,7 +530,7 @@ extend class FCW_Platform
 		}
 		else // Old InterpolationPoint class, always in octics
 		{
-			timeFrac = 8.0 / (max(1, newTime) * TICRATE);
+			timeFrac = 8.0 / (newTime * TICRATE);
 		}
 	}
 
@@ -1238,10 +1235,37 @@ extend class FCW_Platform
 	//============================
 	// PlatMove
 	//============================
-	private bool PlatMove (vector3 newPos, double newAngle, double newPitch, double newRoll, bool teleMove)
+	private bool PlatMove (vector3 newPos, double newAngle, double newPitch, double newRoll, int moveType)
 	{
+		//moveType values: 0 = normal move; 1 = teleport move; -1 = quick move.
+		//
+		//"Quick move" is used to correct the position/angles and it is assumed
+		//that 'newPos/Angle/Pitch/Roll' is only marginally different from
+		//the current position/angles.
+
 		if (pos == newPos && angle == newAngle && pitch == newPitch && roll == newRoll)
+			return (moveType != -1);
+
+		if (moveType == -1) //Quick move?
+		{
+			oldPos = pos;
+			oldAngle = angle;
+			oldPitch = pitch;
+			oldRoll = roll;
+
+			angle = newAngle;
+			pitch = newPitch;
+			roll = newRoll;
+			if (pos != newPos)
+			{
+				SetOrigin(newPos, true);
+				CheckPortalTransition(); //Handle sector portals properly
+			}
+			MovePassengers(false);
 			return true;
+		}
+
+		bool teleMove = (moveType == 1);
 
 		if (!GetNewPassengers(teleMove))
 			return false;
@@ -1432,7 +1456,7 @@ extend class FCW_Platform
 		}
 
 		let oldPGroup = curSector.portalGroup;
-		if (!PlatMove(newPos, newAngle, newPitch, newRoll, false))
+		if (!PlatMove(newPos, newAngle, newPitch, newRoll, 0))
 			return false;
 
 		if (curSector.portalGroup != oldPGroup) //Crossed a portal?
@@ -1447,13 +1471,13 @@ extend class FCW_Platform
 
 		//If one of our attached platforms is blocked, pretend
 		//we're blocked too. (Our move won't be cancelled.)
-		return MoveGroup(false);
+		return MoveGroup(0);
 	}
 
 	//============================
 	// MoveGroup
 	//============================
-	private bool MoveGroup (bool teleMove)
+	private bool MoveGroup (int moveType)
 	{
 		if (!group)
 			return true;
@@ -1539,7 +1563,7 @@ extend class FCW_Platform
 				}
 			}
 
-			if (!plat.PlatMove(newPos, newAngle, newPitch, newRoll, teleMove))
+			if (!plat.PlatMove(newPos, newAngle, newPitch, newRoll, moveType) && moveType != -1)
 				return false;
 		}
 		return true;
@@ -1601,16 +1625,14 @@ extend class FCW_Platform
 				double newAngle = (args[ARG_OPTIONS] & OPTFLAG_ANGLE) ? currNode.angle : angle;
 				double newPitch = (args[ARG_OPTIONS] & OPTFLAG_PITCH) ? currNode.pitch : pitch;
 				double newRoll = (args[ARG_OPTIONS] & OPTFLAG_ROLL) ? currNode.roll : roll;
-				PlatMove(currNode.pos, newAngle, newPitch, newRoll, true);
-				MoveGroup(true);
+				PlatMove(currNode.pos, newAngle, newPitch, newRoll, 1);
+				MoveGroup(1);
 				bJustStepped = true;
 				SetInterpolationCoordinates();
 
 				SetTimeFraction();
 				time = 0;
 				holdTime = 0;
-
-				bPlatBlocked = false; //If IsBlocked() gets called in this tic, have it return false
 			}
 		}
 	}
@@ -1648,7 +1670,6 @@ extend class FCW_Platform
 
 		while (bActive && (!group || group.origin == self))
 		{
-			bPlatBlocked = false;
 			oldPos = pos;
 			oldAngle = angle;
 			oldPitch = pitch;
@@ -1658,10 +1679,19 @@ extend class FCW_Platform
 			{
 				bJustStepped = false;
 				SetHoldTime();
-				if (holdTime > level.mapTime && (pos != pCurr || angle != pCurrAngs.x || pitch != pCurrAngs.y || roll != pCurrAngs.z))
+				if (holdTime > level.mapTime)
 				{
-					if (PlatMove(pCurr, pCurrAngs.x, pCurrAngs.y, pCurrAngs.z, false))
-						MoveGroup(false);
+					//While waiting, make sure we're exactly at our intended position
+					bool faceAng = ((args[ARG_OPTIONS] & OPTFLAG_FACEMOVE) && (args[ARG_OPTIONS] & (OPTFLAG_ANGLE)));
+					bool facePi = ((args[ARG_OPTIONS] & OPTFLAG_FACEMOVE) && (args[ARG_OPTIONS] & (OPTFLAG_PITCH)));
+					bool faceRo = ((args[ARG_OPTIONS] & OPTFLAG_FACEMOVE) && (args[ARG_OPTIONS] & (OPTFLAG_ROLL)));
+
+					if (PlatMove(pCurr, faceAng ? angle : pCurrAngs.x,
+										facePi ? pitch : pCurrAngs.y,
+										faceRo ? roll : pCurrAngs.z, -1))
+					{
+						MoveGroup(-1);
+					}
 				}
 			}
 
@@ -1669,10 +1699,7 @@ extend class FCW_Platform
 				break;
 
 			if (!Interpolate())
-			{
-				bPlatBlocked = true;
 				break;
-			}
 
 			time += timeFrac;
 			if (time > 1.0)
@@ -1699,10 +1726,17 @@ extend class FCW_Platform
 					(!(args[ARG_OPTIONS] & OPTFLAG_LINEAR) && (!currNode.next.next || !prevNode)) )
 				{
 					Deactivate(self);
-					if (pos != pNext || angle != pNextAngs.x || pitch != pNextAngs.y || roll != pNextAngs.z)
+
+					//Make sure we're exactly at our intended position
+					bool faceAng = ((args[ARG_OPTIONS] & OPTFLAG_FACEMOVE) && (args[ARG_OPTIONS] & (OPTFLAG_ANGLE)));
+					bool facePi = ((args[ARG_OPTIONS] & OPTFLAG_FACEMOVE) && (args[ARG_OPTIONS] & (OPTFLAG_PITCH)));
+					bool faceRo = ((args[ARG_OPTIONS] & OPTFLAG_FACEMOVE) && (args[ARG_OPTIONS] & (OPTFLAG_ROLL)));
+
+					if (PlatMove(pNext, faceAng ? angle : pNextAngs.x,
+										facePi ? pitch : pNextAngs.y,
+										faceRo ? roll : pNextAngs.z, -1))
 					{
-						if (PlatMove(pNext, pNextAngs.x, pNextAngs.y, pNextAngs.z, false))
-							MoveGroup(false);
+						MoveGroup(-1);
 					}
 				}
 				else if (currNode)
@@ -1779,20 +1813,6 @@ extend class FCW_Platform
 				plat.roll != plat.oldRoll) );
 	}
 
-	//============================
-	// PlatIsBlocked
-	//============================
-	bool PlatIsBlocked ()
-	{
-		//When checking group members we only care about the origin.
-		//Either "every member is blocked" or "every member is not blocked."
-		let plat = self;
-		if (group && group.origin)
-			plat = group.origin;
-
-		return (plat.bActive && plat.bPlatBlocked);
-	}
-
 	//
 	//
 	// Everything below this point is ACS centric
@@ -1811,7 +1831,6 @@ extend class FCW_Platform
 		timeFrac = 1.0 / max(1, travelTime); //Time unit is always in tics from the ACS side
 		bActive = true;
 		if (group) group.origin = self;
-		bPlatBlocked = false; //If IsBlocked() gets called in this tic, have it return false
 		pPrev = pCurr = pos;
 		pPrevAngs = pCurrAngs = (
 			Normalize180(angle),
@@ -1822,32 +1841,21 @@ extend class FCW_Platform
 	//============================
 	// Move (ACS utility)
 	//============================
-	static void Move (int platTid, double offX, double offY, double offZ, int travelTime, double offAng = 0, double offPi = 0, double offRo = 0)
+	static void Move (int platTid, double x, double y, double z, bool exactPos, int travelTime, double ang = 0, double pi = 0, double ro = 0, bool exactAngs = false)
 	{
 		let it = level.CreateActorIterator(platTid, "FCW_Platform");
 		FCW_Platform plat;
 		while (plat = FCW_Platform(it.Next()))
 		{
 			plat.CommonACSSetup(travelTime);
-			plat.pNext = plat.pNextNext = plat.Vec3Offset(offX, offY, offZ);
-			plat.pNextAngs = plat.pNextNextAngs = plat.pCurrAngs + (offAng, offPi, offRo);
-		}
-	}
 
-	//============================
-	// MoveTo (ACS utility)
-	//============================
-	static void MoveTo (int platTid, double newX, double newY, double newZ, int travelTime, double offAng = 0, double offPi = 0, double offRo = 0)
-	{
-		//ACS itself has no 'vector3' variable type so it has to be 3 doubles (floats/fixed point numbers)
-		vector3 newPos = (newX, newY, newZ);
-		let it = level.CreateActorIterator(platTid, "FCW_Platform");
-		FCW_Platform plat;
-		while (plat = FCW_Platform(it.Next()))
-		{
-			plat.CommonACSSetup(travelTime);
-			plat.pNext = plat.pNextNext = plat.pos + level.Vec3Diff(plat.pos, newPos); //Make it portal aware
-			plat.pNextAngs = plat.pNextNextAngs = plat.pCurrAngs + (offAng, offPi, offRo);
+			plat.pNext = plat.pNextNext = exactPos ?
+				(plat.pos + level.Vec3Diff(plat.pos, (x, y, z))) : plat.Vec3Offset(x, y, z); //Make it portal aware
+
+			plat.pNextAngs = plat.pNextNextAngs = plat.pCurrAngs + (
+				exactAngs ? DeltaAngle(plat.pCurrAngs.x, ang) : ang,
+				exactAngs ? DeltaAngle(plat.pCurrAngs.y, pi) : pi,
+				exactAngs ? DeltaAngle(plat.pCurrAngs.z, ro) : ro);
 		}
 	}
 
@@ -1867,7 +1875,9 @@ extend class FCW_Platform
 		while (plat = FCW_Platform(it.Next()))
 		{
 			plat.CommonACSSetup(travelTime);
+
 			plat.pNext = plat.pNextNext = plat.pos + plat.Vec3To(spot); //Make it portal aware
+
 			plat.pNextAngs = plat.pNextNextAngs = plat.pCurrAngs + (
 				!dontRotate ? DeltaAngle(plat.pCurrAngs.x, spot.angle) : 0,
 				!dontRotate ? DeltaAngle(plat.pCurrAngs.y, spot.pitch) : 0,
@@ -1893,15 +1903,5 @@ extend class FCW_Platform
 		let it = level.CreateActorIterator(platTid, "FCW_Platform");
 		let plat = FCW_Platform(it.Next());
 		return (plat && plat.PlatHasMoved());
-	}
-
-	//============================
-	// IsBlocked (ACS utility)
-	//============================
-	static bool IsBlocked (int platTid)
-	{
-		let it = level.CreateActorIterator(platTid, "FCW_Platform");
-		let plat = FCW_Platform(it.Next());
-		return (plat && plat.PlatIsBlocked());
 	}
 }
