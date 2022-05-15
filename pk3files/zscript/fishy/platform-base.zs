@@ -1260,7 +1260,9 @@ extend class FCW_Platform
 			if (pos != newPos)
 			{
 				SetOrigin(newPos, true);
+				let oldPrev = prev;
 				CheckPortalTransition(); //Handle sector portals properly
+				prev = oldPrev;
 			}
 			MovePassengers(false);
 			return true;
