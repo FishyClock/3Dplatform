@@ -50,6 +50,7 @@ class FCW_Platform : Actor abstract
 		//$Arg3 Crush Damage
 		//$Arg3Tooltip The damage is applied once per 4 tics.
 
+		+INTERPOLATEANGLES;
 		+ACTLIKEBRIDGE;
 		+NOGRAVITY;
 		+CANPASS;
@@ -1060,7 +1061,7 @@ extend class FCW_Platform
 			let mo = passengers[i];
 			mo.A_ChangeLinkFlags(addToBmap);
 			if (delta)
-				mo.angle = Normalize180(mo.angle + delta);
+				mo.A_SetAngle(Normalize180(mo.angle + delta), SPF_INTERPOLATE);
 		}
 
 		return true;
