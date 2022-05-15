@@ -744,11 +744,9 @@ extend class FCW_Platform
 						}
 						if (blocked)
 						{
-							if (!(mo is "FCW_Platform"))
-							{
-								if (!ignoreObs)
-									CrushObstacle(mo);
-							}
+							if (!ignoreObs && !(mo is "FCW_Platform"))
+								CrushObstacle(mo);
+
 							if (!ignoreObs)
 							{
 								for (int i = 0; i < corpses.Size(); ++i)
@@ -1215,7 +1213,7 @@ extend class FCW_Platform
 			}
 		}
 
-		if (!moved) //Blocked by geometry or another platform?
+		if (!moved) //Blocked by geometry?
 		{
 			if (args[ARG_OPTIONS] & OPTFLAG_IGNOREGEO)
 			{
@@ -1282,7 +1280,7 @@ extend class FCW_Platform
 
 			if (pos != newPos)
 			{
-				SetOrigin(newPos, !teleMove);
+				SetOrigin(newPos, false);
 				CheckPortalTransition(); //Handle sector portals properly
 			}
 			angle = newAngle;
@@ -1698,10 +1696,7 @@ extend class FCW_Platform
 				}
 			}
 
-			if (holdTime > level.mapTime)
-				break;
-
-			if (!Interpolate())
+			if (holdTime > level.mapTime || !Interpolate())
 				break;
 
 			time += timeFrac;
