@@ -1213,7 +1213,7 @@ extend class FCW_Platform
 			}
 		}
 
-		if (!moved) //Blocked by geometry?
+		if (!moved) //Blocked by geometry or another platform?
 		{
 			if (args[ARG_OPTIONS] & OPTFLAG_IGNOREGEO)
 			{
@@ -1330,13 +1330,18 @@ extend class FCW_Platform
 				return false;
 			}
 
-			if (newPos.xy != pos.xy && step < maxSteps-1)
+			if (newPos.xy != pos.xy)
 			{
 				//If we have passed through a portal then
 				//adjust 'stepMove' if our angle changed.
 				double angDiff = DeltaAngle(oldAngle, angle);
 				if (angDiff)
-					stepMove.xy = RotateVector(stepMove.xy, angDiff);
+				{
+					if (step < maxSteps-1)
+						stepMove.xy = RotateVector(stepMove.xy, angDiff);
+					if (step == 0)
+						newAngle += angDiff;
+				}
 			}
 
 			if (step == 0)
