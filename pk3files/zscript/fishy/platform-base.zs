@@ -582,7 +582,7 @@ extend class FCW_Platform
 
 		if (prevNode)
 		{
-			pPrev = pos + Vec3To(prevNode); //Make it portal aware
+			pPrev = pos + Vec3To(prevNode); //Make it portal aware in a way so TryMove() can handle it
 			if (changeAng) pPrevAngs.x = Normalize180(prevNode.angle);
 			if (changePi) pPrevAngs.y = Normalize180(prevNode.pitch);
 			if (changeRo) pPrevAngs.z = Normalize180(prevNode.roll);
@@ -590,7 +590,7 @@ extend class FCW_Platform
 
 		if (currNode)
 		{
-			pCurr = pos + Vec3To(currNode); //Make it portal aware
+			pCurr = pos + Vec3To(currNode); //Make it portal aware in a way so TryMove() can handle it
 			if (!prevNode)
 			{
 				if (changeAng) pCurrAngs.x = Normalize180(currNode.angle);
@@ -607,7 +607,7 @@ extend class FCW_Platform
 
 			if (currNode.next)
 			{
-				pNext = pos + Vec3To(currNode.next); //Make it portal aware
+				pNext = pos + Vec3To(currNode.next); //Make it portal aware in a way so TryMove() can handle it
 				pNextAngs = pCurrAngs + (
 				changeAng ? DeltaAngle(pCurrAngs.x, currNode.next.angle) : 0,
 				changePi  ? DeltaAngle(pCurrAngs.y, currNode.next.pitch) : 0,
@@ -615,7 +615,7 @@ extend class FCW_Platform
 
 				if (currNode.next.next)
 				{
-					pNextNext = pos + Vec3To(currNode.next.next); //Make it portal aware
+					pNextNext = pos + Vec3To(currNode.next.next); //Make it portal aware in a way so TryMove() can handle it
 					pNextNextAngs = pNextAngs + (
 					changeAng ? DeltaAngle(pNextAngs.x, currNode.next.next.angle) : 0,
 					changePi  ? DeltaAngle(pNextAngs.y, currNode.next.next.pitch) : 0,
@@ -1882,8 +1882,9 @@ extend class FCW_Platform
 		{
 			plat.CommonACSSetup(travelTime);
 
-			plat.pNext = plat.pNextNext = exactPos ?
-				(plat.pos + level.Vec3Diff(plat.pos, (x, y, z))) : plat.Vec3Offset(x, y, z); //Make it portal aware
+			plat.pNext = plat.pNextNext = plat.pos + (exactPos ?
+				level.Vec3Diff(plat.pos, (x, y, z)) : //Make it portal aware in a way so TryMove() can handle it
+				(x, y, z)); //Absolute offset so TryMove() can handle it
 
 			plat.pNextAngs = plat.pNextNextAngs = plat.pCurrAngs + (
 				exactAngs ? DeltaAngle(plat.pCurrAngs.x, ang) : ang,
@@ -1909,7 +1910,7 @@ extend class FCW_Platform
 		{
 			plat.CommonACSSetup(travelTime);
 
-			plat.pNext = plat.pNextNext = plat.pos + plat.Vec3To(spot); //Make it portal aware
+			plat.pNext = plat.pNextNext = plat.pos + plat.Vec3To(spot); //Make it portal aware in a way so TryMove() can handle it
 
 			plat.pNextAngs = plat.pNextNextAngs = plat.pCurrAngs + (
 				!dontRotate ? DeltaAngle(plat.pCurrAngs.x, spot.angle) : 0,
