@@ -1319,6 +1319,9 @@ extend class FCW_Platform
 			oldPitch = pitch;
 			oldRoll = roll;
 
+			let oldOldPos = oldPos;
+			let oldOldAngle = oldAngle;
+
 			newPos = pos + stepMove;
 			bPlatInMove = true; //Temporarily don't clip against passengers
 			bool stepped = PlatTakeOneStep(newPos);
@@ -1334,13 +1337,17 @@ extend class FCW_Platform
 			{
 				//If we have passed through a portal then
 				//adjust 'stepMove' if our angle changed.
+				//We also need to adjust 'oldAngle', 'newAngle'
+				//and 'oldPos' as well for MovePassengers().
+				oldPos = pos + oldPos - newPos;
 				double angDiff = DeltaAngle(oldAngle, angle);
 				if (angDiff)
 				{
-					if (step < maxSteps-1)
-						stepMove.xy = RotateVector(stepMove.xy, angDiff);
+					oldAngle += angDiff;
 					if (step == 0)
 						newAngle += angDiff;
+					if (step < maxSteps-1)
+						stepMove.xy = RotateVector(stepMove.xy, angDiff);
 				}
 			}
 
@@ -1353,12 +1360,16 @@ extend class FCW_Platform
 
 			if (!MovePassengers(false))
 			{
+				oldPos = oldOldPos;
+				oldAngle = oldOldAngle;
 				SetOrigin(oldPos, true);
 				angle = oldAngle;
 				pitch = oldPitch;
 				roll = oldRoll;
 				return false;
 			}
+			oldPos = oldOldPos;
+			oldAngle = oldOldAngle;
 		}
 
 		return true;
@@ -1461,18 +1472,37 @@ extend class FCW_Platform
 			}
 		}
 
-		let oldPGroup = curSector.portalGroup;
 		if (!PlatMove(newPos, newAngle, newPitch, newRoll, 0))
 			return false;
 
-		if (curSector.portalGroup != oldPGroup) //Crossed a portal?
+		if (pos != newPos) //Crossed a portal?
 		{
-			//Offset the coordinates
-			vector3 offset = pos - newPos;
-			pPrev += offset;
-			pCurr += offset;
-			pNext += offset;
-			pNextNext += offset;
+			//Offset and possibly rotate the coordinates
+			pPrev -= newPos;
+			pCurr -= newPos;
+			pNext -= newPos;
+			pNextNext -= newPos;
+
+			double delta = DeltaAngle(newAngle, angle);
+			if (delta)
+			{
+				pPrevAngs.x += delta;
+				pCurrAngs.x += delta;
+				pNextAngs.x += delta;
+				pNextNextAngs.x += delta;
+
+				//Rotate them
+				double c = cos(delta), s = sin(delta);
+				pPrev.xy = (pPrev.x*c - pPrev.y*s, pPrev.x*s + pPrev.y*c);
+				pCurr.xy = (pCurr.x*c - pCurr.y*s, pCurr.x*s + pCurr.y*c);
+				pNext.xy = (pNext.x*c - pNext.y*s, pNext.x*s + pNext.y*c);
+				pNextNext.xy = (pNextNext.x*c - pNextNext.y*s, pNextNext.x*s + pNextNext.y*c);
+			}
+
+			pPrev = pos + pPrev;
+			pCurr = pos + pCurr;
+			pNext = pos + pNext;
+			pNextNext = pos + pNextNext;
 		}
 
 		//If one of our attached platforms is blocked, pretend
