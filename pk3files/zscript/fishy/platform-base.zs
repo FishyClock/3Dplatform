@@ -917,7 +917,7 @@ extend class FCW_Platform
 			vector3 offset = level.Vec3Diff(oldPos, moOldPos);
 			offset.xy = (offset.x*c - offset.y*s, offset.x*s + offset.y*c); //Rotate it
 			offset.xy += piAndRoOffset;
-			vector3 moNewPos = level.Vec3Offset(pos, offset);
+			vector3 moNewPos = level.Vec3Offset(pos, offset, !teleMove);
 
 			//Handle z discrepancy
 			if (moNewPos.z < top && moNewPos.z + mo.height >= top)
@@ -1335,8 +1335,8 @@ extend class FCW_Platform
 
 			if (newPos.xy != pos.xy)
 			{
-				//If we have passed through a portal then
-				//adjust 'stepMove' if our angle changed.
+				//If we have passed through a (non-static)
+				//portal then adjust 'stepMove' if our angle changed.
 				//We also need to adjust 'oldAngle', 'newAngle'
 				//and 'oldPos' as well for MovePassengers().
 				oldPos = pos + oldPos - newPos;
