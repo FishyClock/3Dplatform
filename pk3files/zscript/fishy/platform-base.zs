@@ -577,63 +577,66 @@ extend class FCW_Platform
 		bool changeAng = (args[ARG_OPTIONS] & OPTFLAG_ANGLE);
 		bool changePi = (args[ARG_OPTIONS] & OPTFLAG_PITCH);
 		bool changeRo = (args[ARG_OPTIONS] & OPTFLAG_ROLL);
-		pPrev = pCurr = pNext = pNextNext = pos;
-		pPrevAngs = pCurrAngs = pNextAngs = pNextNextAngs = (angle, pitch, roll);
 
+		//Take into account angle changes when
+		//passing through non-static line portals.
+		//All checked angles have to be adjusted.
+		double delta = (currNode && changeAng) ? DeltaAngle(currNode.angle, angle) : 0;
 		if (prevNode)
 		{
-			pPrev = pos + Vec3To(prevNode); //Make it portal aware in a way so TryMove() can handle it
-			if (changeAng) pPrevAngs.x = Normalize180(prevNode.angle);
-			if (changePi) pPrevAngs.y = Normalize180(prevNode.pitch);
-			if (changeRo) pPrevAngs.z = Normalize180(prevNode.roll);
+			//'pPrev' has to be adjusted if 'currNode' position is different from platform's.
+			//Which can happen because of non-static line portals.
+			//(But to be perfectly honest, the offsetting done here is
+			//arbitrary on my part because the differences on
+			//a spline path, with or without the offsetting, are subtle.)
+			vector3 offset = currNode ? currNode.Vec3To(self) : (0, 0, 0);
+			pPrev = pos + Vec3To(prevNode) + offset; //Make it portal aware in a way so TryMove() can handle it
+			pPrevAngs = (
+			changeAng ? Normalize180(prevNode.angle + delta) : angle,
+			changePi  ? Normalize180(prevNode.pitch) : pitch,
+			changeRo  ? Normalize180(prevNode.roll) : roll);
 		}
 
-		if (currNode)
+		pCurr = pos;
+		if (!prevNode)
 		{
-			pCurr = pos + Vec3To(currNode); //Make it portal aware in a way so TryMove() can handle it
-			if (!prevNode)
-			{
-				if (changeAng) pCurrAngs.x = Normalize180(currNode.angle);
-				if (changePi) pCurrAngs.y = Normalize180(currNode.pitch);
-				if (changeRo) pCurrAngs.z = Normalize180(currNode.roll);
-			}
-			else
-			{
-				pCurrAngs = pPrevAngs + (
-				changeAng ? DeltaAngle(pPrevAngs.x, currNode.angle) : 0,
-				changePi  ? DeltaAngle(pPrevAngs.y, currNode.pitch) : 0,
-				changeRo  ? DeltaAngle(pPrevAngs.z, currNode.roll)  : 0);
-			}
+			pCurrAngs = (
+			changeAng ? Normalize180(angle) : angle,
+			changePi  ? Normalize180(pitch) : pitch,
+			changeRo  ? Normalize180(roll) : roll);
+		}
+		else
+		{
+			pCurrAngs = pPrevAngs + (
+			changeAng ? DeltaAngle(pPrevAngs.x, angle) : 0,
+			changePi  ? DeltaAngle(pPrevAngs.y, pitch) : 0,
+			changeRo  ? DeltaAngle(pPrevAngs.z, roll) : 0);
+		}
 
-			if (currNode.next)
-			{
-				pNext = pos + Vec3To(currNode.next); //Make it portal aware in a way so TryMove() can handle it
-				pNextAngs = pCurrAngs + (
-				changeAng ? DeltaAngle(pCurrAngs.x, currNode.next.angle) : 0,
-				changePi  ? DeltaAngle(pCurrAngs.y, currNode.next.pitch) : 0,
-				changeRo  ? DeltaAngle(pCurrAngs.z, currNode.next.roll)  : 0);
+		if (currNode && currNode.next)
+		{
+			pNext = pos + Vec3To(currNode.next); //Make it portal aware in a way so TryMove() can handle it
+			pNextAngs = pCurrAngs + (
+			changeAng ? DeltaAngle(pCurrAngs.x, currNode.next.angle + delta) : 0,
+			changePi  ? DeltaAngle(pCurrAngs.y, currNode.next.pitch) : 0,
+			changeRo  ? DeltaAngle(pCurrAngs.z, currNode.next.roll)  : 0);
 
-				if (currNode.next.next)
-				{
-					pNextNext = pos + Vec3To(currNode.next.next); //Make it portal aware in a way so TryMove() can handle it
-					pNextNextAngs = pNextAngs + (
-					changeAng ? DeltaAngle(pNextAngs.x, currNode.next.next.angle) : 0,
-					changePi  ? DeltaAngle(pNextAngs.y, currNode.next.next.pitch) : 0,
-					changeRo  ? DeltaAngle(pNextAngs.z, currNode.next.next.roll)  : 0);
-				}
-				else //No currNode.next.next
-				{
-					pNextNext = pNext;
-					pNextNextAngs = pNextAngs;
-				}
-			}
-			else //No currNode.next
+			if (currNode.next.next)
 			{
-				pNextNext = pNext = pCurr;
-				pNextNextAngs = pNextAngs = pCurrAngs;
+				pNextNext = pos + Vec3To(currNode.next.next); //Make it portal aware in a way so TryMove() can handle it
+				pNextNextAngs = pNextAngs + (
+				changeAng ? DeltaAngle(pNextAngs.x, currNode.next.next.angle + delta) : 0,
+				changePi  ? DeltaAngle(pNextAngs.y, currNode.next.next.pitch) : 0,
+				changeRo  ? DeltaAngle(pNextAngs.z, currNode.next.next.roll)  : 0);
+			}
+			else //No currNode.next.next
+			{
+				pNextNext = pNext;
+				pNextNextAngs = pNextAngs;
 			}
 		}
-		else //No currNode
+
+		if (!currNode || !currNode.next)
 		{
 			pNextNext = pNext = pCurr;
 			pNextNextAngs = pNextAngs = pCurrAngs;
@@ -1236,14 +1239,25 @@ extend class FCW_Platform
 	//============================
 	private bool PlatMove (vector3 newPos, double newAngle, double newPitch, double newRoll, int moveType)
 	{
-		//moveType values: 0 = normal move; 1 = teleport move; -1 = quick move.
+		// moveType values:
+		// 0 = normal move
+		// 1 = teleport move
+		// -1 = quick move
 		//
-		//"Quick move" is used to correct the position/angles and it is assumed
-		//that 'newPos/Angle/Pitch/Roll' is only marginally different from
-		//the current position/angles.
+		// "Quick move" is used to correct the position/angles and it is assumed
+		// that 'newPos/Angle/Pitch/Roll' is only marginally different from
+		// the current position/angles.
 
 		if (pos == newPos && angle == newAngle && pitch == newPitch && roll == newRoll)
-			return (moveType != -1);
+		{
+			if (moveType == -1)
+				return false;
+
+			if (moveType == 1)
+				GetNewPassengers(true);
+
+			return true;
+		}
 
 		if (moveType == -1) //Quick move?
 		{
@@ -1715,20 +1729,6 @@ extend class FCW_Platform
 			{
 				bJustStepped = false;
 				SetHoldTime();
-				if (holdTime > level.mapTime)
-				{
-					//While waiting, make sure we're exactly at our intended position
-					bool faceAng = ((args[ARG_OPTIONS] & OPTFLAG_FACEMOVE) && (args[ARG_OPTIONS] & (OPTFLAG_ANGLE)));
-					bool facePi = ((args[ARG_OPTIONS] & OPTFLAG_FACEMOVE) && (args[ARG_OPTIONS] & (OPTFLAG_PITCH)));
-					bool faceRo = ((args[ARG_OPTIONS] & OPTFLAG_FACEMOVE) && (args[ARG_OPTIONS] & (OPTFLAG_ROLL)));
-
-					if (PlatMove(pCurr, faceAng ? angle : pCurrAngs.x,
-										facePi ? pitch : pCurrAngs.y,
-										faceRo ? roll : pCurrAngs.z, -1))
-					{
-						MoveGroup(-1);
-					}
-				}
 			}
 
 			if (holdTime > level.mapTime || !Interpolate())
@@ -1739,6 +1739,18 @@ extend class FCW_Platform
 			{
 				time -= 1.0;
 				bJustStepped = true;
+
+				//Make sure we're exactly at our intended position
+				bool faceAng = ((args[ARG_OPTIONS] & OPTFLAG_FACEMOVE) && (args[ARG_OPTIONS] & (OPTFLAG_ANGLE)));
+				bool facePi = ((args[ARG_OPTIONS] & OPTFLAG_FACEMOVE) && (args[ARG_OPTIONS] & (OPTFLAG_PITCH)));
+				bool faceRo = ((args[ARG_OPTIONS] & OPTFLAG_FACEMOVE) && (args[ARG_OPTIONS] & (OPTFLAG_ROLL)));
+				if (PlatMove(pNext, faceAng ? angle : pNextAngs.x,
+									facePi ? pitch : pNextAngs.y,
+									faceRo ? roll : pNextAngs.z, -1))
+				{
+					MoveGroup(-1);
+				}
+
 				prevNode = currNode;
 				if (currNode)
 					currNode = currNode.next;
@@ -1759,18 +1771,6 @@ extend class FCW_Platform
 					(!(args[ARG_OPTIONS] & OPTFLAG_LINEAR) && (!currNode.next.next || !prevNode)) )
 				{
 					Deactivate(self);
-
-					//Make sure we're exactly at our intended position
-					bool faceAng = ((args[ARG_OPTIONS] & OPTFLAG_FACEMOVE) && (args[ARG_OPTIONS] & (OPTFLAG_ANGLE)));
-					bool facePi = ((args[ARG_OPTIONS] & OPTFLAG_FACEMOVE) && (args[ARG_OPTIONS] & (OPTFLAG_PITCH)));
-					bool faceRo = ((args[ARG_OPTIONS] & OPTFLAG_FACEMOVE) && (args[ARG_OPTIONS] & (OPTFLAG_ROLL)));
-
-					if (PlatMove(pNext, faceAng ? angle : pNextAngs.x,
-										facePi ? pitch : pNextAngs.y,
-										faceRo ? roll : pNextAngs.z, -1))
-					{
-						MoveGroup(-1);
-					}
 				}
 				else if (currNode)
 				{
