@@ -165,6 +165,62 @@ class FCW_PlatformGroup play
 	}
 }
 
+class FCW_PlatformTracer : LineTracer
+{
+	transient Array<Line> newPorts;
+
+	override ETraceStatus TraceCallback ()
+	{
+		if (results.hitType == TRACE_CrossingPortal && results.unlinked)
+		{
+			Sector sec = level.PointInSector(results.hitPos.xy);
+			for (int i = 0; i < sec.lines.Size(); ++i)
+			{
+				Line lin = sec.lines[i];
+
+				//Is the hit position exactly on the line and not in front/behind it?
+				if (FCW_Platform.IsOnLine(results.hitPos.xy, lin))
+				{
+					if (newPorts.Find(lin) >= newPorts.Size())
+						newPorts.Push(lin);
+					break; //Found it
+				}
+			}
+
+			//Need to set this to false or else any linked portals that are possibly
+			//further along the trace will be erroneously reported as unlinked.
+			results.unlinked = false;
+		}
+
+		return TRACE_Skip;
+	}
+
+	static void GetNewUnlinkedPortals (out Array<Line> uPorts, vector3 pPrev, vector3 pCurr, vector3 pNext, double radius)
+	{
+		if (pCurr ~== pPrev && pCurr ~== pNext)
+		{
+			uPorts.Clear();
+			return; //Don't do ultra small traces
+		}
+
+		let tracer = new("FCW_PlatformTracer");
+		tracer.newPorts.Clear();
+		Sector startSec = level.PointInSector(pCurr.xy);
+
+		vector3 dest = level.Vec3Diff(pCurr, pNext);
+		double len = dest.Length() + radius;
+		if (len > 14) //Don't do ultra small traces
+			tracer.Trace(pCurr, startSec, dest.Unit(), len, TRACE_ReportPortals);
+
+		dest = level.Vec3Diff(pCurr, pPrev);
+		len = radius;
+		if (len > 14) //Don't do ultra small traces
+			tracer.Trace(pCurr, startSec, dest.Unit(), len, TRACE_ReportPortals);
+
+		uPorts.Move(tracer.newPorts);
+	}
+}
+
 extend class FCW_Platform
 {
 	enum ArgValues
@@ -196,7 +252,10 @@ extend class FCW_Platform
 		TIMEUNIT_SECS		= 2,
 	};
 
-	const TOPEPSILON = 1.0;
+	const TOP_EPSILON = 1.0;
+	const ZS_EQUAL_EPSILON = 1.0 / 65536.0; //Because 'double.epsilon' is too small, we'll use 'EQUAL_EPSILON' from the source code
+	const YES_BMAP = 0; //For A_ChangeLinkFlags()
+	const NO_BMAP = 1;
 
 	vector3 oldPos;
 	double oldAngle;
@@ -214,6 +273,9 @@ extend class FCW_Platform
 	InterpolationPoint prevNode, firstPrevNode;
 	Array<Actor> passengers;
 	FCW_PlatformGroup group;
+	Array<Line> uPorts; //Non-static line portals through which we'll spawn a invisible copy for better collision
+	FCW_Platform portalCopy;
+	bool copyMoved;
 
 	//Unlike PathFollower classes, our interpolations are done with
 	//vector3 coordinates instead of checking InterpolationPoint positions.
@@ -222,6 +284,13 @@ extend class FCW_Platform
 	//2) Can be arbitrarily set through ACS (See utility functions below).
 	vector3 pCurr, pPrev, pNext, pNextNext; //Positions in the world.
 	vector3 pCurrAngs, pPrevAngs, pNextAngs, pNextNextAngs; //X = angle, Y = pitch, Z = roll.
+
+	States
+	{
+	PortalCopy:
+		TNT1 A -1; //Portal copies are invisible and aren't meant to have fancy states/animations/etc
+		Stop;
+	}
 
 	//============================
 	// BeginPlay (override)
@@ -246,6 +315,9 @@ extend class FCW_Platform
 		prevNode = firstPrevNode = null;
 		passengers.Clear();
 		group = null;
+		uPorts.Clear();
+		portalCopy = null;
+		copyMoved = false;
 
 		pCurr = pPrev = pNext = pNextNext = (0, 0, 0);
 		pCurrAngs = pPrevAngs = pNextAngs = pNextNextAngs = (0, 0, 0);
@@ -383,18 +455,32 @@ extend class FCW_Platform
 	}
 
 	//============================
+	// OnDestroy (override)
+	//============================
+	override void OnDestroy ()
+	{
+		if (portalCopy)
+			portalCopy.Destroy();
+
+		Super.OnDestroy();
+	}
+
+	//============================
 	// CanCollideWith (override)
 	//============================
 	override bool CanCollideWith(Actor other, bool passive)
 	{
 		let plat = FCW_Platform(other);
 
-		if (plat && ((plat.group && plat.group == group) || (args[ARG_OPTIONS] & OPTFLAG_IGNOREGEO)))
+		if (plat && (plat == portalCopy || (plat.group && plat.group == group) || (args[ARG_OPTIONS] & OPTFLAG_IGNOREGEO)))
 			return false;
 
-		if (bPlatInMove && passengers.Find(other) < passengers.Size())
+		if (bPlatInMove &&
+			(passengers.Find(other) < passengers.Size() ||
+			(portalCopy && portalCopy.passengers.Find(other) < portalCopy.passengers.Size())))
+		{
 			return false;
-
+		}
 		return true;
 	}
 
@@ -457,6 +543,24 @@ extend class FCW_Platform
 
 		mo.SetZ(oldZ);
 		return result;
+	}
+
+	//============================
+	// IsBehindLine
+	//============================
+	static clearscope bool IsBehindLine (vector2 v, Line l)
+	{
+		//Yes, this is borrowed from P_PointOnLineSidePrecise()
+		return ( (v.y - l.v1.p.y) * l.delta.x + (l.v1.p.x - v.x) * l.delta.y > ZS_EQUAL_EPSILON );
+	}
+
+	//============================
+	// IsOnLine
+	//============================
+	static clearscope bool IsOnLine (vector2 v, Line l)
+	{
+		//Ditto
+		return ( abs( (v.y - l.v1.p.y) * l.delta.x + (l.v1.p.x - v.x) * l.delta.y ) < ZS_EQUAL_EPSILON );
 	}
 
 	//============================
@@ -716,8 +820,8 @@ extend class FCW_Platform
 			if (abs(it.position.x - mo.pos.x) < blockDist && abs(it.position.y - mo.pos.y) < blockDist)
 			{
 				//'ignoreObs' makes anything above our 'top' legit unless there's a 3D floor in the way.
-				if (mo.pos.z >= top - TOPEPSILON && (ignoreObs || mo.pos.z <= top + TOPEPSILON) && //On top of us?
-					mo.floorZ <= top + TOPEPSILON) //No 3D floor above our 'top' that's below 'mo'?
+				if (mo.pos.z >= top - TOP_EPSILON && (ignoreObs || mo.pos.z <= top + TOP_EPSILON) && //On top of us?
+					mo.floorZ <= top + TOP_EPSILON) //No 3D floor above our 'top' that's below 'mo'?
 				{
 					if (canCarry && !oldPassenger)
 						onTopOfMe.Push(mo);
@@ -851,7 +955,7 @@ extend class FCW_Platform
 			{
 				let otherMo = miscActors[iOther];
 
-				if ( ( abs(otherMo.pos.z - moTop) <= TOPEPSILON || OverlapZ(mo, otherMo) ) && //Is 'otherMo' on top of 'mo' or stuck inside 'mo'?
+				if ( ( abs(otherMo.pos.z - moTop) <= TOP_EPSILON || OverlapZ(mo, otherMo) ) && //Is 'otherMo' on top of 'mo' or stuck inside 'mo'?
 					OverlapXY(mo, otherMo) ) //Within XY range?
 				{
 					miscActors.Delete(iOther--); //Don't compare this one against other passengers anymore
@@ -881,14 +985,12 @@ extend class FCW_Platform
 		//To accomplish this each of them will temporarily
 		//be removed from the blockmap.
 
-		int addToBmap = 0, removeFromBmap = 1;
-
 		for (int i = 0; i < passengers.Size(); ++i)
 		{
 			let mo = passengers[i];
 			if (mo && !mo.bNoBlockmap)
 			{
-				mo.A_ChangeLinkFlags(removeFromBmap);
+				mo.A_ChangeLinkFlags(NO_BMAP);
 			}
 			else
 			{
@@ -1012,7 +1114,7 @@ extend class FCW_Platform
 					mo.SetOrigin(moOldPos, true);
 
 				//This passenger will be 'solid' for the others
-				mo.A_ChangeLinkFlags(addToBmap);
+				mo.A_ChangeLinkFlags(YES_BMAP);
 				passengers.Delete(i--);
 
 				//See if it would block the platform
@@ -1039,7 +1141,7 @@ extend class FCW_Platform
 					vector3 otherOldPos = (preMovePos[iOther*3], preMovePos[iOther*3 + 1], preMovePos[iOther*3 + 2]);
 					otherMo.SetOrigin(otherOldPos, true);
 
-					otherMo.A_ChangeLinkFlags(addToBmap);
+					otherMo.A_ChangeLinkFlags(YES_BMAP);
 					preMovePos.Delete(iOther*3, 3);
 					passengers.Delete(iOther--);
 					i--;
@@ -1048,7 +1150,7 @@ extend class FCW_Platform
 				if (blocked)
 				{
 					for (i = 0; i < passengers.Size(); ++i)
-						passengers[i].A_ChangeLinkFlags(addToBmap); //Handle those that didn't get the chance to move
+						passengers[i].A_ChangeLinkFlags(YES_BMAP); //Handle those that didn't get the chance to move
 					PushObstacle(mo, level.Vec3Diff(oldPos, pos));
 					return false;
 				}
@@ -1060,7 +1162,7 @@ extend class FCW_Platform
 		for (int i = 0; i < passengers.Size(); ++i)
 		{
 			let mo = passengers[i];
-			mo.A_ChangeLinkFlags(addToBmap);
+			mo.A_ChangeLinkFlags(YES_BMAP);
 			if (delta)
 				mo.A_SetAngle(Normalize180(mo.angle + delta), SPF_INTERPOLATE);
 		}
@@ -1097,7 +1199,7 @@ extend class FCW_Platform
 			//(In other words 'floorZ' is not another actor's top that's below.)
 
 			//Is 'mo' below our 'top'? Or is there a 3D floor above our 'top' that's also below 'mo'?
-			if (mo.pos.z < top - TOPEPSILON || mo.floorZ > top + TOPEPSILON)
+			if (mo.pos.z < top - TOP_EPSILON || mo.floorZ > top + TOP_EPSILON)
 			{
 				passengers.Delete(i--);
 				continue;
@@ -1119,7 +1221,7 @@ extend class FCW_Platform
 			if (mo.tics != 1 && mo.tics != 0)
 				continue; //Don't bother if it's not about to change states (and potentially call A_Chase()/A_Wander())
 
-			if (mo.pos.z > top + TOPEPSILON)
+			if (mo.pos.z > top + TOP_EPSILON)
 				continue; //Not exactly on top of us
 
 			if (mo.pos.z - mo.floorZ <= mo.maxDropoffHeight)
@@ -1386,6 +1488,100 @@ extend class FCW_Platform
 			oldAngle = oldOldAngle;
 		}
 
+		if (uPorts.Size())
+		{
+			//Our bounding box
+			double minX1 = pos.x - radius;
+			double maxX1 = pos.x + radius;
+			double minY1 = pos.y - radius;
+			double maxY1 = pos.y + radius;
+
+			for (int i = 0; i < uPorts.Size(); ++i)
+			{
+				Line port = uPorts[i];
+				Line dest;
+				if (!port || !port.IsLinePortal() || !(dest = port.GetPortalDestination()))
+				{
+					uPorts.Delete(i--);
+					continue;
+				}
+
+				//Line bounding box
+				double minX2 = min(port.v1.p.x, port.v2.p.x);
+				double maxX2 = max(port.v1.p.x, port.v2.p.x);
+				double minY2 = min(port.v1.p.y, port.v2.p.y);
+				double maxY2 = max(port.v1.p.y, port.v2.p.y);
+
+				if (minX1 < maxX2 && minX2 < maxX1 && //BBoxes touching?
+					minY1 < maxY2 && minY2 < maxY1 &&
+					!IsBehindLine(pos.xy, port)) //Center point is in front of line?
+				{
+					//At least one corner is behind line and at least another is in front of line?
+					bool cornerResult = IsBehindLine((minX1, minY1), port);
+					if (cornerResult != IsBehindLine((minX1, maxY1), port) ||
+						cornerResult != IsBehindLine((maxX1, minY1), port) ||
+						cornerResult != IsBehindLine((maxX1, maxY1), port))
+					{
+						double delta = DeltaAngle(180 +
+							VectorAngle(port.delta.x, port.delta.y),
+							VectorAngle(dest.delta.x, dest.delta.y));
+
+						vector3 destPos = pos;
+						destPos.xy -= port.v1.p;
+						if (delta)
+							destPos.xy = RotateVector(destPos.xy, delta);
+						destPos.xy += dest.v2.p;
+
+						switch (port.GetPortalAlignment())
+						{
+							case 1: //Floor
+								destPos.z += dest.frontSector.floorPlane.ZatPoint(dest.v2.p) - port.frontSector.floorPlane.ZatPoint(port.v1.p);
+								break;
+							case 2: //Ceiling
+								destPos.z += dest.frontSector.ceilingPlane.ZatPoint(dest.v2.p) - port.frontSector.ceilingPlane.ZatPoint(port.v1.p);
+								break;
+						}
+
+						if (!portalCopy)
+						{
+							portalCopy = FCW_Platform(Spawn(GetClass(), destPos));
+							portalCopy.SetStateLabel("PortalCopy"); //Invisible with no special states
+							portalCopy.angle = angle + delta;
+							portalCopy.pitch = pitch;
+							portalCopy.roll = roll;
+							portalCopy.oldAngle = oldAngle + delta;
+							portalCopy.oldPitch = oldPitch + delta;
+							portalCopy.oldRoll = oldRoll + delta;
+							copyMoved = true;
+						}
+						else if (portalCopy.bNoBlockmap || !copyMoved)
+						{
+							portalCopy.passengers.Clear();
+							portalCopy.A_ChangeLinkFlags(YES_BMAP);
+							portalCopy.SetOrigin(destPos, false);
+							portalCopy.angle = angle + delta;
+							portalCopy.pitch = pitch;
+							portalCopy.roll = roll;
+							copyMoved = true;
+						}
+						else
+						{
+							copyMoved = true;
+							if (!portalCopy.PlatMove(destPos, angle + delta, pitch, roll, 0))
+								return false;
+						}
+						break;
+					}
+				}
+			}
+		}
+		else if (portalCopy)
+		{
+			portalCopy.passengers.Clear();
+			portalCopy.A_ChangeLinkFlags(NO_BMAP); //No collision while not in use
+			copyMoved = false;
+		}
+
 		return true;
 	}
 
@@ -1650,6 +1846,8 @@ extend class FCW_Platform
 	override void Deactivate (Actor activator)
 	{
 		bActive = false;
+		if (portalCopy)
+			portalCopy.Destroy();
 	}
 
 	//============================
@@ -1683,6 +1881,8 @@ extend class FCW_Platform
 				SetTimeFraction();
 				time = 0;
 				holdTime = 0;
+
+				FCW_PlatformTracer.GetNewUnlinkedPortals(uPorts, pPrev, pCurr, pNext, radius);
 			}
 		}
 	}
@@ -1776,6 +1976,7 @@ extend class FCW_Platform
 				{
 					SetInterpolationCoordinates();
 					SetTimeFraction();
+					FCW_PlatformTracer.GetNewUnlinkedPortals(uPorts, pPrev, pCurr, pNext, radius);
 				}
 			}
 			break;
@@ -1890,6 +2091,8 @@ extend class FCW_Platform
 				exactAngs ? DeltaAngle(plat.pCurrAngs.x, ang) : ang,
 				exactAngs ? DeltaAngle(plat.pCurrAngs.y, pi) : pi,
 				exactAngs ? DeltaAngle(plat.pCurrAngs.z, ro) : ro);
+
+			FCW_PlatformTracer.GetNewUnlinkedPortals(plat.uPorts, plat.pPrev, plat.pCurr, plat.pNext, plat.radius);
 		}
 	}
 
@@ -1916,6 +2119,8 @@ extend class FCW_Platform
 				!dontRotate ? DeltaAngle(plat.pCurrAngs.x, spot.angle) : 0,
 				!dontRotate ? DeltaAngle(plat.pCurrAngs.y, spot.pitch) : 0,
 				!dontRotate ? DeltaAngle(plat.pCurrAngs.z, spot.roll) : 0);
+
+			FCW_PlatformTracer.GetNewUnlinkedPortals(plat.uPorts, plat.pPrev, plat.pCurr, plat.pNext, plat.radius);
 		}
 	}
 
