@@ -269,6 +269,7 @@ extend class FCW_Platform
 	const ZS_EQUAL_EPSILON = 1.0 / 65536.0; //Because 'double.epsilon' is too small, we'll use 'EQUAL_EPSILON' from the source code
 	const YES_BMAP = 0; //For A_ChangeLinkFlags()
 	const NO_BMAP = 1;
+	const EXTRA_SIZE = 20; //For line collision checking
 
 	vector3 oldPos;
 	double oldAngle;
@@ -499,7 +500,8 @@ extend class FCW_Platform
 		}
 		if (bPlatInMove || (portTwin && portTwin.bPlatInMove))
 		{
-			//Don't collide with passengers while moving
+			//If me or my twin is moving, don't
+			//collide with either one's passengers.
 			if (passengers.Find(other) < passengers.Size() ||
 				(portTwin && portTwin.passengers.Find(other) < portTwin.passengers.Size() ) )
 			{
@@ -836,7 +838,7 @@ extend class FCW_Platform
 				continue;
 
 			if (portTwin && portTwin.passengers.Find(mo) < portTwin.passengers.Size())
-				continue; //Never take your twin's passengers
+				continue; //Never take your twin's passengers (not here anyway)
 
 			bool canCarry = (IsCarriable(mo) && !(mo is "FCW_Platform")); //Platforms shouldn't carry other platforms.
 			bool oldPassenger = (passengers.Find(mo) < passengers.Size());
@@ -1116,16 +1118,22 @@ extend class FCW_Platform
 					if (!mo || mo.bDestroyed)
 						break;
 
-					mo.CheckPortalTransition(); //Handle sector portals properly
-
-					if (tryPos != mo.pos.xy && step < maxSteps-1)
+					if (tryPos != mo.pos.xy)
 					{
 						//If 'mo' has passed through a portal then
 						//adjust 'stepMove' if its angle changed.
 						double angDiff = DeltaAngle(moOldAngle, mo.angle);
 						if (angDiff)
-							stepMove.xy = RotateVector(stepMove.xy, angDiff);
+						{
+							if (step < maxSteps-1)
+								stepMove.xy = RotateVector(stepMove.xy, angDiff);
+
+							//Adjust 'moveDir' for monsters
+							if (mo.bIsMonster)
+								mo.moveDir = (mo.moveDir + int(angDiff / 45)) & 7;
+						}
 					}
+					mo.CheckPortalTransition(); //Handle sector portals properly
 				}
 
 				//Take into account passengers getting Thing_Remove()'d
@@ -1327,6 +1335,94 @@ extend class FCW_Platform
 	}
 
 	//============================
+	// ExchangePassengersWithTwin
+	//============================
+	private void ExchangePassengersWithTwin ()
+	{
+		//This is never called by the 'passive' twin.
+		//ie the one that can have NOBLOCKMAP set.
+
+		if (!portTwin || portTwin.portTwin != self)
+			return;
+
+		int oldPortTwinSize = portTwin.passengers.Size();
+
+		if (!portTwin.bNoBlockmap)
+		for (int i = 0; i < passengers.Size(); ++i)
+		{
+			//If any of our passengers have passed through a portal,
+			//check if they're on the twin's side of that portal.
+			//If so, give them to our twin.
+			//(This has to happen after both have moved.)
+
+			let mo = passengers[i];
+			if (!mo || mo.bDestroyed)
+			{
+				passengers.Delete(i--);
+				continue;
+			}
+
+			if (!OverlapXY(self, mo) && OverlapXY(portTwin, mo) &&
+				portTwin.passengers.Find(mo) >= portTwin.passengers.Size())
+			{
+				passengers.Delete(i--);
+				portTwin.passengers.Push(mo);
+			}
+		}
+
+		for (int i = 0; i < oldPortTwinSize; ++i)
+		{
+			//Same deal but in reverse
+
+			let mo = portTwin.passengers[i];
+			if (!mo || mo.bDestroyed)
+			{
+				portTwin.passengers.Delete(i--);
+				--oldPortTwinSize;
+				continue;
+			}
+
+			if (!OverlapXY(portTwin, mo) && OverlapXY(self, mo) &&
+				passengers.Find(mo) >= passengers.Size())
+			{
+				portTwin.passengers.Delete(i--);
+				--oldPortTwinSize;
+				passengers.Push(mo);
+			}
+		}
+	}
+
+	//============================
+	// TranslatePortalPosition
+	//============================
+	static vector3, double TranslatePortalPosition (vector3 vec, Line port)
+	{
+		Line dest;
+		if (!port || !(dest = port.GetPortalDestination()))
+			return vec, 0;
+
+		double delta = DeltaAngle(180 +
+		VectorAngle(port.delta.x, port.delta.y),
+		VectorAngle(dest.delta.x, dest.delta.y));
+
+		vec.xy -= port.v1.p;
+		if (delta)
+			vec.xy = RotateVector(vec.xy, delta);
+		vec.xy += dest.v2.p;
+
+		switch (port.GetPortalAlignment())
+		{
+			case 1: //Floor
+				vec.z += dest.frontSector.floorPlane.ZatPoint(dest.v2.p) - port.frontSector.floorPlane.ZatPoint(port.v1.p);
+				break;
+			case 2: //Ceiling
+				vec.z += dest.frontSector.ceilingPlane.ZatPoint(dest.v2.p) - port.frontSector.ceilingPlane.ZatPoint(port.v1.p);
+				break;
+		}
+		return vec, delta;
+	}
+
+	//============================
 	// PlatTakeOneStep
 	//============================
 	private bool PlatTakeOneStep (vector3 newPos, bool isPassiveTwin)
@@ -1383,8 +1479,6 @@ extend class FCW_Platform
 
 		if (isPassiveTwin)
 			SetOrigin(newPos, true);
-		else
-			CheckPortalTransition(); //Handle sector portals properly
 
 		return true;
 	}
@@ -1427,7 +1521,7 @@ extend class FCW_Platform
 			if (pos != newPos)
 			{
 				SetOrigin(newPos, true);
-				if (!isPassiveTwin)
+				if (!isPassiveTwin) //The passive (invisible) twin isn't meant to cross portals
 				{
 					let oldPrev = prev;
 					CheckPortalTransition(); //Handle sector portals properly
@@ -1452,7 +1546,7 @@ extend class FCW_Platform
 			if (pos != newPos)
 			{
 				SetOrigin(newPos, false);
-				if (!isPassiveTwin)
+				if (!isPassiveTwin) //The passive (invisible) twin isn't meant to cross portals
 					CheckPortalTransition(); //Handle sector portals properly
 			}
 			angle = newAngle;
@@ -1475,20 +1569,18 @@ extend class FCW_Platform
 		vector3 stepMove = level.Vec3Diff(pos, newPos);
 		vector3 pushForce = stepMove;
 
-		if (!isPassiveTwin)
+		//If the move is equal or larger than our radius
+		//then it has to be split up into smaller steps.
+		//This is needed for proper collision.
+		double maxMove = max(1, radius - 1);
+		double moveSpeed = max(abs(stepMove.x), abs(stepMove.y));
+		if (moveSpeed > maxMove)
 		{
-			//If the move is equal or larger than our radius
-			//then it has to be split up into smaller steps.
-			//This is needed for proper collision.
-			double maxMove = max(1, radius - 1);
-			double moveSpeed = max(abs(stepMove.x), abs(stepMove.y));
-			if (moveSpeed > maxMove)
-			{
-				maxSteps = int(1 + moveSpeed / maxMove);
-				stepMove /= maxSteps;
-			}
+			maxSteps = int(1 + moveSpeed / maxMove);
+			stepMove /= maxSteps;
 		}
 
+		bPlatInMove = true; //Temporarily don't clip against passengers
 		for (int step = 0; step < maxSteps; ++step)
 		{
 			oldPos = pos;
@@ -1500,11 +1592,9 @@ extend class FCW_Platform
 			let oldOldAngle = oldAngle;
 
 			newPos = pos + stepMove;
-			bPlatInMove = true; //Temporarily don't clip against passengers
-			bool stepped = PlatTakeOneStep(newPos, isPassiveTwin);
-			bPlatInMove = false;
-			if (!stepped)
+			if (!PlatTakeOneStep(newPos, isPassiveTwin))
 			{
+				bPlatInMove = false;
 				if (blockingMobj && !(blockingMobj is "FCW_Platform"))
 					PushObstacle(blockingMobj, pushForce);
 				return false;
@@ -1528,6 +1618,9 @@ extend class FCW_Platform
 				}
 			}
 
+			if (!isPassiveTwin) //The passive (invisible) twin isn't meant to cross portals
+				CheckPortalTransition(); //Handle sector portals properly
+
 			if (step == 0)
 			{
 				angle = newAngle;
@@ -1537,6 +1630,7 @@ extend class FCW_Platform
 
 			if (!MovePassengers(false))
 			{
+				bPlatInMove = false;
 				oldPos = oldOldPos;
 				oldAngle = oldOldAngle;
 				SetOrigin(oldPos, true);
@@ -1548,23 +1642,24 @@ extend class FCW_Platform
 			oldPos = oldOldPos;
 			oldAngle = oldOldAngle;
 		}
+		bPlatInMove = false;
 
 		if (isPassiveTwin)
 			return true;
 
-		bool result = true;
-		int iPort = 0;
-
 		//The following checks for detected non-static line portals
 		//and uses a invisible copy of itself on the portal's
 		//other side for collision purposes.
-		if (uPorts.Size() && !isPassiveTwin)
+		bool result = true;
+		int iPort = 0;
+		if (uPorts.Size())
 		{
 			//Our bounding box
-			double minX1 = pos.x - radius;
-			double maxX1 = pos.x + radius;
-			double minY1 = pos.y - radius;
-			double maxY1 = pos.y + radius;
+			double size = radius + EXTRA_SIZE; //Pretend we're a bit bigger
+			double minX1 = pos.x - size;
+			double maxX1 = pos.x + size;
+			double minY1 = pos.y - size;
+			double maxY1 = pos.y + size;
 
 			for (iPort = 0; iPort < uPorts.Size(); ++iPort)
 			{
@@ -1589,36 +1684,18 @@ extend class FCW_Platform
 				}
 
 				if (IsBehindLine(pos.xy, port))
-					continue;
+					continue; //Center point not in front of line
 
 				bool cornerResult = IsBehindLine((minX1, minY1), port);
 				if (cornerResult == IsBehindLine((minX1, maxY1), port) &&
 					cornerResult == IsBehindLine((maxX1, minY1), port) &&
 					cornerResult == IsBehindLine((maxX1, maxY1), port))
 				{
-					continue; //All corners on one side; there's no intersection
+					continue; //All corners on one side; there's no intersection with line
 				}
 
-				double delta = DeltaAngle(180 +
-					VectorAngle(port.delta.x, port.delta.y),
-					VectorAngle(dest.delta.x, dest.delta.y));
-
-				vector3 destPos = pos;
-				destPos.xy -= port.v1.p;
-				if (delta)
-					destPos.xy = RotateVector(destPos.xy, delta);
-				destPos.xy += dest.v2.p;
-
-				switch (port.GetPortalAlignment())
-				{
-					case 1: //Floor
-						destPos.z += dest.frontSector.floorPlane.ZatPoint(dest.v2.p) - port.frontSector.floorPlane.ZatPoint(port.v1.p);
-						break;
-					case 2: //Ceiling
-						destPos.z += dest.frontSector.ceilingPlane.ZatPoint(dest.v2.p) - port.frontSector.ceilingPlane.ZatPoint(port.v1.p);
-						break;
-				}
-
+				vector3 destPos; double delta;
+				[destPos, delta] = TranslatePortalPosition(pos, port);
 				bool newPort = (lastPort != port);
 				lastPort = port;
 				if (lastPort != uPorts[0])
@@ -1657,52 +1734,7 @@ extend class FCW_Platform
 				portTwin.A_ChangeLinkFlags(NO_BMAP); //No collision while not needed
 				lastPort = null;
 			}
-
-			int oldPortTwinSize = portTwin.passengers.Size();
-
-			if (!portTwin.bNoBlockmap)
-			for (int i = 0; i < passengers.Size(); ++i)
-			{
-				//If any of our passengers have passed through a portal,
-				//check if they're on the twin's side of that portal.
-				//If so, give them to our twin.
-				//(This has to happen after both have moved.)
-
-				let mo = passengers[i];
-				if (!mo || mo.bDestroyed)
-				{
-					passengers.Delete(i--);
-					continue;
-				}
-
-				if (!OverlapXY(self, mo) && OverlapXY(portTwin, mo) &&
-					portTwin.passengers.Find(mo) >= portTwin.passengers.Size())
-				{
-					passengers.Delete(i--);
-					portTwin.passengers.Push(mo);
-				}
-			}
-
-			for (int i = 0; i < oldPortTwinSize; ++i)
-			{
-				//Same deal but in reverse
-
-				let mo = portTwin.passengers[i];
-				if (!mo || mo.bDestroyed)
-				{
-					portTwin.passengers.Delete(i--);
-					--oldPortTwinSize;
-					continue;
-				}
-
-				if (!OverlapXY(portTwin, mo) && OverlapXY(self, mo) &&
-					passengers.Find(mo) >= passengers.Size())
-				{
-					portTwin.passengers.Delete(i--);
-					--oldPortTwinSize;
-					passengers.Push(mo);
-				}
-			}
+			ExchangePassengersWithTwin();
 		}
 		return result;
 	}
@@ -2007,7 +2039,7 @@ extend class FCW_Platform
 				time = 0;
 				holdTime = 0;
 
-				FCW_PlatformTracer.GetNewUnlinkedPortals(uPorts, pCurr, pNext, radius);
+				FCW_PlatformTracer.GetNewUnlinkedPortals(uPorts, pCurr, pNext, radius + EXTRA_SIZE);
 			}
 		}
 	}
@@ -2076,6 +2108,13 @@ extend class FCW_Platform
 									facePi ? pitch : pNextAngs.y,
 									faceRo ? roll : pNextAngs.z, -1, false))
 				{
+					if (portTwin && !portTwin.bNoBlockmap && lastPort)
+					{
+						vector3 destPos; double delta;
+						[destPos, delta] = TranslatePortalPosition(pos, lastPort);
+						portTwin.PlatMove(destPos, angle + delta, pitch, roll, -1, true);
+						ExchangePassengersWithTwin();
+					}
 					MoveGroup(-1);
 				}
 
@@ -2089,10 +2128,22 @@ extend class FCW_Platform
 					if (bDestroyed)
 						return; //Abort if we got Thing_Remove()'d
 
-					if (currNode && currNode.bDestroyed)
-						currNode = null; //Our node got Thing_Remove()'d
 					if (prevNode && prevNode.bDestroyed)
 						prevNode = null; //Prev node got Thing_Remove()'d
+
+					if (currNode && currNode.bDestroyed)
+						currNode = null; //Current node got Thing_Remove()'d
+
+					else if (currNode &&
+						currNode.next && currNode.next.bDestroyed)
+					{
+						currNode.next = null; //Next node got Thing_Remove()'d
+					}
+					else if (currNode && currNode.next &&
+						currNode.next.next && currNode.next.next.bDestroyed)
+					{
+						currNode.next.next = null; //Last node got Thing_Remove()'d
+					}
 				}
 
 				if (!currNode || !currNode.next ||
@@ -2104,7 +2155,7 @@ extend class FCW_Platform
 				{
 					SetInterpolationCoordinates();
 					SetTimeFraction();
-					FCW_PlatformTracer.GetNewUnlinkedPortals(uPorts, pCurr, pNext, radius);
+					FCW_PlatformTracer.GetNewUnlinkedPortals(uPorts, pCurr, pNext, radius + EXTRA_SIZE);
 				}
 			}
 			break;
@@ -2220,7 +2271,7 @@ extend class FCW_Platform
 				exactAngs ? DeltaAngle(plat.pCurrAngs.y, pi) : pi,
 				exactAngs ? DeltaAngle(plat.pCurrAngs.z, ro) : ro);
 
-			FCW_PlatformTracer.GetNewUnlinkedPortals(plat.uPorts, plat.pCurr, plat.pNext, plat.radius);
+			FCW_PlatformTracer.GetNewUnlinkedPortals(plat.uPorts, plat.pCurr, plat.pNext, plat.radius + EXTRA_SIZE);
 		}
 	}
 
@@ -2248,7 +2299,7 @@ extend class FCW_Platform
 				!dontRotate ? DeltaAngle(plat.pCurrAngs.y, spot.pitch) : 0,
 				!dontRotate ? DeltaAngle(plat.pCurrAngs.z, spot.roll) : 0);
 
-			FCW_PlatformTracer.GetNewUnlinkedPortals(plat.uPorts, plat.pCurr, plat.pNext, plat.radius);
+			FCW_PlatformTracer.GetNewUnlinkedPortals(plat.uPorts, plat.pCurr, plat.pNext, plat.radius + EXTRA_SIZE);
 		}
 	}
 
