@@ -19,6 +19,7 @@ DoomEdNums
 	15501 = TESTFloaty
 	15502 = TESTFlyingDoor
 	15503 = TESTSprite
+	15504 = TESTBlueishPlatform
 }
 
 map MAP01 "Fishy's 3D Platforms: Demo"

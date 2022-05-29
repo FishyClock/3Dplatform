@@ -1395,11 +1395,11 @@ extend class FCW_Platform
 	//============================
 	// TranslatePortalPosition
 	//============================
-	static vector3, double TranslatePortalPosition (vector3 vec, Line port)
+	static vector3 TranslatePortalPosition (vector3 vec, Line port)
 	{
 		Line dest;
 		if (!port || !(dest = port.GetPortalDestination()))
-			return vec, 0;
+			return vec;
 
 		double delta = DeltaAngle(180 +
 		VectorAngle(port.delta.x, port.delta.y),
@@ -1419,7 +1419,7 @@ extend class FCW_Platform
 				vec.z += dest.frontSector.ceilingPlane.ZatPoint(dest.v2.p) - port.frontSector.ceilingPlane.ZatPoint(port.v1.p);
 				break;
 		}
-		return vec, delta;
+		return vec;
 	}
 
 	//============================
@@ -1694,8 +1694,7 @@ extend class FCW_Platform
 					continue; //All corners on one side; there's no intersection with line
 				}
 
-				vector3 destPos; double delta;
-				[destPos, delta] = TranslatePortalPosition(pos, port);
+				vector3 destPos = TranslatePortalPosition(pos, port);
 				bool newPort = (lastPort != port);
 				lastPort = port;
 				if (lastPort != uPorts[0])
@@ -1709,7 +1708,7 @@ extend class FCW_Platform
 				{
 					portTwin = FCW_Platform(Spawn(GetClass(), destPos));
 					portTwin.portTwin = self;
-					portTwin.angle = angle + delta;
+					portTwin.angle = angle;
 					portTwin.pitch = pitch;
 					portTwin.roll = roll;
 					portTwin.SetStateLabel("PortalCopy"); //Invisible
@@ -1722,7 +1721,7 @@ extend class FCW_Platform
 					portTwin.A_ChangeLinkFlags(YES_BMAP);
 					newPort = true;
 				}
-				result = portTwin.PlatMove(destPos, angle + delta, pitch, roll, newPort, true);
+				result = portTwin.PlatMove(destPos, angle, pitch, roll, newPort, true);
 				break;
 			}
 		}
@@ -2110,9 +2109,8 @@ extend class FCW_Platform
 				{
 					if (portTwin && !portTwin.bNoBlockmap && lastPort)
 					{
-						vector3 destPos; double delta;
-						[destPos, delta] = TranslatePortalPosition(pos, lastPort);
-						portTwin.PlatMove(destPos, angle + delta, pitch, roll, -1, true);
+						vector3 destPos = TranslatePortalPosition(pos, lastPort);
+						portTwin.PlatMove(destPos, angle, pitch, roll, -1, true);
 						ExchangePassengersWithTwin();
 					}
 					MoveGroup(-1);

@@ -32,6 +32,16 @@ Model TESTFlyingDoor
 	FrameIndex MODL A 0 0
 }
 
+Model TESTBlueishPlatform
+{
+	USEACTORPITCH
+	USEACTORROLL
+
+	Path "models"
+	Model 0 "TESTBlueishPlatform.obj"
+	FrameIndex MODL A 0 0
+}
+
 Model DemoCavePlat
 {
 	USEACTORPITCH

@@ -90,3 +90,19 @@ class TESTSPritePitchIndicator : Actor
 		Loop;
 	}
 }
+
+class TESTBlueishPlatform : FCW_Platform
+{
+	Default
+	{
+		Radius 64;
+		Height 16;
+	}
+
+	States
+	{
+	Spawn:
+		MODL A -1;
+		Stop;
+	}
+}
