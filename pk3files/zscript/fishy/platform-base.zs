@@ -1675,7 +1675,10 @@ extend class FCW_Platform
 					crossedPortal = true;
 					ExchangePassengersWithTwin();
 				}
-				oldPos += pos - newPos;
+				oldPos -= newPos;
+				if (angDiff)
+					oldPos.xy = RotateVector(oldPos.xy, angDiff);
+				oldPos += pos;
 			}
 
 			CheckPortalTransition(); //Handle sector portals properly
