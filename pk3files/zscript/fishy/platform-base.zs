@@ -1415,7 +1415,7 @@ extend class FCW_Platform
 				continue;
 			}
 
-			if (!OverlapXY(self, mo) && OverlapXY(portTwin, mo) &&
+			if (mo.Distance3D(portTwin) < mo.Distance3D(self) &&
 				portTwin.passengers.Find(mo) >= portTwin.passengers.Size())
 			{
 				passengers.Delete(i--);
@@ -1434,7 +1434,7 @@ extend class FCW_Platform
 				continue;
 			}
 
-			if (!OverlapXY(portTwin, mo) && OverlapXY(self, mo) &&
+			if (mo.Distance3D(self) < mo.Distance3D(portTwin) &&
 				passengers.Find(mo) >= passengers.Size())
 			{
 				portTwin.passengers.Delete(i--);
