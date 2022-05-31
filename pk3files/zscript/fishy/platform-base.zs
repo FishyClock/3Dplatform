@@ -1375,10 +1375,7 @@ extend class FCW_Platform
 	//============================
 	private bool MovePortalTwin (vector3 twinPos, vector3 twinOldPos, bool noCheckPosition)
 	{
-		portTwin.bPlatInMove = true;
-		bool fits = (noCheckPosition || portTwin.pos == twinPos || FitsAtPosition(portTwin, twinPos));
-		portTwin.bPlatInMove = false;
-		if (!fits)
+		if (!noCheckPosition && portTwin.pos != twinPos && !FitsAtPosition(portTwin, twinPos))
 			return false;
 
 		if (portTwin.pos != twinPos)
@@ -1573,9 +1570,11 @@ extend class FCW_Platform
 			if (moveTwin)
 				MovePortalTwin(TranslatePortalPosition(pos, lastPort), TranslatePortalPosition(oldPos, lastPort), true);
 
+			bPlatInMove = true;
 			MovePassengers(false, false);
 			if (moveTwin)
 				portTwin.MovePassengers(false, false);
+			bPlatInMove = false;
 			return true;
 		}
 
@@ -1682,8 +1681,6 @@ extend class FCW_Platform
 					moved = MovePortalTwin(newPos, realOldPos, false);
 					if (moved)
 					{
-						portTwin.angle -= angDiff;
-						portTwin.oldAngle -= angDiff;
 						crossedPortal = true;
 						ExchangePassengersWithTwin();
 					}
