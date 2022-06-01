@@ -490,28 +490,36 @@ extend class FCW_Platform
 	//============================
 	// CanCollideWith (override)
 	//============================
-	override bool CanCollideWith(Actor other, bool passive)
+	override bool CanCollideWith (Actor other, bool passive)
 	{
 		let plat = FCW_Platform(other);
-		if (plat &&
-			(plat == portTwin || //Don't collide with portal twin
-			(plat.group && plat.group == group) || //Don't collide with groupmates
-			(args[ARG_OPTIONS] & OPTFLAG_IGNOREGEO) ) ) //Don't collide with any platform in general
+		if (plat)
 		{
-			return false;
+			if (plat == portTwin)
+				return false; //Don't collide with portal twin
+
+			if (group && group == plat.group)
+				return false; //Don't collide with groupmates
+
+			if (portTwin && portTwin.group && portTwin.group == plat.group)
+				return false; //Don't collide with portal twin's groupmates
+
+			if (args[ARG_OPTIONS] & OPTFLAG_IGNOREGEO)
+				return false; //Don't collide with any platform in general
 		}
+
 		if (passive && stuckActors.Find(other) < stuckActors.Size())
-			return false; //Let stuck things move out/move through us
+			return false; //Let stuck things move out/move through us - also makes pushing them away easier
 
 		if (bPlatInMove || (portTwin && portTwin.bPlatInMove))
 		{
 			//If me or my twin is moving, don't
 			//collide with either one's passengers.
-			if (passengers.Find(other) < passengers.Size() ||
-				(portTwin && portTwin.passengers.Find(other) < portTwin.passengers.Size() ) )
-			{
+			if (passengers.Find(other) < passengers.Size())
 				return false;
-			}
+
+			if (portTwin && portTwin.passengers.Find(other) < portTwin.passengers.Size())
+				return false;
 		}
 		return true;
 	}
@@ -543,6 +551,7 @@ extend class FCW_Platform
 	{
 		if (!blockDist)
 			blockDist = a.radius + b.radius;
+
 		vector2 vec = level.Vec2Diff(a.pos.xy, b.pos.xy);
 		return (abs(vec.x) < blockDist && abs(vec.y) < blockDist);
 	}
@@ -605,12 +614,8 @@ extend class FCW_Platform
 		if (pushForce.y ~== 0) pushForce.y = 0;
 		if (pushForce.z ~== 0) pushForce.z = 0;
 
-		if (pushForce.z && (pushed.bCantLeaveFloorPic || //No Z pushing for CANTLEAVEFLOORPIC actors.
-			pushed.bFloorHugger || pushed.bCeilingHugger || //No Z pushing for floor/ceiling huggers.
-			!OverlapXY(self, pushed))) //Out of XY range?
-		{
+		if (pushForce.z && !OverlapXY(self, pushed)) //Out of XY range?
 			pushForce.z = 0;
-		}
 
 		if (pushForce == (0, 0, 0))
 			return;
@@ -621,7 +626,17 @@ extend class FCW_Platform
 			if (delta > 90 || delta < -90)
 				pushForce.xy = RotateVector(pushForce.xy, delta); //Push away from platform's center
 		}
-		pushed.vel += pushForce;
+		let oldZ = pushForce.z;
+
+		if (pushed.bCantLeaveFloorPic || //No Z pushing for CANTLEAVEFLOORPIC actors.
+			pushed.bFloorHugger || pushed.bCeilingHugger) //No Z pushing for floor/ceiling huggers.
+		{
+			pushForce.z = 0;
+		}
+		if (!pushed.bDontThrust)
+			pushed.vel += pushForce;
+
+		pushForce.z = oldZ;
 
 		int crushDamage = args[ARG_CRUSHDMG];
 		if (crushDamage <= 0 || (level.mapTime & 3)) //Only crush every 4th tic to allow victim's pain sound to be heard
@@ -1259,12 +1274,12 @@ extend class FCW_Platform
 			if (mo.pos.z < top - TOP_EPSILON || mo.floorZ > top + TOP_EPSILON ||
 				!OverlapXY(self, mo)) //Is out of XY range?
 			{
-				passengers.Delete(i--);
-
 				//Add velocity to the passenger we just lost track of.
 				//It's likely to be a player that has jumped away.
 				if (args[ARG_OPTIONS] & OPTFLAG_ADDVEL)
 					mo.vel += level.Vec3Diff(oldPos, pos);
+
+				passengers.Delete(i--);
 				continue;
 			}
 
@@ -1301,6 +1316,11 @@ extend class FCW_Platform
 			if (mo.moveCount < 1)
 				mo.moveCount = 1;
 		}
+
+		oldPos = pos;
+		oldAngle = angle;
+		oldPitch = pitch;
+		oldRoll = roll;
 	}
 
 	//============================
@@ -1371,7 +1391,7 @@ extend class FCW_Platform
 	//============================
 	private bool MovePortalTwin (vector3 twinPos, vector3 twinOldPos, bool noCheckPosition)
 	{
-		if (!noCheckPosition && portTwin.pos != twinPos && !FitsAtPosition(portTwin, twinPos))
+		if (!noCheckPosition && portTwin.pos != twinPos && !portTwin.PlatTakeOneStep(twinPos, true))
 			return false;
 
 		if (portTwin.pos != twinPos)
@@ -1455,10 +1475,12 @@ extend class FCW_Platform
 	//============================
 	// PlatTakeOneStep
 	//============================
-	private bool PlatTakeOneStep (vector3 newPos)
+	private bool PlatTakeOneStep (vector3 newPos, bool isPortalCopy)
 	{
+		//The "invisible" portal twin (copy) isn't meant to go through portals.
+		//Don't call TryMove() nor Vec3Offset() for it.
 		SetZ(newPos.z);
-		bool moved = TryMove(newPos.xy, 1);
+		bool moved = isPortalCopy ? FitsAtPosition(self, newPos) : TryMove(newPos.xy, 1);
 
 		if (!moved && blockingMobj && !(blockingMobj is "FCW_Platform"))
 		{
@@ -1472,7 +1494,9 @@ extend class FCW_Platform
 				IsCarriable(mo) && FitsAtPosition(mo, (mo.pos.xy, moNewZ)))
 			{
 				mo.SetZ(moNewZ);
-				moved = TryMove(newPos.xy, 1); //Try one more time
+
+				//Try one more time
+				moved = isPortalCopy ? FitsAtPosition(self, newPos) : TryMove(newPos.xy, 1);
 				if (!moved)
 				{
 					mo.SetZ(moOldZ);
@@ -1495,7 +1519,8 @@ extend class FCW_Platform
 		{
 			if (args[ARG_OPTIONS] & OPTFLAG_IGNOREGEO)
 			{
-				SetOrigin(level.Vec3Offset(pos, newPos - pos), true);
+				if (!isPortalCopy)
+					SetOrigin(level.Vec3Offset(pos, newPos - pos), true);
 			}
 			else
 			{
@@ -1503,7 +1528,66 @@ extend class FCW_Platform
 				return false;
 			}
 		}
+
+		if (isPortalCopy)
+			SetOrigin(newPos, true);
+
 		return true;
+	}
+
+	//============================
+	// GetStuckActors
+	//============================
+	private void GetStuckActors ()
+	{
+		//A slimmed down version of GetNewPassengers()
+		//that only looks for stuck actors.
+		let it = BlockThingsIterator.Create(self);
+		while (it.Next())
+		{
+			let mo = it.thing;
+			if (mo == self)
+				continue;
+
+			if (!CollisionFlagChecks(self, mo))
+				continue;
+
+			if (stuckActors.Find(mo) < stuckActors.Size())
+				continue; //Already in the array
+
+			double blockDist = radius + mo.radius;
+			if (abs(it.position.x - mo.pos.x) >= blockDist || abs(it.position.y - mo.pos.y) >= blockDist)
+				continue; //No XY overlap
+
+			if (!OverlapZ(self, mo))
+				continue;
+
+			if (self.CanCollideWith(mo, false) && mo.CanCollideWith(self, true))
+				stuckActors.Push(mo); //Got one
+		}
+	}
+
+	//============================
+	// HandleStuckActors
+	//============================
+	private void HandleStuckActors ()
+	{
+		for (int i = 0; i < stuckActors.Size(); ++i)
+		{
+			let mo = stuckActors[i];
+			if (!mo || mo.bDestroyed || //Thing_Remove()'d?
+				!OverlapZ(self, mo) || !OverlapXY(self, mo)) //No overlap?
+			{
+				stuckActors.Delete(i--);
+				continue;
+			}
+
+			if (!(mo is "FCW_Platform"))
+			{
+				vector3 pushForce = level.Vec3Diff(pos, mo.pos + (0, 0, mo.height/2)).Unit();
+				PushObstacle(mo, pushForce);
+			}
+		}
 	}
 
 	//============================
@@ -1571,6 +1655,11 @@ extend class FCW_Platform
 			if (moveTwin)
 				portTwin.MovePassengers(false, false);
 			bPlatInMove = false;
+			ExchangePassengersWithTwin();
+
+			GetStuckActors();
+			if (portTwin)
+				portTwin.GetStuckActors();
 			return true;
 		}
 
@@ -1625,9 +1714,10 @@ extend class FCW_Platform
 			oldRoll = roll;
 
 			newPos = pos + stepMove;
-			if (!PlatTakeOneStep(newPos))
+			if (!PlatTakeOneStep(newPos, false))
 			{
 				bPlatInMove = false;
+
 				if (blockingMobj && !(blockingMobj is "FCW_Platform"))
 					PushObstacle(blockingMobj, pushForce);
 				return false;
@@ -1668,6 +1758,7 @@ extend class FCW_Platform
 			if (moveTwin)
 			{
 				bool moved;
+				portTwin.blockingMobj = null;
 				if (newPos.xy == pos.xy)
 				{
 					moved = MovePortalTwin(TranslatePortalPosition(pos, lastPort), TranslatePortalPosition(oldPos, lastPort), false);
@@ -1687,8 +1778,14 @@ extend class FCW_Platform
 					oldPos = realOldPos;
 					oldAngle -= angDiff;
 					GoBack();
+
 					if (portTwin.blockingMobj && !(portTwin.blockingMobj is "FCW_Platform"))
-						portTwin.PushObstacle(portTwin.blockingMobj, pushForce);
+					{
+						vector3 twinPushForce = pushForce;
+						if (angDiff)
+							twinPushForce.xy = RotateVector(twinPushForce.xy, angDiff);
+						portTwin.PushObstacle(portTwin.blockingMobj, twinPushForce);
+					}
 					return false;
 				}
 			}
@@ -1698,12 +1795,14 @@ extend class FCW_Platform
 			if (!movedMine || (moveTwin && !portTwin.MovePassengers(false, false)))
 			{
 				if (movedMine)
-					MovePassengers(true, true);
+					MovePassengers(true, true); //Move them back
+
 				oldPos = realOldPos;
 				oldAngle -= angDiff;
 				GoBack();
 				if (moveTwin)
 					portTwin.GoBack();
+
 				bPlatInMove = false;
 				return false;
 			}
@@ -2119,17 +2218,14 @@ extend class FCW_Platform
 			if (group.members.Find(self) >= group.members.Size())
 				group.members.Push(self); //Ensure we're in the group array
 
-			if ((!group.origin || !group.origin.bActive) && bActive)
+			if (!group.origin && bActive)
 				group.origin = self;
 		}
 
 		if (!group || !group.origin)
 		{
 			HandleOldPassengers();
-			oldPos = pos;
-			oldAngle = angle;
-			oldPitch = pitch;
-			oldRoll = roll;
+			HandleStuckActors();
 		}
 		else if (group.origin == self)
 		{
@@ -2139,10 +2235,7 @@ extend class FCW_Platform
 				if (plat)
 				{
 					plat.HandleOldPassengers();
-					plat.oldPos = plat.pos;
-					plat.oldAngle = plat.angle;
-					plat.oldPitch = plat.pitch;
-					plat.oldRoll = plat.roll;
+					plat.HandleStuckActors();
 				}
 			}
 		}
@@ -2248,50 +2341,6 @@ extend class FCW_Platform
 			SetState(curState.nextState);
 	}
 
-	//
-	//
-	// For scripting convenience with subclasses
-	//
-	//
-
-	//============================
-	// PlatIsActive
-	//============================
-	bool PlatIsActive ()
-	{
-		//When checking group members we only care about the origin.
-		//Either "every member is active" or "every member is not active."
-		let plat = self;
-		if (group && group.origin)
-			plat = group.origin;
-
-		return plat.bActive;
-	}
-
-	//============================
-	// PlatHasMoved
-	//============================
-	bool PlatHasMoved ()
-	{
-		//When checking group members we only care about the origin.
-		//Either "every member has moved" or "every member has not moved."
-		let plat = self;
-		if (group && group.origin)
-			plat = group.origin;
-
-		return (plat.bActive && (
-				plat.pos != plat.oldPos ||
-				plat.angle != plat.oldAngle ||
-				plat.pitch != plat.oldPitch ||
-				plat.roll != plat.oldRoll) );
-	}
-
-	//
-	//
-	// Everything below this point is ACS centric
-	//
-	//
-
 	//============================
 	// CommonACSSetup
 	//============================
@@ -2310,6 +2359,14 @@ extend class FCW_Platform
 			Normalize180(pitch),
 			Normalize180(roll));
 	}
+
+	//
+	//
+	// Everything below this point is either for
+	// scripting convenience with subclasses or
+	// ACS centric utility functions.
+	//
+	//
 
 	//============================
 	// Move (ACS utility)
@@ -2364,6 +2421,20 @@ extend class FCW_Platform
 	}
 
 	//============================
+	// PlatIsActive
+	//============================
+	bool PlatIsActive ()
+	{
+		//When checking group members we only care about the origin.
+		//Either "every member is active" or "every member is not active."
+		let plat = self;
+		if (group && group.origin)
+			plat = group.origin;
+
+		return plat.bActive;
+	}
+
+	//============================
 	// IsActive (ACS utility)
 	//============================
 	static bool IsActive (int platTid)
@@ -2371,6 +2442,24 @@ extend class FCW_Platform
 		let it = level.CreateActorIterator(platTid, "FCW_Platform");
 		let plat = FCW_Platform(it.Next());
 		return (plat && plat.PlatIsActive());
+	}
+
+	//============================
+	// PlatHasMoved
+	//============================
+	bool PlatHasMoved ()
+	{
+		//When checking group members we only care about the origin.
+		//Either "every member has moved" or "every member has not moved."
+		let plat = self;
+		if (group && group.origin)
+			plat = group.origin;
+
+		return (plat.bActive && (
+				plat.pos != plat.oldPos ||
+				plat.angle != plat.oldAngle ||
+				plat.pitch != plat.oldPitch ||
+				plat.roll != plat.oldRoll) );
 	}
 
 	//============================
