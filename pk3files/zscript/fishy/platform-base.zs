@@ -41,7 +41,7 @@ class FCW_Platform : Actor abstract
 
 		//$Arg1 Options
 		//$Arg1Type 12
-		//$Arg1Enum {1 = "Linear path / (Does nothing for non-origin group members)"; 2 = "Use point angle / Group move: Rotate angle / (ACS commands don't need this)"; 4 = "Use point pitch / Group move: Rotate pitch / (ACS commands don't need this)"; 8 = "Use point roll / Group move: Rotate roll / (ACS commands don't need this)"; 16 = "Face movement direction / (Does nothing for non-origin group members)"; 32 = "Don't clip against geometry and other platforms"; 64 = "Start active"; 128 = "Group move: Mirror group origin's movement";}
+		//$Arg1Enum {1 = "Linear path / (Does nothing for non-origin group members)"; 2 = "Use point angle / Group move: Rotate angle / (ACS commands don't need this)"; 4 = "Use point pitch / Group move: Rotate pitch / (ACS commands don't need this)"; 8 = "Use point roll / Group move: Rotate roll / (ACS commands don't need this)"; 16 = "Face movement direction / (Does nothing for non-origin group members)"; 32 = "Don't clip against geometry and other platforms"; 64 = "Start active"; 128 = "Group move: Mirror group origin's movement"; 256 = "Add velocity to passengers when they jump away";}
 		//$Arg1Tooltip 'Group move' affects movement imposed by the group origin.\nThe 'group origin' is the platform that other members move with and orbit around.\nActivating any group member will turn it into the group origin.
 
 		//$Arg2 Platform(s) To Group With
@@ -252,6 +252,7 @@ extend class FCW_Platform
 		OPTFLAG_IGNOREGEO		= 32,
 		OPTFLAG_STARTACTIVE		= 64,
 		OPTFLAG_MIRROR			= 128,
+		OPTFLAG_ADDVEL			= 256,
 
 		//FCW_PlatformNode args that we check
 		NODEARG_TRAVELTIME		= 1, //Also applies to InterpolationPoint
@@ -1260,15 +1261,15 @@ extend class FCW_Platform
 			//(In other words 'floorZ' is not another actor's top that's below.)
 
 			//Is 'mo' below our 'top'? Or is there a 3D floor above our 'top' that's also below 'mo'?
-			if (mo.pos.z < top - TOP_EPSILON || mo.floorZ > top + TOP_EPSILON)
+			if (mo.pos.z < top - TOP_EPSILON || mo.floorZ > top + TOP_EPSILON ||
+				!OverlapXY(self, mo)) //Is out of XY range?
 			{
 				passengers.Delete(i--);
-				continue;
-			}
 
-			if (!OverlapXY(self, mo)) //Is out of XY range?
-			{
-				passengers.Delete(i--);
+				//Add velocity to the passenger we just lost track of.
+				//It's likely to be a player that has jumped away.
+				if (args[ARG_OPTIONS] & OPTFLAG_ADDVEL)
+					mo.vel += level.Vec3Diff(oldPos, pos);
 				continue;
 			}
 
@@ -2123,13 +2124,17 @@ extend class FCW_Platform
 			if (group.members.Find(self) >= group.members.Size())
 				group.members.Push(self); //Ensure we're in the group array
 
-			if (!group.origin && bActive)
+			if ((!group.origin || !group.origin.bActive) && bActive)
 				group.origin = self;
 		}
 
 		if (!group || !group.origin)
 		{
 			HandleOldPassengers();
+			oldPos = pos;
+			oldAngle = angle;
+			oldPitch = pitch;
+			oldRoll = roll;
 		}
 		else if (group.origin == self)
 		{
@@ -2137,7 +2142,13 @@ extend class FCW_Platform
 			{
 				let plat = group.GetMember(iPlat);
 				if (plat)
+				{
 					plat.HandleOldPassengers();
+					plat.oldPos = plat.pos;
+					plat.oldAngle = plat.angle;
+					plat.oldPitch = plat.pitch;
+					plat.oldRoll = plat.roll;
+				}
 			}
 		}
 
@@ -2145,11 +2156,6 @@ extend class FCW_Platform
 		{
 			if (portTwin)
 				portTwin.bActive = false;
-
-			oldPos = pos;
-			oldAngle = angle;
-			oldPitch = pitch;
-			oldRoll = roll;
 
 			if (bJustStepped)
 			{
