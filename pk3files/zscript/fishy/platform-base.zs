@@ -287,6 +287,7 @@ extend class FCW_Platform
 	InterpolationPoint currNode, firstNode;
 	InterpolationPoint prevNode, firstPrevNode;
 	Array<Actor> passengers;
+	Array<Actor> stuckActors;
 	FCW_PlatformGroup group;
 	Array<Line> uPorts; //Non-static line portals through which we'll spawn a invisible twin for better collision
 	Line lastPort;
@@ -329,6 +330,7 @@ extend class FCW_Platform
 		currNode = firstNode = null;
 		prevNode = firstPrevNode = null;
 		passengers.Clear();
+		stuckActors.Clear();
 		group = null;
 		uPorts.Clear();
 		lastPort = null;
@@ -491,7 +493,6 @@ extend class FCW_Platform
 	override bool CanCollideWith(Actor other, bool passive)
 	{
 		let plat = FCW_Platform(other);
-
 		if (plat &&
 			(plat == portTwin || //Don't collide with portal twin
 			(plat.group && plat.group == group) || //Don't collide with groupmates
@@ -499,6 +500,9 @@ extend class FCW_Platform
 		{
 			return false;
 		}
+		if (passive && stuckActors.Find(other) < stuckActors.Size())
+			return false; //Let stuck things move out/move through us
+
 		if (bPlatInMove || (portTwin && portTwin.bPlatInMove))
 		{
 			//If me or my twin is moving, don't
@@ -592,19 +596,6 @@ extend class FCW_Platform
 	}
 
 	//============================
-	// CrushObstacle
-	//============================
-	private void CrushObstacle (Actor victim)
-	{
-		int crushDamage = args[ARG_CRUSHDMG];
-		if (crushDamage <= 0 || (level.mapTime & 3)) //Only crush every 4th tic to allow victim's pain sound to be heard
-			return;
-
-		int doneDamage = victim.DamageMobj(null, null, crushDamage, 'Crush');
-		victim.TraceBleed(doneDamage > 0 ? doneDamage : crushDamage, self);
-	}
-
-	//============================
 	// PushObstacle
 	//============================
 	private void PushObstacle (Actor pushed, vector3 pushForce)
@@ -614,8 +605,12 @@ extend class FCW_Platform
 		if (pushForce.y ~== 0) pushForce.y = 0;
 		if (pushForce.z ~== 0) pushForce.z = 0;
 
-		if (pushForce.z && !OverlapXY(self, pushed)) //Out of XY range?
+		if (pushForce.z && (pushed.bCantLeaveFloorPic || //No Z pushing for CANTLEAVEFLOORPIC actors.
+			pushed.bFloorHugger || pushed.bCeilingHugger || //No Z pushing for floor/ceiling huggers.
+			!OverlapXY(self, pushed))) //Out of XY range?
+		{
 			pushForce.z = 0;
+		}
 
 		if (pushForce == (0, 0, 0))
 			return;
@@ -628,11 +623,15 @@ extend class FCW_Platform
 		}
 		pushed.vel += pushForce;
 
-		if (args[ARG_CRUSHDMG] <= 0)
+		int crushDamage = args[ARG_CRUSHDMG];
+		if (crushDamage <= 0 || (level.mapTime & 3)) //Only crush every 4th tic to allow victim's pain sound to be heard
 			return;
 
 		if (!FitsAtPosition(pushed, level.Vec3Offset(pushed.pos, pushForce)))
-			CrushObstacle(pushed);
+		{
+			int doneDamage = pushed.DamageMobj(null, null, crushDamage, 'Crush');
+			pushed.TraceBleed(doneDamage > 0 ? doneDamage : crushDamage, self);
+		}
 	}
 
 	//============================
@@ -813,7 +812,7 @@ extend class FCW_Platform
 	private bool GetNewPassengers (bool ignoreObs)
 	{
 		//In addition to fetching passengers, this is where corpses get crushed, too. Items won't get destroyed.
-		//Returns false if an actor is completely stuck inside platform unless 'ignoreObs' is true.
+		//Returns false if one or more actors are completely stuck inside platform unless 'ignoreObs' is true.
 
 		double top = pos.z + height;
 		Array<Actor> miscActors; //The actors on top of the passengers (We'll move those, too)
@@ -826,11 +825,10 @@ extend class FCW_Platform
 
 		//Three things to do here when iterating:
 		//1) Gather eligible passengers.
-		//2) Damage any non-platform actors that are stuck inside platform (and can't be placed on top of platform)
-		//3) If said actors are corpses, "grind" them instead.
+		//2) Gather stuck actors.
+		//3) Gather corpses for "grinding."
+		bool result = true;
 
-		//NOTE: Only one live actor can get damaged per tic and makes this function return false.
-		//While all detected corpses will be grinded in one go and won't stop the gathering process.
 		let it = BlockThingsIterator.Create(self);
 		while (it.Next())
 		{
@@ -882,16 +880,13 @@ extend class FCW_Platform
 						}
 						if (blocked)
 						{
-							if (!ignoreObs && !(mo is "FCW_Platform"))
-								CrushObstacle(mo);
-
 							if (!ignoreObs)
 							{
-								for (int i = 0; i < corpses.Size(); ++i)
-									corpses[i].Grind(false);
-								return false; //Try again in the next tic
+								result = false;
+								if (stuckActors.Find(mo) >= stuckActors.Size())
+									stuckActors.Push(mo);
 							}
-							else continue;
+							continue;
 						}
 						if (!oldPassenger)
 							onTopOfMe.Push(mo);
@@ -993,7 +988,7 @@ extend class FCW_Platform
 				}
 			}
 		}
-		return true;
+		return result;
 	}
 
 	//============================
