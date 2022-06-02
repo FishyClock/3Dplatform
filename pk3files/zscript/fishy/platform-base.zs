@@ -1757,23 +1757,17 @@ extend class FCW_Platform
 
 			if (moveTwin)
 			{
-				bool moved;
 				portTwin.blockingMobj = null;
-				if (newPos.xy == pos.xy)
-				{
-					moved = MovePortalTwin(TranslatePortalPosition(pos, lastPort), TranslatePortalPosition(oldPos, lastPort), false);
-				}
-				else
-				{
-					moved = MovePortalTwin(newPos, realOldPos, false);
-					if (moved)
-					{
-						crossedPortal = true;
-						ExchangePassengersWithTwin();
-					}
-				}
+				vector3 twinPos = (newPos.xy == pos.xy) ? TranslatePortalPosition(pos, lastPort) : newPos;
+				vector3 twinOldPos = (newPos.xy == pos.xy) ? TranslatePortalPosition(oldPos, lastPort) : realOldPos;
+				bool moved = MovePortalTwin(twinPos, twinOldPos, false);
 
-				if (!moved)
+				if (moved && newPos.xy != pos.xy)
+				{
+					crossedPortal = true;
+					ExchangePassengersWithTwin();
+				}
+				else if (!moved)
 				{
 					oldPos = realOldPos;
 					oldAngle -= angDiff;
@@ -1781,9 +1775,7 @@ extend class FCW_Platform
 
 					if (portTwin.blockingMobj && !(portTwin.blockingMobj is "FCW_Platform"))
 					{
-						vector3 twinPushForce = pushForce;
-						if (angDiff)
-							twinPushForce.xy = RotateVector(twinPushForce.xy, angDiff);
+						vector3 twinPushForce = level.Vec3Diff(twinOldPos, twinPos).Unit() * pushForce.Length();
 						portTwin.PushObstacle(portTwin.blockingMobj, twinPushForce);
 					}
 					return false;
