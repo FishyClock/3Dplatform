@@ -1762,6 +1762,7 @@ extend class FCW_Platform
 				}
 				else if (!moved)
 				{
+					bPlatInMove = false;
 					GoBack();
 					if (portTwin.blockingMobj && !(portTwin.blockingMobj is "FCW_Platform"))
 					{
