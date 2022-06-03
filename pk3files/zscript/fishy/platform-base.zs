@@ -41,7 +41,7 @@ class FCW_Platform : Actor abstract
 
 		//$Arg1 Options
 		//$Arg1Type 12
-		//$Arg1Enum {1 = "Linear path / (Does nothing for non-origin group members)"; 2 = "Use point angle / Group move: Rotate angle / (ACS commands don't need this)"; 4 = "Use point pitch / Group move: Rotate pitch / (ACS commands don't need this)"; 8 = "Use point roll / Group move: Rotate roll / (ACS commands don't need this)"; 16 = "Face movement direction / (Does nothing for non-origin group members)"; 32 = "Don't clip against geometry and other platforms"; 64 = "Start active"; 128 = "Group move: Mirror group origin's movement"; 256 = "Add velocity to passengers when they jump away";}
+		//$Arg1Enum {1 = "Linear path / (Does nothing for non-origin group members)"; 2 = "Use point angle / Group move: Rotate angle / (ACS commands don't need this)"; 4 = "Use point pitch / Group move: Rotate pitch / (ACS commands don't need this)"; 8 = "Use point roll / Group move: Rotate roll / (ACS commands don't need this)"; 16 = "Face movement direction / (Does nothing for non-origin group members)"; 32 = "Don't clip against geometry and other platforms"; 64 = "Start active"; 128 = "Group move: Mirror group origin's movement"; 256 = "Add velocity to passengers when they jump away"; 512 = "Add velocity to passengers when stopping"; 1024 = "Interpolation point is destination";}
 		//$Arg1Tooltip 'Group move' affects movement imposed by the group origin.\nThe 'group origin' is the platform that other members move with and orbit around.\nActivating any group member will turn it into the group origin.
 
 		//$Arg2 Platform(s) To Group With
@@ -252,7 +252,9 @@ extend class FCW_Platform
 		OPTFLAG_IGNOREGEO		= 32,
 		OPTFLAG_STARTACTIVE		= 64,
 		OPTFLAG_MIRROR			= 128,
-		OPTFLAG_ADDVEL			= 256,
+		OPTFLAG_ADDVELJUMP		= 256,
+		OPTFLAG_ADDVELSTOP		= 512,
+		OPTFLAG_GOTONODE		= 1024,
 
 		//FCW_PlatformNode args that we check
 		NODEARG_TRAVELTIME		= 1, //Also applies to InterpolationPoint
@@ -428,19 +430,23 @@ extend class FCW_Platform
 		else
 			firstNode.FormChain();
 
+		bool goToNode = (args[ARG_OPTIONS] & OPTFLAG_GOTONODE);
+
 		if (args[ARG_OPTIONS] & OPTFLAG_LINEAR)
 		{
-			if (!firstNode.next) //Linear path; need 2 nodes
+			//Linear path; need 2 nodes unless the first node is the destination
+			if (!goToNode && !firstNode.next)
 			{
 				Console.Printf(prefix .. "Path needs at least 2 nodes.");
 				return;
 			}
 		}
-		else //Spline path; need 4 nodes
+		else //Spline path; need 4 nodes unless the first node is the destination
 		{
-			if (!firstNode.next ||
+			if (!goToNode && (
+				!firstNode.next ||
 				!firstNode.next.next ||
-				!firstNode.next.next.next)
+				!firstNode.next.next.next) )
 			{
 				Console.Printf(prefix .. "Path needs at least 4 nodes.");
 				return;
@@ -460,7 +466,7 @@ extend class FCW_Platform
 			{
 				firstPrevNode = node;
 			}
-			else
+			else if (!goToNode)
 			{
 				firstPrevNode = firstNode;
 				firstNode = firstNode.next;
@@ -723,12 +729,13 @@ extend class FCW_Platform
 		bool changeAng = (args[ARG_OPTIONS] & OPTFLAG_ANGLE);
 		bool changePi = (args[ARG_OPTIONS] & OPTFLAG_PITCH);
 		bool changeRo = (args[ARG_OPTIONS] & OPTFLAG_ROLL);
+		bool goToNode = (args[ARG_OPTIONS] & OPTFLAG_GOTONODE);
 
 		//Take into account angle changes when
 		//passing through non-static line portals.
 		//All checked angles have to be adjusted.
-		double delta = (currNode && changeAng) ? DeltaAngle(currNode.angle, angle) : 0;
-		if (prevNode)
+		double delta = (currNode && changeAng && !goToNode) ? DeltaAngle(currNode.angle, angle) : 0;
+		if (prevNode && !goToNode)
 		{
 			//'pPrev' has to be adjusted if 'currNode' position is different from platform's.
 			//Which can happen because of non-static line portals.
@@ -744,7 +751,7 @@ extend class FCW_Platform
 		}
 
 		pCurr = pos;
-		if (!prevNode)
+		if (!prevNode || goToNode)
 		{
 			pCurrAngs = (
 			changeAng ? Normalize180(angle) : angle,
@@ -759,36 +766,38 @@ extend class FCW_Platform
 			changeRo  ? DeltaAngle(pPrevAngs.z, roll) : 0);
 		}
 
-		if (currNode && currNode.next)
+		if (currNode && (currNode.next || goToNode))
 		{
-			pNext = pos + Vec3To(currNode.next); //Make it portal aware in a way so TryMove() can handle it
-			pNextAngs = pCurrAngs + (
-			changeAng ? DeltaAngle(pCurrAngs.x, currNode.next.angle + delta) : 0,
-			changePi  ? DeltaAngle(pCurrAngs.y, currNode.next.pitch) : 0,
-			changeRo  ? DeltaAngle(pCurrAngs.z, currNode.next.roll)  : 0);
+			InterpolationPoint nextNode = goToNode ? currNode : currNode.next;
 
-			if (currNode.next.next)
+			pNext = pos + Vec3To(nextNode); //Make it portal aware in a way so TryMove() can handle it
+			pNextAngs = pCurrAngs + (
+			changeAng ? DeltaAngle(pCurrAngs.x, nextNode.angle + delta) : 0,
+			changePi  ? DeltaAngle(pCurrAngs.y, nextNode.pitch) : 0,
+			changeRo  ? DeltaAngle(pCurrAngs.z, nextNode.roll)  : 0);
+
+			if (nextNode.next)
 			{
-				pNextNext = pos + Vec3To(currNode.next.next); //Make it portal aware in a way so TryMove() can handle it
+				pNextNext = pos + Vec3To(nextNode.next); //Make it portal aware in a way so TryMove() can handle it
 				pNextNextAngs = pNextAngs + (
-				changeAng ? DeltaAngle(pNextAngs.x, currNode.next.next.angle + delta) : 0,
-				changePi  ? DeltaAngle(pNextAngs.y, currNode.next.next.pitch) : 0,
-				changeRo  ? DeltaAngle(pNextAngs.z, currNode.next.next.roll)  : 0);
+				changeAng ? DeltaAngle(pNextAngs.x, nextNode.next.angle + delta) : 0,
+				changePi  ? DeltaAngle(pNextAngs.y, nextNode.next.pitch) : 0,
+				changeRo  ? DeltaAngle(pNextAngs.z, nextNode.next.roll)  : 0);
 			}
-			else //No currNode.next.next
+			else //No nextNode.next
 			{
 				pNextNext = pNext;
 				pNextNextAngs = pNextAngs;
 			}
 		}
 
-		if (!currNode || !currNode.next)
+		if (!currNode || (!currNode.next && !goToNode))
 		{
 			pNextNext = pNext = pCurr;
 			pNextNextAngs = pNextAngs = pCurrAngs;
 		}
 
-		if (!prevNode)
+		if (!prevNode || goToNode)
 		{
 			pPrev = pCurr;
 			pPrevAngs = pCurrAngs;
@@ -1272,7 +1281,7 @@ extend class FCW_Platform
 			{
 				//Add velocity to the passenger we just lost track of.
 				//It's likely to be a player that has jumped away.
-				if (args[ARG_OPTIONS] & OPTFLAG_ADDVEL)
+				if (args[ARG_OPTIONS] & OPTFLAG_ADDVELJUMP)
 					mo.vel += level.Vec3Diff(oldPos, pos);
 
 				passengers.Delete(i--);
@@ -1317,39 +1326,6 @@ extend class FCW_Platform
 		oldAngle = angle;
 		oldPitch = pitch;
 		oldRoll = roll;
-	}
-
-	//============================
-	// Lerp
-	//============================
-	private double Lerp (double p1, double p2)
-	{
-		return (p1 ~== p2) ? p1 : (p1 + time * (p2 - p1));
-	}
-
-	//============================
-	// Splerp
-	//============================
-	private double Splerp (double p1, double p2, double p3, double p4)
-	{
-		if (p2 ~== p3)
-			return p2;
-
-		// This was copy-pasted from PathFollower's Splerp() function
-		//
-		// Interpolate between p2 and p3 along a Catmull-Rom spline
-		// http://research.microsoft.com/~hollasch/cgindex/curves/catmull-rom.html
-		//
-		// NOTE: the above link doesn't seem to work so here's an alternative. -FishyClockwork
-		// https://en.wikipedia.org/wiki/Cubic_Hermite_spline#Catmull%E2%80%93Rom_spline
-		double t = time;
-		double res = 2*p2;
-		res += (p3 - p1) * time;
-		t *= time;
-		res += (2*p1 - 5*p2 + 4*p3 - p4) * t;
-		t *= time;
-		res += (3*p2 - 3*p3 + p4 - p1) * t;
-		return 0.5 * res;
 	}
 
 	//============================
@@ -1894,6 +1870,39 @@ extend class FCW_Platform
 	}
 
 	//============================
+	// Lerp
+	//============================
+	private double Lerp (double p1, double p2)
+	{
+		return (p1 ~== p2) ? p1 : (p1 + time * (p2 - p1));
+	}
+
+	//============================
+	// Splerp
+	//============================
+	private double Splerp (double p1, double p2, double p3, double p4)
+	{
+		if (p2 ~== p3)
+			return p2;
+
+		// This was copy-pasted from PathFollower's Splerp() function
+		//
+		// Interpolate between p2 and p3 along a Catmull-Rom spline
+		// http://research.microsoft.com/~hollasch/cgindex/curves/catmull-rom.html
+		//
+		// NOTE: the above link doesn't seem to work so here's an alternative. -FishyClockwork
+		// https://en.wikipedia.org/wiki/Cubic_Hermite_spline#Catmull%E2%80%93Rom_spline
+		double t = time;
+		double res = 2*p2;
+		res += (p3 - p1) * time;
+		t *= time;
+		res += (2*p1 - 5*p2 + 4*p3 - p4) * t;
+		t *= time;
+		res += (3*p2 - 3*p3 + p4 - p1) * t;
+		return 0.5 * res;
+	}
+
+	//============================
 	// Interpolate
 	//============================
 	private bool Interpolate ()
@@ -1990,8 +1999,21 @@ extend class FCW_Platform
 			}
 		}
 
+		vector3 startPos = pos;
 		if (!PlatMove(newPos, newAngle, newPitch, newRoll, 0))
+		{
+			if (!group)
+			{
+				Stopped(startPos, newPos);
+			}
+			else for (int iPlat = 0; iPlat < group.members.Size(); ++iPlat)
+			{
+				let plat = group.GetMember(iPlat);
+				if (plat)
+					plat.Stopped(startPos, newPos);
+			}
 			return false;
+		}
 
 		if (pos != newPos) //Crossed a portal?
 		{
@@ -2025,7 +2047,21 @@ extend class FCW_Platform
 
 		//If one of our attached platforms is blocked, pretend
 		//we're blocked too. (Our move won't be cancelled.)
-		return MoveGroup(0);
+		if (!MoveGroup(0))
+		{
+			if (!group)
+			{
+				Stopped(startPos, newPos);
+			}
+			else for (int iPlat = 0; iPlat < group.members.Size(); ++iPlat)
+			{
+				let plat = group.GetMember(iPlat);
+				if (plat)
+					plat.Stopped(startPos, newPos);
+			}
+			return false;
+		}
+		return true;
 	}
 
 	//============================
@@ -2173,19 +2209,25 @@ extend class FCW_Platform
 
 			if (currNode)
 			{
-				CallNodeSpecials();
-				if (bDestroyed || !currNode || currNode.bDestroyed)
-					return; //Abort if we or the node got Thing_Remove()'d
-
+				bool goToNode = (args[ARG_OPTIONS] & OPTFLAG_GOTONODE);
+				if (!goToNode) //Don't call specials if going to 'currNode'
+				{
+					CallNodeSpecials();
+					if (bDestroyed || !currNode || currNode.bDestroyed)
+						return; //Abort if we or the node got Thing_Remove()'d
+				}
 				bActive = true;
 				if (group)
 					group.origin = self;
 
-				double newAngle = (args[ARG_OPTIONS] & OPTFLAG_ANGLE) ? currNode.angle : angle;
-				double newPitch = (args[ARG_OPTIONS] & OPTFLAG_PITCH) ? currNode.pitch : pitch;
-				double newRoll = (args[ARG_OPTIONS] & OPTFLAG_ROLL) ? currNode.roll : roll;
-				PlatMove(currNode.pos, newAngle, newPitch, newRoll, 1);
-				MoveGroup(1);
+				if (!goToNode)
+				{
+					double newAngle = (args[ARG_OPTIONS] & OPTFLAG_ANGLE) ? currNode.angle : angle;
+					double newPitch = (args[ARG_OPTIONS] & OPTFLAG_PITCH) ? currNode.pitch : pitch;
+					double newRoll = (args[ARG_OPTIONS] & OPTFLAG_ROLL) ? currNode.roll : roll;
+					PlatMove(currNode.pos, newAngle, newPitch, newRoll, 1);
+					MoveGroup(1);
+				}
 				bJustStepped = true;
 				SetInterpolationCoordinates();
 
@@ -2194,6 +2236,41 @@ extend class FCW_Platform
 				holdTime = 0;
 
 				FCW_PlatformTracer.GetNewUnlinkedPortals(uPorts, pCurr, pNext, radius + EXTRA_SIZE);
+			}
+		}
+	}
+
+	//============================
+	// Stopped
+	//============================
+	private void Stopped (vector3 startPos, vector3 endPos)
+	{
+		if (!(args[ARG_OPTIONS] & OPTFLAG_ADDVELSTOP))
+			return;
+
+		vector3 pushForce = level.Vec3Diff(startPos, endPos);
+
+		if (passengers.Size())
+		{
+			for (int i = 0; i < passengers.Size(); ++i)
+			{
+				let mo = passengers[i];
+				if (!mo || mo.bDestroyed)
+					passengers.Delete(i--);
+				else
+					mo.vel += pushForce;
+			}
+		}
+
+		if (portTwin && !portTwin.bNoBlockmap && portTwin.passengers.Size())
+		{
+			for (int i = 0; i < portTwin.passengers.Size(); ++i)
+			{
+				let mo = portTwin.passengers[i];
+				if (!mo || mo.bDestroyed)
+					portTwin.passengers.Delete(i--);
+				else
+					mo.vel += pushForce;
 			}
 		}
 	}
@@ -2213,6 +2290,26 @@ extend class FCW_Platform
 
 			if (!group.origin && bActive)
 				group.origin = self;
+		}
+
+		if (bActive && (!group || group.origin == self) && bJustStepped)
+		{
+			bJustStepped = false;
+			SetHoldTime();
+
+			if (holdTime > level.mapTime)
+			{
+				if (!group)
+				{
+					Stopped(oldPos, pos);
+				}
+				else for (int iPlat = 0; iPlat < group.members.Size(); ++iPlat)
+				{
+					let plat = group.GetMember(iPlat);
+					if (plat)
+						plat.Stopped(plat.oldPos, plat.pos);
+				}
+			}
 		}
 
 		if (!group || !group.origin)
@@ -2238,12 +2335,6 @@ extend class FCW_Platform
 			if (portTwin)
 				portTwin.bActive = false;
 
-			if (bJustStepped)
-			{
-				bJustStepped = false;
-				SetHoldTime();
-			}
-
 			if (holdTime > level.mapTime || !Interpolate())
 				break;
 
@@ -2264,9 +2355,16 @@ extend class FCW_Platform
 					MoveGroup(-1);
 				}
 
-				prevNode = currNode;
-				if (currNode)
-					currNode = currNode.next;
+				if (args[ARG_OPTIONS] & OPTFLAG_GOTONODE)
+				{
+					args[ARG_OPTIONS] &= ~OPTFLAG_GOTONODE; //Reached 'currNode'
+				}
+				else
+				{
+					prevNode = currNode;
+					if (currNode)
+						currNode = currNode.next;
+				}
 
 				if (currNode)
 				{
@@ -2295,6 +2393,16 @@ extend class FCW_Platform
 				if (!currNode || !currNode.next ||
 					(!(args[ARG_OPTIONS] & OPTFLAG_LINEAR) && (!currNode.next.next || !prevNode)) )
 				{
+					if (!group)
+					{
+						Stopped(oldPos, pos);
+					}
+					else for (int iPlat = 0; iPlat < group.members.Size(); ++iPlat)
+					{
+						let plat = group.GetMember(iPlat);
+						if (plat)
+							plat.Stopped(plat.oldPos, plat.pos);
+					}
 					Deactivate(self);
 				}
 				else if (currNode)
