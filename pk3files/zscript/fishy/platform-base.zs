@@ -1009,7 +1009,7 @@ extend class FCW_Platform
 	//============================
 	// MovePassengers
 	//============================
-	private bool MovePassengers (vector3 startPos, vector3 endPos, double delta, double piDelta, double roDelta, bool teleMove)
+	private bool MovePassengers (vector3 startPos, vector3 endPos, double forward, double delta, double piDelta, double roDelta, bool teleMove)
 	{
 		//Returns false if a blocked passenger would block the platform's movement unless 'teleMove' is true
 
@@ -1059,8 +1059,8 @@ extend class FCW_Platform
 		{
 			piDelta *= 2;
 			roDelta *= 2;
-			piAndRoOffset = (cos(angle)*piDelta, sin(angle)*piDelta) + //Front/back
-				(cos(angle-90)*roDelta, sin(angle-90)*roDelta); //Right/left
+			piAndRoOffset = (cos(forward)*piDelta, sin(forward)*piDelta) + //Front/back
+				(cos(forward-90)*roDelta, sin(forward-90)*roDelta); //Right/left
 		}
 
 		Array<double> preMovePos; //Sadly we can't have a vector2/3 dyn array
@@ -1355,11 +1355,11 @@ extend class FCW_Platform
 	//============================
 	// TranslatePortalPosition
 	//============================
-	static vector3 TranslatePortalPosition (vector3 vec, Line port)
+	static vector3, double TranslatePortalPosition (vector3 vec, Line port)
 	{
 		Line dest;
 		if (!port || !(dest = port.GetPortalDestination()))
-			return vec;
+			return vec, 0;
 
 		double delta = DeltaAngle(180 +
 		VectorAngle(port.delta.x, port.delta.y),
@@ -1379,7 +1379,7 @@ extend class FCW_Platform
 				vec.z += dest.frontSector.ceilingPlane.ZatPoint(dest.v2.p) - port.frontSector.ceilingPlane.ZatPoint(port.v1.p);
 				break;
 		}
-		return vec;
+		return vec, delta;
 	}
 
 	//============================
@@ -1594,26 +1594,23 @@ extend class FCW_Platform
 			return true;
 		}
 
-		bool moveTwin = false;
-		if (portTwin && !teleMove)
+		bool moveTwin = (portTwin && lastPort && !teleMove);
+		if (portTwin)
 		{
-			if (portTwin.bNoBlockmap && lastPort)
+			if (portTwin.bNoBlockmap && moveTwin)
 				portTwin.A_ChangeLinkFlags(YES_BMAP);
-			else if (!portTwin.bNoBlockmap && !lastPort)
+			else if (!portTwin.bNoBlockmap && !moveTwin)
 				portTwin.A_ChangeLinkFlags(NO_BMAP);
-
-			if (lastPort)
-				moveTwin = true;
 		}
-
-		oldPos = pos;
-		oldAngle = angle;
-		oldPitch = pitch;
-		oldRoll = roll;
 
 		double delta, piDelta, roDelta;
 		if (quickMove || teleMove || pos == newPos)
 		{
+			oldPos = pos;
+			oldAngle = angle;
+			oldPitch = pitch;
+			oldRoll = roll;
+
 			angle = newAngle;
 			pitch = newPitch;
 			roll = newRoll;
@@ -1626,7 +1623,7 @@ extend class FCW_Platform
 
 		if (quickMove)
 		{
-			if (oldPos != newPos)
+			if (pos != newPos)
 			{
 				SetOrigin(newPos, true);
 				let oldPrev = prev;
@@ -1636,17 +1633,20 @@ extend class FCW_Platform
 
 			if (moveTwin)
 			{
-				portTwin.oldPos = TranslatePortalPosition(oldPos, lastPort);
+				double portDelta;
+				[portTwin.oldPos, portDelta] = TranslatePortalPosition(oldPos, lastPort);
+				portTwin.angle = angle + portDelta;
+
 				if (oldPos != newPos)
-					portTwin.SetOrigin(TranslatePortalPosition(newPos, lastPort), true);
+					portTwin.SetOrigin(TranslatePortalPosition(pos, lastPort), true);
 				else if (portTwin.oldPos != portTwin.pos)
 					portTwin.SetOrigin(portTwin.oldPos, true);
 			}
 
 			bPlatInMove = true;
-			MovePassengers(oldPos, pos, delta, piDelta, roDelta, false);
+			MovePassengers(oldPos, pos, angle, delta, piDelta, roDelta, false);
 			if (moveTwin)
-				portTwin.MovePassengers(portTwin.oldPos, portTwin.pos, delta, piDelta, roDelta, false);
+				portTwin.MovePassengers(portTwin.oldPos, portTwin.pos, portTwin.angle, delta, piDelta, roDelta, false);
 			bPlatInMove = false;
 			ExchangePassengersWithTwin();
 
@@ -1658,19 +1658,20 @@ extend class FCW_Platform
 
 		if (!GetNewPassengers(teleMove) || (moveTwin && !portTwin.GetNewPassengers(false)))
 		{
-			GoBack();
+			if (teleMove || pos == newPos)
+				GoBack();
 			return false;
 		}
 
-		if (teleMove || oldPos == newPos)
+		if (teleMove || pos == newPos)
 		{
-			if (oldPos != newPos)
+			if (pos != newPos)
 			{
 				SetOrigin(newPos, false);
 				CheckPortalTransition(); //Handle sector portals properly
 			}
 
-			if (!MovePassengers(oldPos, pos, delta, piDelta, roDelta, teleMove))
+			if (!MovePassengers(oldPos, pos, angle, delta, piDelta, roDelta, teleMove))
 			{
 				GoBack();
 				return false;
@@ -1719,13 +1720,14 @@ extend class FCW_Platform
 			piDelta = (step > 0) ? 0 : DeltaAngle(oldPitch, newPitch);
 			roDelta = (step > 0) ? 0 : DeltaAngle(oldRoll, newRoll);
 
+			double angDiff = 0;
 			if (newPos.xy != pos.xy)
 			{
 				//If we have passed through a (non-static) portal
 				//then adjust 'stepMove' and 'newAngle' if our angle changed.
 				//We also need to adjust 'myStartPos' for MovePassengers().
 				myStartPos -= newPos;
-				double angDiff = DeltaAngle(oldAngle, angle);
+				angDiff = DeltaAngle(oldAngle, angle);
 				if (angDiff)
 				{
 					myStartPos.xy = RotateVector(myStartPos.xy, angDiff);
@@ -1750,8 +1752,20 @@ extend class FCW_Platform
 			vector3 twinStartPos;
 			if (moveTwin)
 			{
-				vector3 twinPos = (newPos.xy == pos.xy) ? TranslatePortalPosition(pos, lastPort) : newPos;
-				twinStartPos = (newPos.xy == pos.xy) ? TranslatePortalPosition(oldPos, lastPort) : oldPos;
+				vector3 twinPos;
+				if (newPos.xy == pos.xy)
+				{
+					double portDelta;
+					[twinStartPos, portDelta] = TranslatePortalPosition(oldPos, lastPort);
+					portTwin.angle = angle + portDelta;
+					twinPos = TranslatePortalPosition(pos, lastPort);
+				}
+				else
+				{
+					twinStartPos = oldPos;
+					portTwin.angle = angle - angDiff;
+					twinPos = newPos;
+				}
 				portTwin.oldPos = portTwin.pos;
 				bool moved = portTwin.PlatTakeOneStep(twinPos, true);
 
@@ -1773,12 +1787,12 @@ extend class FCW_Platform
 				}
 			}
 
-			bool movedMine = MovePassengers(myStartPos, pos, delta, piDelta, roDelta, false);
+			bool movedMine = MovePassengers(myStartPos, pos, angle, delta, piDelta, roDelta, false);
 			if (!movedMine || (moveTwin &&
-				!portTwin.MovePassengers(twinStartPos, portTwin.pos, delta, piDelta, roDelta, false) ) )
+				!portTwin.MovePassengers(twinStartPos, portTwin.pos, portTwin.angle, delta, piDelta, roDelta, false) ) )
 			{
 				if (movedMine)
-					MovePassengers(pos, myStartPos, -delta, -piDelta, -roDelta, true); //Move them back
+					MovePassengers(pos, myStartPos, angle, -delta, -piDelta, -roDelta, true); //Move them back
 
 				GoBack();
 				if (moveTwin)
