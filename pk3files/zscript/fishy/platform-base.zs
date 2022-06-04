@@ -2355,7 +2355,8 @@ extend class FCW_Platform
 					MoveGroup(-1);
 				}
 
-				if (args[ARG_OPTIONS] & OPTFLAG_GOTONODE)
+				bool goToNode = (args[ARG_OPTIONS] & OPTFLAG_GOTONODE);
+				if (goToNode)
 				{
 					args[ARG_OPTIONS] &= ~OPTFLAG_GOTONODE; //Reached 'currNode'
 				}
@@ -2391,7 +2392,7 @@ extend class FCW_Platform
 				}
 
 				if (!currNode || !currNode.next ||
-					(!(args[ARG_OPTIONS] & OPTFLAG_LINEAR) && (!currNode.next.next || !prevNode)) )
+					(!goToNode && !(args[ARG_OPTIONS] & OPTFLAG_LINEAR) && (!currNode.next.next || !prevNode) ) )
 				{
 					if (!group)
 					{
