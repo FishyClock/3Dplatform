@@ -288,6 +288,7 @@ extend class FCW_Platform
 	transient bool bPlatInMove; //No collision between a platform and its passengers during said platform's move.
 	InterpolationPoint currNode, firstNode;
 	InterpolationPoint prevNode, firstPrevNode;
+	bool goToNode;
 	Array<Actor> passengers;
 	Array<Actor> stuckActors;
 	FCW_PlatformGroup group;
@@ -331,6 +332,7 @@ extend class FCW_Platform
 		bPlatInMove = false;
 		currNode = firstNode = null;
 		prevNode = firstPrevNode = null;
+		goToNode = false;
 		passengers.Clear();
 		stuckActors.Clear();
 		group = null;
@@ -430,7 +432,7 @@ extend class FCW_Platform
 		else
 			firstNode.FormChain();
 
-		bool goToNode = (args[ARG_OPTIONS] & OPTFLAG_GOTONODE);
+		goToNode = (args[ARG_OPTIONS] & OPTFLAG_GOTONODE);
 
 		if (args[ARG_OPTIONS] & OPTFLAG_LINEAR)
 		{
@@ -729,7 +731,6 @@ extend class FCW_Platform
 		bool changeAng = (args[ARG_OPTIONS] & OPTFLAG_ANGLE);
 		bool changePi = (args[ARG_OPTIONS] & OPTFLAG_PITCH);
 		bool changeRo = (args[ARG_OPTIONS] & OPTFLAG_ROLL);
-		bool goToNode = (args[ARG_OPTIONS] & OPTFLAG_GOTONODE);
 
 		//Take into account angle changes when
 		//passing through non-static line portals.
@@ -2209,7 +2210,7 @@ extend class FCW_Platform
 
 			if (currNode)
 			{
-				bool goToNode = (args[ARG_OPTIONS] & OPTFLAG_GOTONODE);
+				goToNode = (args[ARG_OPTIONS] & OPTFLAG_GOTONODE);
 				if (!goToNode) //Don't call specials if going to 'currNode'
 				{
 					CallNodeSpecials();
@@ -2355,10 +2356,10 @@ extend class FCW_Platform
 					MoveGroup(-1);
 				}
 
-				bool goToNode = (args[ARG_OPTIONS] & OPTFLAG_GOTONODE);
+				bool goneToNode = goToNode;
 				if (goToNode)
 				{
-					args[ARG_OPTIONS] &= ~OPTFLAG_GOTONODE; //Reached 'currNode'
+					goToNode = false;; //Reached 'currNode'
 				}
 				else
 				{
@@ -2392,7 +2393,7 @@ extend class FCW_Platform
 				}
 
 				if (!currNode || !currNode.next ||
-					(!goToNode && !(args[ARG_OPTIONS] & OPTFLAG_LINEAR) && (!currNode.next.next || !prevNode) ) )
+					(!goneToNode && !(args[ARG_OPTIONS] & OPTFLAG_LINEAR) && (!currNode.next.next || !prevNode) ) )
 				{
 					if (!group)
 					{
