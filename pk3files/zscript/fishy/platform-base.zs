@@ -2161,10 +2161,37 @@ extend class FCW_Platform
 	//============================
 	override void Deactivate (Actor activator)
 	{
-		if (bActive && portTwin && portTwin.bNoBlockmap)
+		if (!bActive)
+			return;
+
+		if (!group || !group.origin)
 		{
-			portTwin.portTwin = null;
-			portTwin.Destroy();
+			if (time <= 1.0) //Not reached destination?
+				Stopped(oldPos, pos);
+
+			if (portTwin && portTwin.bNoBlockmap)
+			{
+				portTwin.portTwin = null;
+				portTwin.Destroy();
+			}
+		}
+		else if (group.origin == self)
+		{
+			for (int iPlat = 0; iPlat < group.members.Size(); ++iPlat)
+			{
+				let plat = group.GetMember(iPlat);
+				if (plat)
+				{
+					if (time <= 1.0) //Not reached destination?
+						plat.Stopped(plat.oldPos, plat.pos);
+
+					if (plat.portTwin && plat.portTwin.bNoBlockmap)
+					{
+						plat.portTwin.portTwin = null;
+						plat.portTwin.Destroy();
+					}
+				}
+			}
 		}
 		bActive = false;
 	}
@@ -2305,8 +2332,6 @@ extend class FCW_Platform
 			time += timeFrac;
 			if (time > 1.0)
 			{
-				time -= 1.0;
-
 				bool goneToNode = goToNode;
 				if (goToNode)
 				{
@@ -2355,6 +2380,7 @@ extend class FCW_Platform
 					SetHoldTime();
 				}
 
+				//Stopped() must be called before PlatMove() in this case
 				if (finishedPath || holdTime > level.mapTime)
 				{
 					if (!group)
@@ -2389,6 +2415,7 @@ extend class FCW_Platform
 					SetInterpolationCoordinates();
 					FCW_PlatformTracer.GetNewUnlinkedPortals(uPorts, pCurr, pNext, radius + EXTRA_SIZE);
 				}
+				time -= 1.0;
 			}
 			break;
 		}
