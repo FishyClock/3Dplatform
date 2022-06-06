@@ -284,7 +284,6 @@ extend class FCW_Platform
 	double time, timeFrac;
 	int holdTime;
 	bool bActive;
-	bool bJustStepped;
 	transient bool bPlatInMove; //No collision between a platform and its passengers during said platform's move.
 	InterpolationPoint currNode, firstNode;
 	InterpolationPoint prevNode, firstPrevNode;
@@ -328,7 +327,6 @@ extend class FCW_Platform
 		time = timeFrac = 0;
 		holdTime = 0;
 		bActive = false;
-		bJustStepped = false;
 		bPlatInMove = false;
 		currNode = firstNode = null;
 		prevNode = firstPrevNode = null;
@@ -721,6 +719,7 @@ extend class FCW_Platform
 		{
 			holdTime = level.mapTime + newTime * TICRATE / 8;
 		}
+		++holdTime; //One extra tic to simulate the gone 'bJustStepped' variable
 	}
 
 	//============================
@@ -2229,12 +2228,10 @@ extend class FCW_Platform
 					PlatMove(currNode.pos, newAngle, newPitch, newRoll, 1);
 					MoveGroup(1);
 				}
-				bJustStepped = true;
 				SetInterpolationCoordinates();
-
 				SetTimeFraction();
+				SetHoldTime();
 				time = 0;
-				holdTime = 0;
 
 				FCW_PlatformTracer.GetNewUnlinkedPortals(uPorts, pCurr, pNext, radius + EXTRA_SIZE);
 			}
@@ -2293,26 +2290,6 @@ extend class FCW_Platform
 				group.origin = self;
 		}
 
-		if (bActive && (!group || group.origin == self) && bJustStepped)
-		{
-			bJustStepped = false;
-			SetHoldTime();
-
-			if (holdTime > level.mapTime)
-			{
-				if (!group)
-				{
-					Stopped(oldPos, pos);
-				}
-				else for (int iPlat = 0; iPlat < group.members.Size(); ++iPlat)
-				{
-					let plat = group.GetMember(iPlat);
-					if (plat)
-						plat.Stopped(plat.oldPos, plat.pos);
-				}
-			}
-		}
-
 		if (!group || !group.origin)
 		{
 			HandleOldPassengers();
@@ -2343,23 +2320,11 @@ extend class FCW_Platform
 			if (time > 1.0)
 			{
 				time -= 1.0;
-				bJustStepped = true;
-
-				//Make sure we're exactly at our intended position
-				bool faceAng = ((args[ARG_OPTIONS] & OPTFLAG_FACEMOVE) && (args[ARG_OPTIONS] & (OPTFLAG_ANGLE)));
-				bool facePi = ((args[ARG_OPTIONS] & OPTFLAG_FACEMOVE) && (args[ARG_OPTIONS] & (OPTFLAG_PITCH)));
-				bool faceRo = ((args[ARG_OPTIONS] & OPTFLAG_FACEMOVE) && (args[ARG_OPTIONS] & (OPTFLAG_ROLL)));
-				if (PlatMove(pNext, faceAng ? angle : pNextAngs.x,
-									facePi ? pitch : pNextAngs.y,
-									faceRo ? roll : pNextAngs.z, -1))
-				{
-					MoveGroup(-1);
-				}
 
 				bool goneToNode = goToNode;
 				if (goToNode)
 				{
-					goToNode = false;; //Reached 'currNode'
+					goToNode = false; //Reached 'currNode'
 				}
 				else
 				{
@@ -2392,8 +2357,19 @@ extend class FCW_Platform
 					}
 				}
 
+				bool finishedPath = false;
 				if (!currNode || !currNode.next ||
 					(!goneToNode && !(args[ARG_OPTIONS] & OPTFLAG_LINEAR) && (!currNode.next.next || !prevNode) ) )
+				{
+					finishedPath = true;
+				}
+				else if (currNode)
+				{
+					SetTimeFraction();
+					SetHoldTime();
+				}
+
+				if (finishedPath || holdTime > level.mapTime)
 				{
 					if (!group)
 					{
@@ -2405,13 +2381,27 @@ extend class FCW_Platform
 						if (plat)
 							plat.Stopped(plat.oldPos, plat.pos);
 					}
-					Deactivate(self);
-				}
-				else if (currNode)
-				{
-					SetInterpolationCoordinates();
-					SetTimeFraction();
-					FCW_PlatformTracer.GetNewUnlinkedPortals(uPorts, pCurr, pNext, radius + EXTRA_SIZE);
+
+					//Make sure we're exactly at our intended position
+					bool faceAng = ((args[ARG_OPTIONS] & OPTFLAG_FACEMOVE) && (args[ARG_OPTIONS] & (OPTFLAG_ANGLE)));
+					bool facePi = ((args[ARG_OPTIONS] & OPTFLAG_FACEMOVE) && (args[ARG_OPTIONS] & (OPTFLAG_PITCH)));
+					bool faceRo = ((args[ARG_OPTIONS] & OPTFLAG_FACEMOVE) && (args[ARG_OPTIONS] & (OPTFLAG_ROLL)));
+					if (PlatMove(pNext, faceAng ? angle : pNextAngs.x,
+										facePi ? pitch : pNextAngs.y,
+										faceRo ? roll : pNextAngs.z, -1))
+					{
+						MoveGroup(-1);
+					}
+
+					if (finishedPath)
+					{
+						Deactivate(self);
+					}
+					else
+					{
+						SetInterpolationCoordinates();
+						FCW_PlatformTracer.GetNewUnlinkedPortals(uPorts, pCurr, pNext, radius + EXTRA_SIZE);
+					}
 				}
 			}
 			break;
