@@ -41,7 +41,7 @@ class FCW_Platform : Actor abstract
 
 		//$Arg1 Options
 		//$Arg1Type 12
-		//$Arg1Enum {1 = "Linear path / (Does nothing for non-origin group members)"; 2 = "Use point angle / Group move: Rotate angle / (ACS commands don't need this)"; 4 = "Use point pitch / Group move: Rotate pitch / (ACS commands don't need this)"; 8 = "Use point roll / Group move: Rotate roll / (ACS commands don't need this)"; 16 = "Face movement direction / (Does nothing for non-origin group members)"; 32 = "Don't clip against geometry and other platforms"; 64 = "Start active"; 128 = "Group move: Mirror group origin's movement"; 256 = "Add velocity to passengers when they jump away"; 512 = "Add velocity to passengers when stopping (and not blocked)"; 1024 = "Interpolation point is destination";}
+		//$Arg1Enum {1 = "Linear path / (Does nothing for non-origin group members)"; 2 = "Use point angle / Group move: Rotate angle / (ACS commands don't need this)"; 4 = "Use point pitch / Group move: Rotate pitch / (ACS commands don't need this)"; 8 = "Use point roll / Group move: Rotate roll / (ACS commands don't need this)"; 16 = "Face movement direction / (Does nothing for non-origin group members)"; 32 = "Don't clip against geometry and other platforms"; 64 = "Start active"; 128 = "Group move: Mirror group origin's movement"; 256 = "Add velocity to passengers when they jump away"; 512 = "Add velocity to passengers when stopping (and not blocked)"; 1024 = "Interpolation point is destination"; 2048 = "Resume path when activated again";}
 		//$Arg1Tooltip 'Group move' affects movement imposed by the group origin.\nThe 'group origin' is the platform that other members move with and orbit around.\nActivating any group member will turn it into the group origin.
 
 		//$Arg2 Platform(s) To Group With
@@ -255,6 +255,7 @@ extend class FCW_Platform
 		OPTFLAG_ADDVELJUMP		= 256,
 		OPTFLAG_ADDVELSTOP		= 512,
 		OPTFLAG_GOTONODE		= 1024,
+		OPTFLAG_RESUMEPATH		= 2048,
 
 		//FCW_PlatformNode args that we check
 		NODEARG_TRAVELTIME		= 1, //Also applies to InterpolationPoint
@@ -281,7 +282,8 @@ extend class FCW_Platform
 	double spawnZ; //This is not the same as spawnPoint.z
 	double spawnPitch;
 	double spawnRoll;
-	double time, timeFrac;
+	double time;
+	double timeFrac;
 	int holdTime;
 	bool bActive;
 	transient bool bPlatInMove; //No collision between a platform and its passengers during said platform's move.
@@ -324,7 +326,8 @@ extend class FCW_Platform
 		spawnZ = pos.z;
 		spawnPitch = pitch;
 		spawnRoll = roll;
-		time = timeFrac = 0;
+		time = 1.1;
+		timeFrac = 0;
 		holdTime = 0;
 		bActive = false;
 		bPlatInMove = false;
@@ -2203,6 +2206,14 @@ extend class FCW_Platform
 	{
 		if (!bActive || (group && group.origin != self))
 		{
+			if ((args[ARG_OPTIONS] & OPTFLAG_RESUMEPATH) && time <= 1.0)
+			{
+				bActive = true;
+				if (group)
+					group.origin = self;
+				return;
+			}
+
 			currNode = firstNode;
 			prevNode = firstPrevNode;
 
@@ -2330,7 +2341,7 @@ extend class FCW_Platform
 				break;
 
 			time += timeFrac;
-			if (time > 1.0)
+			if (time > 1.0) //Reached destination?
 			{
 				bool goneToNode = goToNode;
 				if (goToNode)
@@ -2414,8 +2425,8 @@ extend class FCW_Platform
 				{
 					SetInterpolationCoordinates();
 					FCW_PlatformTracer.GetNewUnlinkedPortals(uPorts, pCurr, pNext, radius + EXTRA_SIZE);
+					time -= 1.0;
 				}
-				time -= 1.0;
 			}
 			break;
 		}
