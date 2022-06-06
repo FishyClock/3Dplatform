@@ -708,21 +708,20 @@ extend class FCW_Platform
 			{
 				default:
 				case TIMEUNIT_OCTICS:
-					holdTime = level.mapTime + newTime * TICRATE / 8;
+					holdTime = newTime * TICRATE / 8;
 					break;
 				case TIMEUNIT_TICS:
-					holdTime = level.mapTime + newTime;
+					holdTime = newTime;
 					break;
 				case TIMEUNIT_SECS:
-					holdTime = level.mapTime + newTime * TICRATE;
+					holdTime = newTime * TICRATE;
 					break;
 			}
 		}
-		else // Old InterpolationPoint class, always in octics
+		else //Old InterpolationPoint class, always in octics
 		{
-			holdTime = level.mapTime + newTime * TICRATE / 8;
+			holdTime = newTime * TICRATE / 8;
 		}
-		++holdTime; //One extra tic to simulate the gone 'bJustStepped' variable
 	}
 
 	//============================
@@ -2206,6 +2205,9 @@ extend class FCW_Platform
 	{
 		if (!bActive || (group && group.origin != self))
 		{
+			if (portTwin)
+				portTwin.bActive = false;
+
 			if ((args[ARG_OPTIONS] & OPTFLAG_RESUMEPATH) && time <= 1.0)
 			{
 				bActive = true;
@@ -2334,10 +2336,12 @@ extend class FCW_Platform
 
 		while (bActive && (!group || group.origin == self))
 		{
-			if (portTwin)
-				portTwin.bActive = false;
-
-			if (holdTime > level.mapTime || !Interpolate())
+			if (holdTime > 0)
+			{
+				--holdTime;
+				break;
+			}
+			if (!Interpolate())
 				break;
 
 			time += timeFrac;
@@ -2392,7 +2396,7 @@ extend class FCW_Platform
 				}
 
 				//Stopped() must be called before PlatMove() in this case
-				if (finishedPath || holdTime > level.mapTime)
+				if (finishedPath || holdTime > 0)
 				{
 					if (!group)
 					{
