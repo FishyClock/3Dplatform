@@ -1855,7 +1855,7 @@ extend class FCW_Platform
 					portTwin = FCW_Platform(Spawn(GetClass(), TranslatePortalPosition(pos, port)));
 					portTwin.portTwin = self;
 					portTwin.SetStateLabel("PortalCopy"); //Invisible
-					portTwin.args[ARG_OPTIONS] |= (args[ARG_OPTIONS] & OPTFLAG_IGNOREGEO);
+					portTwin.args[ARG_OPTIONS] |= (args[ARG_OPTIONS] & (OPTFLAG_IGNOREGEO | OPTFLAG_ADDVELJUMP));
 				}
 				break;
 			}
