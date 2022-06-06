@@ -41,7 +41,7 @@ class FCW_Platform : Actor abstract
 
 		//$Arg1 Options
 		//$Arg1Type 12
-		//$Arg1Enum {1 = "Linear path / (Does nothing for non-origin group members)"; 2 = "Use point angle / Group move: Rotate angle / (ACS commands don't need this)"; 4 = "Use point pitch / Group move: Rotate pitch / (ACS commands don't need this)"; 8 = "Use point roll / Group move: Rotate roll / (ACS commands don't need this)"; 16 = "Face movement direction / (Does nothing for non-origin group members)"; 32 = "Don't clip against geometry and other platforms"; 64 = "Start active"; 128 = "Group move: Mirror group origin's movement"; 256 = "Add velocity to passengers when they jump away"; 512 = "Add velocity to passengers when stopping"; 1024 = "Interpolation point is destination";}
+		//$Arg1Enum {1 = "Linear path / (Does nothing for non-origin group members)"; 2 = "Use point angle / Group move: Rotate angle / (ACS commands don't need this)"; 4 = "Use point pitch / Group move: Rotate pitch / (ACS commands don't need this)"; 8 = "Use point roll / Group move: Rotate roll / (ACS commands don't need this)"; 16 = "Face movement direction / (Does nothing for non-origin group members)"; 32 = "Don't clip against geometry and other platforms"; 64 = "Start active"; 128 = "Group move: Mirror group origin's movement"; 256 = "Add velocity to passengers when they jump away"; 512 = "Add velocity to passengers when stopping (and not blocked)"; 1024 = "Interpolation point is destination";}
 		//$Arg1Tooltip 'Group move' affects movement imposed by the group origin.\nThe 'group origin' is the platform that other members move with and orbit around.\nActivating any group member will turn it into the group origin.
 
 		//$Arg2 Platform(s) To Group With
@@ -1999,21 +1999,8 @@ extend class FCW_Platform
 			}
 		}
 
-		vector3 startPos = pos;
 		if (!PlatMove(newPos, newAngle, newPitch, newRoll, 0))
-		{
-			if (!group)
-			{
-				Stopped(startPos, newPos);
-			}
-			else for (int iPlat = 0; iPlat < group.members.Size(); ++iPlat)
-			{
-				let plat = group.GetMember(iPlat);
-				if (plat)
-					plat.Stopped(startPos, newPos);
-			}
 			return false;
-		}
 
 		if (pos != newPos) //Crossed a portal?
 		{
@@ -2038,30 +2025,15 @@ extend class FCW_Platform
 				pNext.xy = (pNext.x*c - pNext.y*s, pNext.x*s + pNext.y*c);
 				pNextNext.xy = (pNextNext.x*c - pNextNext.y*s, pNextNext.x*s + pNextNext.y*c);
 			}
-
-			pPrev = pos + pPrev;
-			pCurr = pos + pCurr;
-			pNext = pos + pNext;
-			pNextNext = pos + pNextNext;
+			pPrev += pos;
+			pCurr += pos;
+			pNext += pos;
+			pNextNext += pos;
 		}
 
 		//If one of our attached platforms is blocked, pretend
 		//we're blocked too. (Our move won't be cancelled.)
-		if (!MoveGroup(0))
-		{
-			if (!group)
-			{
-				Stopped(startPos, newPos);
-			}
-			else for (int iPlat = 0; iPlat < group.members.Size(); ++iPlat)
-			{
-				let plat = group.GetMember(iPlat);
-				if (plat)
-					plat.Stopped(startPos, newPos);
-			}
-			return false;
-		}
-		return true;
+		return MoveGroup(0);
 	}
 
 	//============================
@@ -2262,6 +2234,20 @@ extend class FCW_Platform
 
 		if (portTwin && !portTwin.bNoBlockmap && portTwin.passengers.Size())
 		{
+			if (lastPort)
+			{
+				Line dest = lastPort.GetPortalDestination();
+				if (dest)
+				{
+					double delta = DeltaAngle(180 +
+						VectorAngle(lastPort.delta.x, lastPort.delta.y),
+						VectorAngle(dest.delta.x, dest.delta.y));
+
+					if (delta)
+						pushForce.xy = RotateVector(pushForce.xy, delta);
+				}
+			}
+
 			for (int i = 0; i < portTwin.passengers.Size(); ++i)
 			{
 				let mo = portTwin.passengers[i];
