@@ -2381,27 +2381,27 @@ extend class FCW_Platform
 						if (plat)
 							plat.Stopped(plat.oldPos, plat.pos);
 					}
+				}
 
-					//Make sure we're exactly at our intended position
-					bool faceAng = ((args[ARG_OPTIONS] & OPTFLAG_FACEMOVE) && (args[ARG_OPTIONS] & (OPTFLAG_ANGLE)));
-					bool facePi = ((args[ARG_OPTIONS] & OPTFLAG_FACEMOVE) && (args[ARG_OPTIONS] & (OPTFLAG_PITCH)));
-					bool faceRo = ((args[ARG_OPTIONS] & OPTFLAG_FACEMOVE) && (args[ARG_OPTIONS] & (OPTFLAG_ROLL)));
-					if (PlatMove(pNext, faceAng ? angle : pNextAngs.x,
-										facePi ? pitch : pNextAngs.y,
-										faceRo ? roll : pNextAngs.z, -1))
-					{
-						MoveGroup(-1);
-					}
+				//Make sure we're exactly at our intended position
+				bool faceAng = ((args[ARG_OPTIONS] & OPTFLAG_FACEMOVE) && (args[ARG_OPTIONS] & (OPTFLAG_ANGLE)));
+				bool facePi = ((args[ARG_OPTIONS] & OPTFLAG_FACEMOVE) && (args[ARG_OPTIONS] & (OPTFLAG_PITCH)));
+				bool faceRo = ((args[ARG_OPTIONS] & OPTFLAG_FACEMOVE) && (args[ARG_OPTIONS] & (OPTFLAG_ROLL)));
+				if (PlatMove(pNext, faceAng ? angle : pNextAngs.x,
+									facePi ? pitch : pNextAngs.y,
+									faceRo ? roll : pNextAngs.z, -1))
+				{
+					MoveGroup(-1);
+				}
 
-					if (finishedPath)
-					{
-						Deactivate(self);
-					}
-					else
-					{
-						SetInterpolationCoordinates();
-						FCW_PlatformTracer.GetNewUnlinkedPortals(uPorts, pCurr, pNext, radius + EXTRA_SIZE);
-					}
+				if (finishedPath)
+				{
+					Deactivate(self);
+				}
+				else
+				{
+					SetInterpolationCoordinates();
+					FCW_PlatformTracer.GetNewUnlinkedPortals(uPorts, pCurr, pNext, radius + EXTRA_SIZE);
 				}
 			}
 			break;
