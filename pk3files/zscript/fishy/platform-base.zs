@@ -940,7 +940,7 @@ extend class FCW_Platform
 			corpses[i].Grind(false);
 
 		if (!onTopOfMe.Size() && !miscActors.Size())
-			return true; //Found nothing new so stop here
+			return result; //Found nothing new so stop here
 
 		//Take into account the possibility that not all
 		//group members can be found in a blockmap search.
