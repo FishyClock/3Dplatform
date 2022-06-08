@@ -48,7 +48,7 @@ class FCW_Platform : Actor abstract
 		//$Arg2Type 14
 
 		//$Arg3 Crush Damage
-		//$Arg3Tooltip The damage is applied once per 4 tics.
+		//$Arg3Tooltip If an obstacle is pushed against a wall,\nthe damage is applied once per 4 tics.
 
 		+INTERPOLATEANGLES;
 		+ACTLIKEBRIDGE;
@@ -650,8 +650,11 @@ extend class FCW_Platform
 		if (crushDamage <= 0)
 			return;
 
-		if ((args[ARG_OPTIONS] & OPTFLAG_HURTFULPUSH) || (!(level.mapTime & 3) && //Only crush every 4th tic to allow victim's pain sound to be heard
-			!FitsAtPosition(pushed, level.Vec3Offset(pushed.pos, pushForce) ) ) )
+		//If the obstacle cannot fit then apply damage every 4th tic
+		//so its pain sound can be heard.
+		//But if it can fit and the option is enabled then always apply damage.
+		bool fits = FitsAtPosition(pushed, level.Vec3Offset(pushed.pos, pushForce));
+		if ( (!fits && !(level.mapTime & 3) ) || (fits && (args[ARG_OPTIONS] & OPTFLAG_HURTFULPUSH) ) )
 		{
 			int doneDamage = pushed.DamageMobj(null, null, crushDamage, 'Crush');
 			pushed.TraceBleed(doneDamage > 0 ? doneDamage : crushDamage, self);
@@ -1637,7 +1640,7 @@ extend class FCW_Platform
 				portTwin = FCW_Platform(Spawn(GetClass(), TranslatePortalPosition(pos, port)));
 				portTwin.portTwin = self;
 				portTwin.SetStateLabel("PortalCopy"); //Invisible
-				portTwin.args[ARG_OPTIONS] |= (args[ARG_OPTIONS] & (OPTFLAG_IGNOREGEO | OPTFLAG_ADDVELJUMP));
+				portTwin.args[ARG_OPTIONS] |= (args[ARG_OPTIONS] & (OPTFLAG_IGNOREGEO | OPTFLAG_ADDVELJUMP | OPTFLAG_HURTFULPUSH));
 			}
 		}
 
