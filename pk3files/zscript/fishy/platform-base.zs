@@ -294,7 +294,6 @@ extend class FCW_Platform
 	Array<Actor> stuckActors;
 	FCW_PlatformGroup group;
 	Array<Line> uPorts; //Non-static line portals through which we'll spawn a invisible twin for better collision
-	Line lastPort;
 	private FCW_Platform portTwin; //Helps with said collision, especially with passengers
 
 	//Unlike PathFollower classes, our interpolations are done with
@@ -338,7 +337,6 @@ extend class FCW_Platform
 		stuckActors.Clear();
 		group = null;
 		uPorts.Clear();
-		lastPort = null;
 		portTwin = null;
 
 		pCurr = pPrev = pNext = pNextNext = (0, 0, 0);
@@ -1331,6 +1329,62 @@ extend class FCW_Platform
 	}
 
 	//============================
+	// GetUnlinkedPortal
+	//============================
+	private Line GetUnlinkedPortal ()
+	{
+		//Our bounding box
+		double size = radius + EXTRA_SIZE; //Pretend we're a bit bigger
+		double minX1 = pos.x - size;
+		double maxX1 = pos.x + size;
+		double minY1 = pos.y - size;
+		double maxY1 = pos.y + size;
+
+		for (int iPort = 0; iPort < uPorts.Size(); ++iPort)
+		{
+			Line port = uPorts[iPort];
+			Line dest;
+			if (!port || !port.IsLinePortal() || !(dest = port.GetPortalDestination()))
+			{
+				uPorts.Delete(iPort--);
+				continue;
+			}
+
+			//Line bounding box
+			double minX2 = min(port.v1.p.x, port.v2.p.x);
+			double maxX2 = max(port.v1.p.x, port.v2.p.x);
+			double minY2 = min(port.v1.p.y, port.v2.p.y);
+			double maxY2 = max(port.v1.p.y, port.v2.p.y);
+
+			if (minX1 >= maxX2 || minX2 >= maxX1 ||
+				minY1 >= maxY2 || minY2 >= maxY1)
+			{
+				continue; //BBoxes not intersecting
+			}
+
+			if (IsBehindLine(pos.xy, port))
+				continue; //Center point not in front of line
+
+			bool cornerResult = IsBehindLine((minX1, minY1), port);
+			if (cornerResult == IsBehindLine((minX1, maxY1), port) &&
+				cornerResult == IsBehindLine((maxX1, minY1), port) &&
+				cornerResult == IsBehindLine((maxX1, maxY1), port))
+			{
+				continue; //All corners on one side; there's no intersection with line
+			}
+
+			if (port != uPorts[0])
+			{
+				//Swap 'em so we can find it faster next time
+				uPorts[iPort] = uPorts[0];
+				uPorts[0] = port;
+			}
+			return port;
+		}
+		return null;
+	}
+
+	//============================
 	// TranslatePortalPosition
 	//============================
 	static vector3, double TranslatePortalPosition (vector3 vec, Line port)
@@ -1572,7 +1626,21 @@ extend class FCW_Platform
 			return true;
 		}
 
-		bool moveTwin = (portTwin && lastPort && !teleMove);
+		Line port;
+		if (!teleMove)
+		{
+			port = GetUnlinkedPortal();
+			if (port && !portTwin)
+			{
+				portTwin = FCW_Platform(Spawn(GetClass(), TranslatePortalPosition(pos, port)));
+				portTwin.portTwin = self;
+				portTwin.SetStateLabel("PortalCopy"); //Invisible
+				portTwin.args[ARG_OPTIONS] |= (args[ARG_OPTIONS] & (OPTFLAG_IGNOREGEO | OPTFLAG_ADDVELJUMP));
+			}
+		}
+
+		bool moveTwin = (port && !teleMove);
+
 		if (portTwin)
 		{
 			if (portTwin.bNoBlockmap && moveTwin)
@@ -1612,11 +1680,11 @@ extend class FCW_Platform
 			if (moveTwin)
 			{
 				double portDelta;
-				[portTwin.oldPos, portDelta] = TranslatePortalPosition(oldPos, lastPort);
+				[portTwin.oldPos, portDelta] = TranslatePortalPosition(oldPos, port);
 				portTwin.angle = angle + portDelta;
 
 				if (oldPos != newPos)
-					portTwin.SetOrigin(TranslatePortalPosition(pos, lastPort), true);
+					portTwin.SetOrigin(TranslatePortalPosition(pos, port), true);
 				else if (portTwin.oldPos != portTwin.pos)
 					portTwin.SetOrigin(portTwin.oldPos, true);
 			}
@@ -1734,9 +1802,9 @@ extend class FCW_Platform
 				if (newPos.xy == pos.xy)
 				{
 					double portDelta;
-					[twinStartPos, portDelta] = TranslatePortalPosition(oldPos, lastPort);
+					[twinStartPos, portDelta] = TranslatePortalPosition(oldPos, port);
 					portTwin.angle = angle + portDelta;
-					twinPos = TranslatePortalPosition(pos, lastPort);
+					twinPos = TranslatePortalPosition(pos, port);
 				}
 				else
 				{
@@ -1783,92 +1851,19 @@ extend class FCW_Platform
 			CheckPortalTransition(); //Handle sector portals properly
 			if (crossedPortal)
 			{
-				lastPort = lastPort.GetPortalDestination();
-				int index = uPorts.Find(lastPort);
+				port = port.GetPortalDestination();
+				int index = uPorts.Find(port);
 				if (index < uPorts.Size())
 				{
 					//Swap 'em so we can find it faster next time
 					uPorts[index] = uPorts[0];
-					uPorts[0] = lastPort;
+					uPorts[0] = port;
 				}
 			}
 		}
 		bPlatInMove = false;
-
-		//The following checks for detected non-static line portals
-		//and uses a invisible copy of itself on the portal's
-		//other side for collision purposes.
-		bool result = true;
-		int iPort = 0;
-		if (uPorts.Size())
-		{
-			//Our bounding box
-			double size = radius + EXTRA_SIZE; //Pretend we're a bit bigger
-			double minX1 = pos.x - size;
-			double maxX1 = pos.x + size;
-			double minY1 = pos.y - size;
-			double maxY1 = pos.y + size;
-
-			for (iPort = 0; iPort < uPorts.Size(); ++iPort)
-			{
-				Line port = uPorts[iPort];
-				Line dest;
-				if (!port || !port.IsLinePortal() || !(dest = port.GetPortalDestination()))
-				{
-					uPorts.Delete(iPort--);
-					continue;
-				}
-
-				//Line bounding box
-				double minX2 = min(port.v1.p.x, port.v2.p.x);
-				double maxX2 = max(port.v1.p.x, port.v2.p.x);
-				double minY2 = min(port.v1.p.y, port.v2.p.y);
-				double maxY2 = max(port.v1.p.y, port.v2.p.y);
-
-				if (minX1 >= maxX2 || minX2 >= maxX1 ||
-					minY1 >= maxY2 || minY2 >= maxY1)
-				{
-					continue; //BBoxes not intersecting
-				}
-
-				if (IsBehindLine(pos.xy, port))
-					continue; //Center point not in front of line
-
-				bool cornerResult = IsBehindLine((minX1, minY1), port);
-				if (cornerResult == IsBehindLine((minX1, maxY1), port) &&
-					cornerResult == IsBehindLine((maxX1, minY1), port) &&
-					cornerResult == IsBehindLine((maxX1, maxY1), port))
-				{
-					continue; //All corners on one side; there's no intersection with line
-				}
-
-				lastPort = port;
-				if (lastPort != uPorts[0])
-				{
-					//Swap 'em so we can find it faster next time
-					uPorts[iPort] = uPorts[0];
-					uPorts[0] = lastPort;
-				}
-
-				if (!portTwin)
-				{
-					portTwin = FCW_Platform(Spawn(GetClass(), TranslatePortalPosition(pos, port)));
-					portTwin.portTwin = self;
-					portTwin.SetStateLabel("PortalCopy"); //Invisible
-					portTwin.args[ARG_OPTIONS] |= (args[ARG_OPTIONS] & (OPTFLAG_IGNOREGEO | OPTFLAG_ADDVELJUMP));
-				}
-				break;
-			}
-		}
-
-		if (iPort == uPorts.Size())
-		{
-			lastPort = null;
-			if (portTwin && !portTwin.bNoBlockmap)
-				portTwin.A_ChangeLinkFlags(NO_BMAP); //No collision while not needed
-		}
 		ExchangePassengersWithTwin();
-		return result;
+		return true;
 	}
 
 	//============================
@@ -2274,18 +2269,15 @@ extend class FCW_Platform
 
 		if (portTwin && !portTwin.bNoBlockmap && portTwin.passengers.Size())
 		{
-			if (lastPort)
+			Line port, dest;
+			if (uPorts.Size() && (port = uPorts[0]) && (dest = port.GetPortalDestination()))
 			{
-				Line dest = lastPort.GetPortalDestination();
-				if (dest)
-				{
-					double delta = DeltaAngle(180 +
-						VectorAngle(lastPort.delta.x, lastPort.delta.y),
-						VectorAngle(dest.delta.x, dest.delta.y));
+				double delta = DeltaAngle(180 +
+					VectorAngle(port.delta.x, port.delta.y),
+					VectorAngle(dest.delta.x, dest.delta.y));
 
-					if (delta)
-						pushForce.xy = RotateVector(pushForce.xy, delta);
-				}
+				if (delta)
+					pushForce.xy = RotateVector(pushForce.xy, delta);
 			}
 
 			for (int i = 0; i < portTwin.passengers.Size(); ++i)
