@@ -617,44 +617,63 @@ extend class FCW_Platform
 	//============================
 	private void PushObstacle (Actor pushed, vector3 pushForce)
 	{
-		//Don't bother if it's close to nothing
-		if (pushForce.x ~== 0) pushForce.x = 0;
-		if (pushForce.y ~== 0) pushForce.y = 0;
-		if (pushForce.z ~== 0) pushForce.z = 0;
+		//Respect CANNOTPUSH and DONTTHRUST unless it's a stuck actor
+		if ((bCannotPush || pushed.bDontThrust) &&
+			stuckActors.Find(pushed) >= stuckActors.Size())
+		{
+			pushForce = (0, 0, 0);
+		}
+		else
+		{
+			//Don't bother if it's close to nothing
+			if (pushForce.x ~== 0) pushForce.x = 0;
+			if (pushForce.y ~== 0) pushForce.y = 0;
+			if (pushForce.z ~== 0) pushForce.z = 0;
+		}
 
 		if (pushForce.z && !OverlapXY(self, pushed)) //Out of XY range?
 			pushForce.z = 0;
 
-		if (pushForce == (0, 0, 0))
-			return;
-
-		if (pos.xy != pushed.pos.xy && pushForce.xy != (0, 0))
+		if (pushForce.xy != (0, 0) && pos.xy != pushed.pos.xy)
 		{
 			double delta = DeltaAngle(VectorAngle(pushForce.x, pushForce.y), AngleTo(pushed));
 			if (delta > 90 || delta < -90)
 				pushForce.xy = RotateVector(pushForce.xy, delta); //Push away from platform's center
 		}
-		let oldZ = pushForce.z;
 
+		let oldZ = pushForce.z;
 		if (pushed.bCantLeaveFloorPic || //No Z pushing for CANTLEAVEFLOORPIC actors.
 			pushed.bFloorHugger || pushed.bCeilingHugger) //No Z pushing for floor/ceiling huggers.
 		{
 			pushForce.z = 0;
 		}
-		if (!pushed.bDontThrust)
-			pushed.vel += pushForce;
-
-		pushForce.z = oldZ;
+		pushed.vel += pushForce;
+		pushForce.z = oldZ; //Still use it for FitsAtPosition()
 
 		int crushDamage = args[ARG_CRUSHDMG];
 		if (crushDamage <= 0)
 			return;
 
-		//If the obstacle cannot fit then apply damage every 4th tic
-		//so its pain sound can be heard.
-		//But if it can fit and the option is enabled then always apply damage.
+		//Normally, if the obstacle is pushed against a wall or solid actor etc
+		//then apply damage every 4th tic so its pain sound can be heard.
+		//But if it's not pushed against anything and 'hurtfulPush' is enabled
+		//then always apply damage.
+		//However, if there was no 'pushForce' whatsoever and 'hurtfulPush' is
+		//desired then the "damage every 4th tic" rule always applies.
+		bool hurtfulPush = (args[ARG_OPTIONS] & OPTFLAG_HURTFULPUSH);
+		if (pushForce == (0, 0, 0))
+		{
+			if (hurtfulPush && !(level.mapTime & 3))
+			{
+				int doneDamage = pushed.DamageMobj(null, null, crushDamage, 'Crush');
+				pushed.TraceBleed(doneDamage > 0 ? doneDamage : crushDamage, self);
+			}
+			return;
+		}
+
+		//If it 'fits' then it's not being pushed against anything
 		bool fits = FitsAtPosition(pushed, level.Vec3Offset(pushed.pos, pushForce));
-		if ( (!fits && !(level.mapTime & 3) ) || (fits && (args[ARG_OPTIONS] & OPTFLAG_HURTFULPUSH) ) )
+		if ((!fits && !(level.mapTime & 3)) || (fits && hurtfulPush))
 		{
 			int doneDamage = pushed.DamageMobj(null, null, crushDamage, 'Crush');
 			pushed.TraceBleed(doneDamage > 0 ? doneDamage : crushDamage, self);
@@ -669,7 +688,12 @@ extend class FCW_Platform
 		if (!currNode)
 			return;
 
-		int newTime = max(1, currNode.args[NODEARG_TRAVELTIME]);
+		int newTime = currNode.args[NODEARG_TRAVELTIME];
+		if (newTime <= 0)
+		{
+			timeFrac = 1.0; //Ignore time unit if it's supposed to be "instant"
+			return;
+		}
 
 		if (currNode is "FCW_PlatformNode")
 		{
