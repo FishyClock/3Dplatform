@@ -634,13 +634,6 @@ extend class FCW_Platform
 		if (pushForce.z && !OverlapXY(self, pushed)) //Out of XY range?
 			pushForce.z = 0;
 
-		if (pushForce.xy != (0, 0) && pos.xy != pushed.pos.xy)
-		{
-			double delta = DeltaAngle(VectorAngle(pushForce.x, pushForce.y), AngleTo(pushed));
-			if (delta > 90 || delta < -90)
-				pushForce.xy = RotateVector(pushForce.xy, delta); //Push away from platform's center
-		}
-
 		let oldZ = pushForce.z;
 		if (pushed.bCantLeaveFloorPic || //No Z pushing for CANTLEAVEFLOORPIC actors.
 			pushed.bFloorHugger || pushed.bCeilingHugger) //No Z pushing for floor/ceiling huggers.
@@ -1414,9 +1407,9 @@ extend class FCW_Platform
 	}
 
 	//============================
-	// TranslatePortalPosition
+	// TranslatePortalVector
 	//============================
-	static vector3, double TranslatePortalPosition (vector3 vec, Line port)
+	static vector3, double TranslatePortalVector (vector3 vec, Line port, bool isPos)
 	{
 		Line dest;
 		if (!port || !(dest = port.GetPortalDestination()))
@@ -1426,11 +1419,14 @@ extend class FCW_Platform
 		VectorAngle(port.delta.x, port.delta.y),
 		VectorAngle(dest.delta.x, dest.delta.y));
 
-		vec.xy -= port.v1.p;
+		if (isPos)
+			vec.xy -= port.v1.p;
 		if (delta)
 			vec.xy = RotateVector(vec.xy, delta);
-		vec.xy += dest.v2.p;
+		if (isPos)
+			vec.xy += dest.v2.p;
 
+		if (isPos)
 		switch (port.GetPortalAlignment())
 		{
 			case 1: //Floor
@@ -1661,7 +1657,7 @@ extend class FCW_Platform
 			port = GetUnlinkedPortal();
 			if (port && !portTwin)
 			{
-				portTwin = FCW_Platform(Spawn(GetClass(), TranslatePortalPosition(pos, port)));
+				portTwin = FCW_Platform(Spawn(GetClass(), TranslatePortalVector(pos, port, true)));
 				portTwin.portTwin = self;
 				portTwin.SetStateLabel("PortalCopy"); //Invisible
 				portTwin.args[ARG_OPTIONS] |= (args[ARG_OPTIONS] & (OPTFLAG_IGNOREGEO | OPTFLAG_ADDVELJUMP | OPTFLAG_HURTFULPUSH));
@@ -1707,11 +1703,11 @@ extend class FCW_Platform
 			if (port)
 			{
 				double portDelta;
-				[portTwin.oldPos, portDelta] = TranslatePortalPosition(oldPos, port);
+				[portTwin.oldPos, portDelta] = TranslatePortalVector(oldPos, port, true);
 				portTwin.angle = angle + portDelta;
 
 				if (oldPos != newPos)
-					portTwin.SetOrigin(TranslatePortalPosition(pos, port), true);
+					portTwin.SetOrigin(TranslatePortalVector(pos, port, true), true);
 				else if (portTwin.oldPos != portTwin.pos)
 					portTwin.SetOrigin(portTwin.oldPos, true);
 			}
@@ -1782,9 +1778,19 @@ extend class FCW_Platform
 			if (!PlatTakeOneStep(newPos, false))
 			{
 				bPlatInMove = false;
-
 				if (blockingMobj && !(blockingMobj is "FCW_Platform"))
-					PushObstacle(blockingMobj, pushForce);
+				{
+					let mo = blockingMobj;
+					if (portTwin && !portTwin.bNoBlockmap && port &&
+						mo.Distance3D(portTwin) < mo.Distance3D(self))
+					{
+						portTwin.PushObstacle(mo, TranslatePortalVector(pushForce, port, false));
+					}
+					else
+					{
+						PushObstacle(mo, pushForce);
+					}
+				}
 				return false;
 			}
 
@@ -1831,16 +1837,16 @@ extend class FCW_Platform
 				vector3 twinPos;
 				if (newPos.xy == pos.xy)
 				{
-					[twinStartPos, angDiff] = TranslatePortalPosition(oldPos, port);
+					[twinStartPos, angDiff] = TranslatePortalVector(oldPos, port, true);
 					portTwin.angle = angle + angDiff;
-					twinPos = TranslatePortalPosition(pos, port);
+					twinPos = TranslatePortalVector(pos, port, true);
 				}
 				else
 				{
 					twinStartPos = oldPos;
 					portTwin.angle = angle - angDiff;
 					twinPos = newPos;
-					angDiff = -angDiff;
+					angDiff = 0;
 				}
 				portTwin.oldPos = portTwin.pos;
 				bool moved = portTwin.PlatTakeOneStep(twinPos, true);
@@ -1880,6 +1886,7 @@ extend class FCW_Platform
 				return false;
 			}
 
+			ExchangePassengersWithTwin();
 			CheckPortalTransition(); //Handle sector portals properly
 			if (crossedPortal)
 			{
@@ -1894,7 +1901,6 @@ extend class FCW_Platform
 			}
 		}
 		bPlatInMove = false;
-		ExchangePassengersWithTwin();
 		return true;
 	}
 
@@ -2301,16 +2307,8 @@ extend class FCW_Platform
 
 		if (portTwin && !portTwin.bNoBlockmap && portTwin.passengers.Size())
 		{
-			Line port, dest;
-			if (uPorts.Size() && (port = uPorts[0]) && (dest = port.GetPortalDestination()))
-			{
-				double delta = DeltaAngle(180 +
-					VectorAngle(port.delta.x, port.delta.y),
-					VectorAngle(dest.delta.x, dest.delta.y));
-
-				if (delta)
-					pushForce.xy = RotateVector(pushForce.xy, delta);
-			}
+			if (uPorts.Size() && uPorts[0])
+				pushForce = TranslatePortalVector(pushForce, uPorts[0], false);
 
 			for (int i = 0; i < portTwin.passengers.Size(); ++i)
 			{
