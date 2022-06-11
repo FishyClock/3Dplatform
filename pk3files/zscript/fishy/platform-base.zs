@@ -296,6 +296,7 @@ extend class FCW_Platform
 	FCW_PlatformGroup group;
 	Array<Line> uPorts; //Non-static line portals through which we'll spawn a invisible twin for better collision
 	private FCW_Platform portTwin; //Helps with said collision, especially with passengers
+	private bool bPortCopy;
 
 	//Unlike PathFollower classes, our interpolations are done with
 	//vector3 coordinates instead of checking InterpolationPoint positions.
@@ -307,10 +308,12 @@ extend class FCW_Platform
 
 	States
 	{
-	PortalCopy:			//Portal twins that are invisible and aren't meant
-		TNT1 A -1;		//to have fancy states/animations/etc.
-		Stop;			//(Can be redefined for fun shenanigans if you feel inclined.
-	}					//But I don't recommend it.)
+	//Portal twins that are invisible and aren't meant
+	//to have fancy states/animations/etc.
+	PortalCopy:
+		TNT1 A -1;
+		Stop;
+	}
 
 	//============================
 	// BeginPlay (override)
@@ -339,6 +342,7 @@ extend class FCW_Platform
 		group = null;
 		uPorts.Clear();
 		portTwin = null;
+		bPortCopy = false;
 
 		pCurr = pPrev = pNext = pNextNext = (0, 0, 0);
 		pCurrAngs = pPrevAngs = pNextAngs = pNextNextAngs = (0, 0, 0);
@@ -350,7 +354,7 @@ extend class FCW_Platform
 	override void PostBeginPlay ()
 	{
 		Super.PostBeginPlay();
-		if (InStateSequence(curState, FindState("PortalCopy")))
+		if (bPortCopy)
 			return;
 
 		String prefix = "\ckPlatform class '" .. GetClassName() .. "' with tid " .. tid .. " at position " .. pos .. ":\n";
@@ -1508,12 +1512,12 @@ extend class FCW_Platform
 	//============================
 	// PlatTakeOneStep
 	//============================
-	private bool PlatTakeOneStep (vector3 newPos, bool isPortalCopy)
+	private bool PlatTakeOneStep (vector3 newPos)
 	{
 		//The "invisible" portal twin (copy) isn't meant to go through portals.
 		//Don't call TryMove() nor Vec3Offset() for it.
 		SetZ(newPos.z);
-		bool moved = isPortalCopy ? FitsAtPosition(self, newPos) : TryMove(newPos.xy, 1);
+		bool moved = bPortCopy ? FitsAtPosition(self, newPos) : TryMove(newPos.xy, 1);
 
 		if (!moved && blockingMobj && !(blockingMobj is "FCW_Platform"))
 		{
@@ -1529,7 +1533,7 @@ extend class FCW_Platform
 				mo.SetZ(moNewZ);
 
 				//Try one more time
-				moved = isPortalCopy ? FitsAtPosition(self, newPos) : TryMove(newPos.xy, 1);
+				moved = bPortCopy ? FitsAtPosition(self, newPos) : TryMove(newPos.xy, 1);
 				if (!moved)
 				{
 					mo.SetZ(moOldZ);
@@ -1552,7 +1556,7 @@ extend class FCW_Platform
 		{
 			if (args[ARG_OPTIONS] & OPTFLAG_IGNOREGEO)
 			{
-				if (!isPortalCopy)
+				if (!bPortCopy)
 					SetOrigin(level.Vec3Offset(pos, newPos - pos), true);
 			}
 			else
@@ -1562,7 +1566,7 @@ extend class FCW_Platform
 			}
 		}
 
-		if (isPortalCopy)
+		if (bPortCopy)
 			SetOrigin(newPos, true);
 
 		return true;
@@ -1660,7 +1664,10 @@ extend class FCW_Platform
 				portTwin = FCW_Platform(Spawn(GetClass(), TranslatePortalVector(pos, port, true)));
 				portTwin.portTwin = self;
 				portTwin.SetStateLabel("PortalCopy"); //Invisible
-				portTwin.args[ARG_OPTIONS] |= (args[ARG_OPTIONS] & (OPTFLAG_IGNOREGEO | OPTFLAG_ADDVELJUMP | OPTFLAG_HURTFULPUSH));
+				portTwin.bPortCopy = true;
+				portTwin.bCannotPush = bCannotPush;
+				portTwin.args[ARG_OPTIONS] = (args[ARG_OPTIONS] & (OPTFLAG_IGNOREGEO | OPTFLAG_ADDVELJUMP | OPTFLAG_HURTFULPUSH));
+				portTwin.args[ARG_CRUSHDMG] = args[ARG_CRUSHDMG];
 			}
 		}
 
@@ -1775,7 +1782,7 @@ extend class FCW_Platform
 			oldRoll = roll;
 
 			newPos = pos + stepMove;
-			if (!PlatTakeOneStep(newPos, false))
+			if (!PlatTakeOneStep(newPos))
 			{
 				bPlatInMove = false;
 				if (blockingMobj && !(blockingMobj is "FCW_Platform"))
@@ -1849,7 +1856,7 @@ extend class FCW_Platform
 					angDiff = 0;
 				}
 				portTwin.oldPos = portTwin.pos;
-				bool moved = portTwin.PlatTakeOneStep(twinPos, true);
+				bool moved = portTwin.PlatTakeOneStep(twinPos);
 
 				if (moved && newPos.xy != pos.xy)
 				{
@@ -2326,7 +2333,8 @@ extend class FCW_Platform
 	//============================
 	override void Tick ()
 	{
-		if (IsFrozen())
+		//Portal copies aren't meant to think. Not even advance states.
+		if (bPortCopy || IsFrozen())
 			return;
 
 		if (group)
@@ -2342,6 +2350,11 @@ extend class FCW_Platform
 		{
 			HandleOldPassengers();
 			HandleStuckActors();
+			if (portTwin && portTwin.bPortCopy)
+			{
+				portTwin.HandleOldPassengers();
+				portTwin.HandleStuckActors();
+			}
 		}
 		else if (group.origin == self)
 		{
@@ -2352,6 +2365,11 @@ extend class FCW_Platform
 				{
 					plat.HandleOldPassengers();
 					plat.HandleStuckActors();
+					if (plat.portTwin && plat.portTwin.bPortCopy)
+					{
+						plat.portTwin.HandleOldPassengers();
+						plat.portTwin.HandleStuckActors();
+					}
 				}
 			}
 		}
