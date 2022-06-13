@@ -165,75 +165,6 @@ class FCW_PlatformGroup play
 	}
 }
 
-class FCW_PlatformTracer : LineTracer
-{
-	transient Array<Line> newPorts;
-
-	override ETraceStatus TraceCallback ()
-	{
-		if (results.hitType == TRACE_CrossingPortal && results.unlinked)
-		{
-			Sector sec = level.PointInSector(results.hitPos.xy);
-			for (int i = 0; i < sec.lines.Size(); ++i)
-			{
-				Line lin = sec.lines[i];
-
-				//Is the hit position exactly on the line and not in front/behind it?
-				if (FCW_Platform.IsOnLine(results.hitPos.xy, lin))
-				{
-					if (newPorts.Find(lin) >= newPorts.Size())
-						newPorts.Push(lin);
-					break; //Found it
-				}
-			}
-			//Need to set this to false or else any linked portals that are possibly
-			//further along the trace will be erroneously reported as unlinked.
-			results.unlinked = false;
-		}
-		return TRACE_Skip;
-	}
-
-	static play void GetNewUnlinkedPortals (out Array<Line> uPorts, vector3 pCurr, vector3 pNext, double radius)
-	{
-		if (pCurr ~== pNext)
-		{
-			uPorts.Clear();
-			return;
-		}
-		let tracer = new("FCW_PlatformTracer");
-		tracer.newPorts.Clear();
-
-		Sector startSec = level.PointInSector(pCurr.xy);
-		vector3 dir = level.Vec3Diff(pCurr, pNext);
-		double len = dir.Length() + radius;
-		dir = dir.Unit();
-		tracer.Trace(pCurr, startSec, dir, len, TRACE_ReportPortals);
-
-		//Try to catch any behind current path but only if they're really close
-		tracer.Trace(pCurr, startSec, -dir, radius, TRACE_ReportPortals);
-
-		//Get the returning portals for two-sided portal lines, too
-		int oldSize = tracer.newPorts.Size();
-		for (int i = 0; i < oldSize; ++i)
-		{
-			Line port = tracer.newPorts[i];
-			Line dest;
-			if (!port || !port.IsLinePortal() || !(dest = port.GetPortalDestination()))
-			{
-				tracer.newPorts.Delete(i--);
-				--oldSize;
-				continue;
-			}
-			if (dest.IsLinePortal() && dest.GetPortalDestination() == port &&
-				tracer.newPorts.Find(dest) >= tracer.newPorts.Size())
-			{
-				tracer.newPorts.Push(dest);
-			}
-		}
-		uPorts.Move(tracer.newPorts);
-	}
-}
-
 extend class FCW_Platform
 {
 	enum ArgValues
@@ -294,8 +225,8 @@ extend class FCW_Platform
 	Array<Actor> passengers;
 	Array<Actor> stuckActors;
 	FCW_PlatformGroup group;
-	Array<Line> uPorts; //Non-static line portals through which we'll spawn a invisible twin for better collision
-	private FCW_Platform portTwin; //Helps with said collision, especially with passengers
+	Line lastUPort;
+	private FCW_Platform portTwin; //Helps with collision when dealing with unlinked line portals
 	private bool bPortCopy;
 
 	//Unlike PathFollower classes, our interpolations are done with
@@ -340,7 +271,7 @@ extend class FCW_Platform
 		passengers.Clear();
 		stuckActors.Clear();
 		group = null;
-		uPorts.Clear();
+		lastUPort = null;
 		portTwin = null;
 		bPortCopy = false;
 
@@ -1366,14 +1297,38 @@ extend class FCW_Platform
 		double minY1 = pos.y - size;
 		double maxY1 = pos.y + size;
 
-		for (int iPort = 0; iPort < uPorts.Size(); ++iPort)
+		BlockLinesIterator it = lastUPort ? null : BlockLinesIterator.Create(self);
+		while (lastUPort || it.Next())
 		{
-			Line port = uPorts[iPort];
+			Line port = lastUPort ? lastUPort : it.curLine;
 			Line dest;
-			if (!port || !port.IsLinePortal() || !(dest = port.GetPortalDestination()))
+			if (!port.IsLinePortal() || !(dest = port.GetPortalDestination()))
 			{
-				uPorts.Delete(iPort--);
+				if (lastUPort)
+				{
+					lastUPort = null;
+					it = BlockLinesIterator.Create(self);
+				}
 				continue;
+			}
+
+			//To be a linked/static line portal, the portal groups must be non-zero
+			//and they must be different.
+			if (port.frontSector.portalGroup && dest.frontSector.portalGroup &&
+				port.frontSector.portalGroup != dest.frontSector.portalGroup)
+			{
+				//The angle difference between the two lines must be exactly 180
+				if (!DeltaAngle(180 +
+					VectorAngle(port.delta.x, port.delta.y),
+					VectorAngle(dest.delta.x, dest.delta.y)))
+				{
+					if (lastUPort)
+					{
+						lastUPort = null;
+						it = BlockLinesIterator.Create(self);
+					}
+					continue; //We don't want linked/static line portals
+				}
 			}
 
 			//Line bounding box
@@ -1385,26 +1340,37 @@ extend class FCW_Platform
 			if (minX1 >= maxX2 || minX2 >= maxX1 ||
 				minY1 >= maxY2 || minY2 >= maxY1)
 			{
+				if (lastUPort)
+				{
+					lastUPort = null;
+					it = BlockLinesIterator.Create(self);
+				}
 				continue; //BBoxes not intersecting
 			}
 
 			if (IsBehindLine(pos.xy, port))
+			{
+				if (lastUPort)
+				{
+					lastUPort = null;
+					it = BlockLinesIterator.Create(self);
+				}
 				continue; //Center point not in front of line
+			}
 
 			bool cornerResult = IsBehindLine((minX1, minY1), port);
 			if (cornerResult == IsBehindLine((minX1, maxY1), port) &&
 				cornerResult == IsBehindLine((maxX1, minY1), port) &&
 				cornerResult == IsBehindLine((maxX1, maxY1), port))
 			{
+				if (lastUPort)
+				{
+					lastUPort = null;
+					it = BlockLinesIterator.Create(self);
+				}
 				continue; //All corners on one side; there's no intersection with line
 			}
-
-			if (port != uPorts[0])
-			{
-				//Swap 'em so we can find it faster next time
-				uPorts[iPort] = uPorts[0];
-				uPorts[0] = port;
-			}
+			lastUPort = port;
 			return port;
 		}
 		return null;
@@ -1838,26 +1804,24 @@ extend class FCW_Platform
 			}
 
 			bool crossedPortal = false;
-			vector3 twinStartPos;
 			if (port)
 			{
 				vector3 twinPos;
 				if (newPos.xy == pos.xy)
 				{
-					[twinStartPos, angDiff] = TranslatePortalVector(oldPos, port, true);
+					[portTwin.oldPos, angDiff] = TranslatePortalVector(oldPos, port, true);
 					portTwin.angle = angle + angDiff;
 					twinPos = TranslatePortalVector(pos, port, true);
 				}
 				else
 				{
-					twinStartPos = oldPos;
+					portTwin.oldPos = oldPos;
 					portTwin.angle = angle - angDiff;
 					twinPos = newPos;
 					angDiff = 0;
 				}
-				portTwin.oldPos = portTwin.pos;
-				bool moved = portTwin.PlatTakeOneStep(twinPos);
 
+				bool moved = portTwin.PlatTakeOneStep(twinPos);
 				if (moved && newPos.xy != pos.xy)
 				{
 					crossedPortal = true;
@@ -1880,7 +1844,7 @@ extend class FCW_Platform
 
 			bool movedMine = MovePassengers(myStartPos, pos, angle, delta, piDelta, roDelta, false);
 			if (!movedMine || (port &&
-				!portTwin.MovePassengers(twinStartPos, portTwin.pos, portTwin.angle, delta, piDelta, roDelta, false) ) )
+				!portTwin.MovePassengers(portTwin.oldPos, portTwin.pos, portTwin.angle, delta, piDelta, roDelta, false) ) )
 			{
 				if (movedMine)
 					MovePassengers(pos, myStartPos, angle, -delta, -piDelta, -roDelta, true); //Move them back
@@ -1897,14 +1861,8 @@ extend class FCW_Platform
 			CheckPortalTransition(); //Handle sector portals properly
 			if (crossedPortal)
 			{
-				port = port.GetPortalDestination();
-				int index = uPorts.Find(port);
-				if (index < uPorts.Size())
-				{
-					//Swap 'em so we can find it faster next time
-					uPorts[index] = uPorts[0];
-					uPorts[0] = port;
-				}
+				lastUPort = port.GetPortalDestination();
+				port = GetUnlinkedPortal();
 			}
 		}
 		bPlatInMove = false;
@@ -2284,8 +2242,6 @@ extend class FCW_Platform
 				SetTimeFraction();
 				SetHoldTime();
 				time = 0;
-
-				FCW_PlatformTracer.GetNewUnlinkedPortals(uPorts, pCurr, pNext, radius + EXTRA_SIZE);
 			}
 		}
 	}
@@ -2314,8 +2270,8 @@ extend class FCW_Platform
 
 		if (portTwin && !portTwin.bNoBlockmap && portTwin.passengers.Size())
 		{
-			if (uPorts.Size() && uPorts[0])
-				pushForce = TranslatePortalVector(pushForce, uPorts[0], false);
+			if (lastUPort)
+				pushForce = TranslatePortalVector(pushForce, lastUPort, false);
 
 			for (int i = 0; i < portTwin.passengers.Size(); ++i)
 			{
@@ -2468,7 +2424,6 @@ extend class FCW_Platform
 				else
 				{
 					SetInterpolationCoordinates();
-					FCW_PlatformTracer.GetNewUnlinkedPortals(uPorts, pCurr, pNext, radius + EXTRA_SIZE);
 					time -= 1.0;
 				}
 			}
@@ -2548,8 +2503,6 @@ extend class FCW_Platform
 				exactAngs ? DeltaAngle(plat.pCurrAngs.x, ang) : ang,
 				exactAngs ? DeltaAngle(plat.pCurrAngs.y, pi) : pi,
 				exactAngs ? DeltaAngle(plat.pCurrAngs.z, ro) : ro);
-
-			FCW_PlatformTracer.GetNewUnlinkedPortals(plat.uPorts, plat.pCurr, plat.pNext, plat.radius + EXTRA_SIZE);
 		}
 	}
 
@@ -2576,8 +2529,6 @@ extend class FCW_Platform
 				!dontRotate ? DeltaAngle(plat.pCurrAngs.x, spot.angle) : 0,
 				!dontRotate ? DeltaAngle(plat.pCurrAngs.y, spot.pitch) : 0,
 				!dontRotate ? DeltaAngle(plat.pCurrAngs.z, spot.roll) : 0);
-
-			FCW_PlatformTracer.GetNewUnlinkedPortals(plat.uPorts, plat.pCurr, plat.pNext, plat.radius + EXTRA_SIZE);
 		}
 	}
 
