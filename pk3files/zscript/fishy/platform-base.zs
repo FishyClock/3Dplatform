@@ -1640,9 +1640,14 @@ extend class FCW_Platform
 		if (portTwin)
 		{
 			if (portTwin.bNoBlockmap && port)
+			{
 				portTwin.A_ChangeLinkFlags(YES_BMAP);
+				portTwin.SetOrigin(TranslatePortalVector(pos, port, true), true);
+			}
 			else if (!portTwin.bNoBlockmap && !port)
-				portTwin.A_ChangeLinkFlags(NO_BMAP);
+			{
+				portTwin.A_ChangeLinkFlags(NO_BMAP); //No collision while not needed (don't destroy it - not here)
+			}
 		}
 
 		double delta, piDelta, roDelta;
