@@ -539,15 +539,6 @@ extend class FCW_Platform
 	}
 
 	//============================
-	// IsOnLine
-	//============================
-	static clearscope bool IsOnLine (vector2 v, Line l)
-	{
-		//Ditto
-		return ( abs( (v.y - l.v1.p.y) * l.delta.x + (l.v1.p.x - v.x) * l.delta.y ) < ZS_EQUAL_EPSILON );
-	}
-
-	//============================
 	// PushObstacle
 	//============================
 	private void PushObstacle (Actor pushed, vector3 pushForce)
