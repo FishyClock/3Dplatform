@@ -2484,11 +2484,11 @@ extend class FCW_Platform
 	//============================
 	// Move (ACS utility)
 	//============================
-	static void Move (int platTid, double x, double y, double z, bool exactPos, int travelTime, double ang = 0, double pi = 0, double ro = 0, bool exactAngs = false)
+	static void Move (Actor act, int platTid, double x, double y, double z, bool exactPos, int travelTime, double ang = 0, double pi = 0, double ro = 0, bool exactAngs = false)
 	{
 		let it = level.CreateActorIterator(platTid, "FCW_Platform");
 		FCW_Platform plat;
-		while (plat = FCW_Platform(it.Next()))
+		for (plat = FCW_Platform(platTid ? it.Next() : act); plat; plat = platTid ? FCW_Platform(it.Next()) : null)
 		{
 			plat.CommonACSSetup(travelTime);
 
@@ -2506,17 +2506,17 @@ extend class FCW_Platform
 	//============================
 	// MoveToSpot (ACS utility)
 	//============================
-	static void MoveToSpot (int platTid, int spotTid, int travelTime, bool dontRotate = false)
+	static void MoveToSpot (Actor act, int platTid, int spotTid, int travelTime, bool dontRotate = false)
 	{
 		//This is the only place you can make a platform use any actor as a travel destination
 		let it = level.CreateActorIterator(spotTid);
-		Actor spot = it.Next();
+		Actor spot = spotTid ? it.Next() : act;
 		if (!spot)
 			return; //No spot? Nothing to do
 
 		it = level.CreateActorIterator(platTid, "FCW_Platform");
 		FCW_Platform plat;
-		while (plat = FCW_Platform(it.Next()))
+		for (plat = FCW_Platform(platTid ? it.Next() : act); plat; plat = platTid ? FCW_Platform(it.Next()) : null)
 		{
 			plat.CommonACSSetup(travelTime);
 
@@ -2546,10 +2546,10 @@ extend class FCW_Platform
 	//============================
 	// IsActive (ACS utility)
 	//============================
-	static bool IsActive (int platTid)
+	static bool IsActive (Actor act, int platTid)
 	{
 		let it = level.CreateActorIterator(platTid, "FCW_Platform");
-		let plat = FCW_Platform(it.Next());
+		let plat = FCW_Platform(platTid ? it.Next() : act);
 		return (plat && plat.PlatIsActive());
 	}
 
@@ -2574,10 +2574,10 @@ extend class FCW_Platform
 	//============================
 	// HasMoved (ACS utility)
 	//============================
-	static bool HasMoved (int platTid)
+	static bool HasMoved (Actor act, int platTid)
 	{
 		let it = level.CreateActorIterator(platTid, "FCW_Platform");
-		let plat = FCW_Platform(it.Next());
+		let plat = FCW_Platform(platTid ? it.Next() : act);
 		return (plat && plat.PlatHasMoved());
 	}
 }
