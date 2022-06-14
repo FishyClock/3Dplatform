@@ -2157,8 +2157,9 @@ extend class FCW_Platform
 				specList.Push(spec.args[i]);
 		}
 
+		//Platform will be the activator of each special
 		for (int i = 0; i < specList.Size(); i += 6)
-			level.ExecuteSpecial(specList[i], null, null, false, specList[i+1], specList[i+2], specList[i+3], specList[i+4], specList[i+5]);
+			level.ExecuteSpecial(specList[i], self, null, false, specList[i+1], specList[i+2], specList[i+3], specList[i+4], specList[i+5]);
 	}
 
 	//============================
