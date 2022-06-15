@@ -2588,4 +2588,14 @@ extend class FCW_Platform
 		for (let plat = FCW_Platform(it ? it.Next() : act); plat; plat = it ? FCW_Platform(it.Next()) : null)
 			plat.args[ARG_OPTIONS] = (plat.args[ARG_OPTIONS] & ~toClear) | toSet;
 	}
+
+	//============================
+	// SetCrushDamage (ACS utility)
+	//============================
+	static void SetCrushDamage (Actor act, int platTid, int toSet)
+	{
+		ActorIterator it = platTid ? level.CreateActorIterator(platTid, "FCW_Platform") : null;
+		for (let plat = FCW_Platform(it ? it.Next() : act); plat; plat = it ? FCW_Platform(it.Next()) : null)
+			plat.args[ARG_CRUSHDMG] = toSet;
+	}
 }
