@@ -113,8 +113,8 @@ extend class FCW_PlatformNode
 			} while (node.next == node); //Don't link to self
 
 			if (!node.next && node.args[0])
-				Console.Printf("\ckPlatform interpolation point with tid " .. node.tid .. " at position " ..node.pos ..
-				":\ncannot find next platform interpolation point with tid " .. node.args[0] .. ".");
+				Console.Printf("\n\ckPlatform interpolation point with tid " .. node.tid .. " at position " ..node.pos ..
+				":\n\ckcannot find next platform interpolation point with tid " .. node.args[0] .. ".");
 		}
 	}
 }
@@ -219,6 +219,7 @@ extend class FCW_Platform
 	int holdTime;
 	bool bActive;
 	transient bool bPlatInMove; //No collision between a platform and its passengers during said platform's move.
+	transient int errMsgTime;
 	InterpolationPoint currNode, firstNode;
 	InterpolationPoint prevNode, firstPrevNode;
 	bool goToNode;
@@ -265,6 +266,7 @@ extend class FCW_Platform
 		holdTime = 0;
 		bActive = false;
 		bPlatInMove = false;
+		errMsgTime = -1;
 		currNode = firstNode = null;
 		prevNode = firstPrevNode = null;
 		goToNode = false;
@@ -288,7 +290,7 @@ extend class FCW_Platform
 		if (bPortCopy)
 			return;
 
-		String prefix = "\ckPlatform class '" .. GetClassName() .. "' with tid " .. tid .. " at position " .. pos .. ":\n";
+		String prefix = "\n\ckPlatform class '" .. GetClassName() .. "' with tid " .. tid .. " at position " .. pos .. ":\n";
 
 		if (args[ARG_GROUPTID])
 		{
@@ -322,8 +324,8 @@ extend class FCW_Platform
 
 			if (!foundOne)
 			{
-				Console.Printf(prefix .. "Can't find platform(s) with tid " .. args[ARG_GROUPTID] .. " to group with.");
-				prefix = "\ck";
+				Console.Printf(prefix .. "\ckCan't find platform(s) with tid " .. args[ARG_GROUPTID] .. " to group with.");
+				errMsgTime = level.mapTime;
 			}
 		}
 
@@ -353,12 +355,28 @@ extend class FCW_Platform
 			return; 
 		}
 
-		let it = level.CreateActorIterator(args[ARG_NODETID], "InterpolationPoint");
+		if (!SetupPath(args[ARG_NODETID], true))
+			return;
+
+		if (args[ARG_OPTIONS] & OPTFLAG_STARTACTIVE)
+			Activate(self);
+		else							//In case the mapper placed walking monsters on the platform
+			GetNewPassengers(true);		//get something for HandleOldPassengers() to monitor.
+	}
+
+	//============================
+	// SetupPath
+	//============================
+	private bool SetupPath (int nodeTid, bool checkErrTime)
+	{
+		String prefix = (checkErrTime && errMsgTime == level.mapTime) ? "" :  "\n\ckPlatform class '" .. GetClassName() .. "' with tid " .. tid .. " at position " .. pos .. ":\n";
+		let it = level.CreateActorIterator(nodeTid, "InterpolationPoint");
 		firstNode = InterpolationPoint(it.Next());
 		if (!firstNode)
 		{
-			Console.Printf(prefix .. "Can't find interpolation point with tid " .. args[ARG_NODETID] .. ".");
-			return;
+			Console.Printf(prefix .. "\ckCan't find interpolation point with tid " .. nodeTid .. ".");
+			errMsgTime = level.mapTime;
+			return false;
 		}
 
 		//Verify the path has enough nodes
@@ -367,28 +385,31 @@ extend class FCW_Platform
 		else
 			firstNode.FormChain();
 
-		goToNode = (args[ARG_OPTIONS] & OPTFLAG_GOTONODE);
+		bool optGoToNode = (args[ARG_OPTIONS] & OPTFLAG_GOTONODE);
 
 		if (args[ARG_OPTIONS] & OPTFLAG_LINEAR)
 		{
 			//Linear path; need 2 nodes unless the first node is the destination
-			if (!goToNode && !firstNode.next)
+			if (!optGoToNode && !firstNode.next)
 			{
-				Console.Printf(prefix .. "Path needs at least 2 nodes.");
-				return;
+				Console.Printf(prefix .. "\ckPath needs at least 2 nodes. (Interpolation point tid: " .. nodeTid .. ".)");
+				errMsgTime = level.mapTime;
+				return false;
 			}
 		}
 		else //Spline path; need 4 nodes unless the first node is the destination
 		{
-			if (!goToNode && (
+			if (!optGoToNode && (
 				!firstNode.next ||
 				!firstNode.next.next ||
 				!firstNode.next.next.next) )
 			{
-				Console.Printf(prefix .. "Path needs at least 4 nodes.");
-				return;
+				Console.Printf(prefix .. "\ckPath needs at least 4 nodes. (Interpolation point tid: " .. nodeTid .. ".)");
+				errMsgTime = level.mapTime;
+				return false;
 			}
 
+			//In case the first node isn't the destination.
 			//If the first node is in a loop, we can start there.
 			//Otherwise, we need to start at the second node in the path.
 			let node = firstNode;
@@ -403,17 +424,13 @@ extend class FCW_Platform
 			{
 				firstPrevNode = node;
 			}
-			else if (!goToNode)
+			else if (!optGoToNode)
 			{
 				firstPrevNode = firstNode;
 				firstNode = firstNode.next;
 			}
 		}
-
-		if (args[ARG_OPTIONS] & OPTFLAG_STARTACTIVE)
-			Activate(self);
-		else							//In case the mapper placed walking monsters on the platform
-			GetNewPassengers(true);		//get something for HandleOldPassengers() to monitor.
+		return true;
 	}
 
 	//============================
@@ -2580,6 +2597,16 @@ extend class FCW_Platform
 	}
 
 	//============================
+	// SetNodePath (ACS utility)
+	//============================
+	static void SetNodePath (Actor act, int platTid, int nodeTid)
+	{
+		ActorIterator it = platTid ? level.CreateActorIterator(platTid, "FCW_Platform") : null;
+		for (let plat = FCW_Platform(it ? it.Next() : act); plat; plat = it ? FCW_Platform(it.Next()) : null)
+			plat.SetupPath(nodeTid, false);
+	}
+
+	//============================
 	// SetOptions (ACS utility)
 	//============================
 	static void SetOptions (Actor act, int platTid, int toSet, int toClear = 0)
@@ -2592,10 +2619,10 @@ extend class FCW_Platform
 	//============================
 	// SetCrushDamage (ACS utility)
 	//============================
-	static void SetCrushDamage (Actor act, int platTid, int toSet)
+	static void SetCrushDamage (Actor act, int platTid, int damage)
 	{
 		ActorIterator it = platTid ? level.CreateActorIterator(platTid, "FCW_Platform") : null;
 		for (let plat = FCW_Platform(it ? it.Next() : act); plat; plat = it ? FCW_Platform(it.Next()) : null)
-			plat.args[ARG_CRUSHDMG] = toSet;
+			plat.args[ARG_CRUSHDMG] = damage;
 	}
 }
