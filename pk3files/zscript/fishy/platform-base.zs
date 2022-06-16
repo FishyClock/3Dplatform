@@ -219,7 +219,6 @@ extend class FCW_Platform
 	int holdTime;
 	bool bActive;
 	transient bool bPlatInMove; //No collision between a platform and its passengers during said platform's move.
-	transient int errMsgTime;
 	InterpolationPoint currNode, firstNode;
 	InterpolationPoint prevNode, firstPrevNode;
 	bool goToNode;
@@ -266,7 +265,6 @@ extend class FCW_Platform
 		holdTime = 0;
 		bActive = false;
 		bPlatInMove = false;
-		errMsgTime = -1;
 		currNode = firstNode = null;
 		prevNode = firstPrevNode = null;
 		goToNode = false;
@@ -291,6 +289,7 @@ extend class FCW_Platform
 			return;
 
 		String prefix = "\n\ckPlatform class '" .. GetClassName() .. "' with tid " .. tid .. " at position " .. pos .. ":\n";
+		bool noPrefix = false;
 
 		if (args[ARG_GROUPTID])
 		{
@@ -325,7 +324,7 @@ extend class FCW_Platform
 			if (!foundOne)
 			{
 				Console.Printf(prefix .. "\ckCan't find platform(s) with tid " .. args[ARG_GROUPTID] .. " to group with.");
-				errMsgTime = level.mapTime;
+				noPrefix = true;
 			}
 		}
 
@@ -355,7 +354,7 @@ extend class FCW_Platform
 			return; 
 		}
 
-		if (!SetupPath(args[ARG_NODETID], true))
+		if (!SetUpPath(args[ARG_NODETID], noPrefix))
 			return;
 
 		if (args[ARG_OPTIONS] & OPTFLAG_STARTACTIVE)
@@ -365,17 +364,16 @@ extend class FCW_Platform
 	}
 
 	//============================
-	// SetupPath
+	// SetUpPath
 	//============================
-	private bool SetupPath (int nodeTid, bool checkErrTime)
+	private bool SetUpPath (int nodeTid, bool noPrefix)
 	{
-		String prefix = (checkErrTime && errMsgTime == level.mapTime) ? "" :  "\n\ckPlatform class '" .. GetClassName() .. "' with tid " .. tid .. " at position " .. pos .. ":\n";
+		String prefix = noPrefix ? "" :  "\n\ckPlatform class '" .. GetClassName() .. "' with tid " .. tid .. " at position " .. pos .. ":\n";
 		let it = level.CreateActorIterator(nodeTid, "InterpolationPoint");
 		firstNode = InterpolationPoint(it.Next());
 		if (!firstNode)
 		{
 			Console.Printf(prefix .. "\ckCan't find interpolation point with tid " .. nodeTid .. ".");
-			errMsgTime = level.mapTime;
 			return false;
 		}
 
@@ -393,7 +391,6 @@ extend class FCW_Platform
 			if (!optGoToNode && !firstNode.next)
 			{
 				Console.Printf(prefix .. "\ckPath needs at least 2 nodes. (Interpolation point tid: " .. nodeTid .. ".)");
-				errMsgTime = level.mapTime;
 				return false;
 			}
 		}
@@ -405,7 +402,6 @@ extend class FCW_Platform
 				!firstNode.next.next.next) )
 			{
 				Console.Printf(prefix .. "\ckPath needs at least 4 nodes. (Interpolation point tid: " .. nodeTid .. ".)");
-				errMsgTime = level.mapTime;
 				return false;
 			}
 
@@ -2603,7 +2599,7 @@ extend class FCW_Platform
 	{
 		ActorIterator it = platTid ? level.CreateActorIterator(platTid, "FCW_Platform") : null;
 		for (let plat = FCW_Platform(it ? it.Next() : act); plat; plat = it ? FCW_Platform(it.Next()) : null)
-			plat.SetupPath(nodeTid, false);
+			plat.SetUpPath(nodeTid, false);
 	}
 
 	//============================
