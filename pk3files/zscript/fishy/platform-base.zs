@@ -875,7 +875,6 @@ extend class FCW_Platform
 		double top = pos.z + height;
 		Array<Actor> miscActors; //The actors on top of the passengers (We'll move those, too)
 		Array<Actor> onTopOfMe;
-		Array<Actor> tryZFix;
 		Array<FCW_Platform> otherPlats;
 
 		//Call Grind() after we're done iterating because destroying
@@ -923,21 +922,44 @@ extend class FCW_Platform
 						if (!ignoreObs)
 							corpses.Push(mo);
 					}
-					else if ((CollisionFlagChecks(self, mo) &&
-						self.CanCollideWith(mo, false) && mo.CanCollideWith(self, true) ) ||
-						(mo is "Inventory" && mo.bSpecial) ) //Item that can be picked up?
+					else if (CollisionFlagChecks(self, mo) && self.CanCollideWith(mo, false) && mo.CanCollideWith(self, true))
 					{
 						//Try to correct 'mo' Z so it can ride us, too.
 						//But only if its 'maxStepHeight' allows it.
+						bool blocked = true;
 						if (canCarry && top - mo.pos.z <= mo.maxStepHeight)
 						{
-							tryZFix.Push(mo);
+							blocked = !FitsAtPosition(mo, (mo.pos.xy, top));
+							if (!blocked)
+							{
+								mo.SetZ(top);
+								mo.CheckPortalTransition(); //Handle sector portals properly
+							}
 						}
-						else if (!ignoreObs)
+						if (blocked)
 						{
-							result = false;
-							if (stuckActors.Find(mo) >= stuckActors.Size())
-								stuckActors.Push(mo);
+							if (!ignoreObs)
+							{
+								result = false;
+								if (stuckActors.Find(mo) >= stuckActors.Size())
+									stuckActors.Push(mo);
+							}
+							continue;
+						}
+						if (!oldPassenger)
+							onTopOfMe.Push(mo);
+					}
+					else if (mo is "Inventory" && mo.bSpecial) //Item that can be picked up?
+					{
+						//Try to correct 'mo' Z so it can ride us, too.
+						//But only if its 'maxStepHeight' allows it.
+						if (canCarry && top - mo.pos.z <= mo.maxStepHeight &&
+							FitsAtPosition(mo, (mo.pos.xy, top)))
+						{
+							mo.SetZ(top);
+							mo.CheckPortalTransition(); //Handle sector portals properly
+							if (!oldPassenger)
+								onTopOfMe.Push(mo);
 						}
 					}
 					continue;
@@ -948,29 +970,11 @@ extend class FCW_Platform
 				miscActors.Push(mo); //We'll compare this later against the passengers
 		}
 
-		for (int i = 0; i < tryZFix.Size(); ++i)
-		{
-			let mo = tryZFix[i];
-			if (FitsAtPosition(mo, (mo.pos.xy, top)))
-			{
-				mo.SetZ(top);
-				mo.CheckPortalTransition(); //Handle sector portals properly
-				if (passengers.Find(mo) >= passengers.Size())
-					onTopOfMe.Push(mo);
-			}
-			else if (!ignoreObs)
-			{
-				result = false;
-				if (stuckActors.Find(mo) >= stuckActors.Size())
-					stuckActors.Push(mo);
-			}
-		}
-
 		for (int i = 0; i < corpses.Size(); ++i)
 			corpses[i].Grind(false);
 
 		if (!onTopOfMe.Size() && !miscActors.Size())
-			return result; //Found nothing new to carry so stop here
+			return result; //Found nothing new so stop here
 
 		//Take into account the possibility that not all
 		//group members can be found in a blockmap search.
