@@ -211,9 +211,10 @@ extend class FCW_Platform
 	double oldAngle;
 	double oldPitch;
 	double oldRoll;
-	double spawnZ; //This is not the same as spawnPoint.z
-	double spawnPitch;
-	double spawnRoll;
+	vector3 groupPos;
+	double groupAngle;
+	double groupPitch;
+	double groupRoll;
 	double time;
 	double timeFrac;
 	int holdTime;
@@ -257,9 +258,10 @@ extend class FCW_Platform
 		oldAngle = angle;
 		oldPitch = pitch;
 		oldRoll = roll;
-		spawnZ = pos.z;
-		spawnPitch = pitch;
-		spawnRoll = roll;
+		groupPos = pos;
+		groupAngle = angle;
+		groupPitch = pitch;
+		groupRoll = roll;
 		time = 1.1;
 		timeFrac = 0;
 		holdTime = 0;
@@ -288,59 +290,20 @@ extend class FCW_Platform
 		if (bPortCopy)
 			return;
 
-		String prefix = "\n\ckPlatform class '" .. GetClassName() .. "' with tid " .. tid .. " at position " .. pos .. ":\n";
-		bool noPrefix = false;
+		bool noPrefix = (args[ARG_GROUPTID] && !SetUpGroup(args[ARG_GROUPTID], false));
 
-		if (args[ARG_GROUPTID])
-		{
-			let it = level.CreateActorIterator(args[ARG_GROUPTID], "FCW_Platform");
-			FCW_Platform plat;
-			bool foundOne = false;
-			while (plat = FCW_Platform(it.Next()))
-			{
-				if (plat != self)
-					foundOne = true;
-
-				if (plat.group) //Target is in its own group?
-				{
-					if (!group) //We don't have a group?
-						plat.group.Add(self);
-					else if (plat.group != group) //Both are in different groups?
-						plat.group.MergeWith(group);
-					//else - nothing happens because it's the same group or plat == self
-				}
-				else if (group) //We're in a group but target doesn't have a group?
-				{
-					group.Add(plat);
-				}
-				else if (plat != self) //Neither are in a group
-				{
-					let newGroup = FCW_PlatformGroup.Create();
-					newGroup.Add(self);
-					newGroup.Add(plat);
-				}
-			}
-
-			if (!foundOne)
-			{
-				Console.Printf(prefix .. "\ckCan't find platform(s) with tid " .. args[ARG_GROUPTID] .. " to group with.");
-				noPrefix = true;
-			}
-		}
-
+		//If the group origin is already active then call MoveGroup() now.
+		//This matters if the origin's first interpolation point has a defined hold time
+		//because depending on who ticks first some members might have already moved
+		//and some might have not.
 		if (group && group.origin)
 		{
 			let ori = group.origin;
-			if (ori.pos.xy != ori.spawnPoint.xy ||
-				ori.pos.z != ori.spawnZ ||
-				ori.angle != ori.spawnAngle ||
-				ori.pitch != ori.spawnPitch ||
-				ori.roll != ori.spawnRoll)
+			if (ori.pos != ori.groupPos ||
+				ori.angle != ori.groupAngle ||
+				ori.pitch != ori.groupPitch ||
+				ori.roll != ori.groupRoll)
 			{
-				//If the group origin is already active then call MoveGroup() now.
-				//This matters if the origin's first interpolation point has a defined hold time
-				//because depending on who ticks first some members might have already moved
-				//and some might have not.
 				ori.MoveGroup(1);
 			}
 		}
@@ -361,6 +324,65 @@ extend class FCW_Platform
 			Activate(self);
 		else							//In case the mapper placed walking monsters on the platform
 			GetNewPassengers(true);		//get something for HandleOldPassengers() to monitor.
+	}
+
+	//============================
+	// SetUpGroup
+	//============================
+	private bool SetUpGroup (int otherPlatTid, bool updateGroupInfo)
+	{
+		let it = level.CreateActorIterator(otherPlatTid, "FCW_Platform");
+		FCW_Platform plat;
+		bool foundOne = false;
+		while (plat = FCW_Platform(it.Next()))
+		{
+			if (plat != self)
+				foundOne = true;
+
+			if (plat.group) //Target is in its own group?
+			{
+				if (!group) //We don't have a group?
+					plat.group.Add(self);
+				else if (plat.group != group) //Both are in different groups?
+					plat.group.MergeWith(group);
+				//else - nothing happens because it's the same group or plat == self
+			}
+			else if (group) //We're in a group but target doesn't have a group?
+			{
+				group.Add(plat);
+			}
+			else if (plat != self) //Neither are in a group
+			{
+				let newGroup = FCW_PlatformGroup.Create();
+				newGroup.Add(self);
+				newGroup.Add(plat);
+			}
+		}
+
+		if (!foundOne)
+		{
+			Console.Printf("\n\ckPlatform class '" .. GetClassName() .. "' with tid " .. tid .. " at position " .. pos .. ":\n" ..
+				"\ckCan't find platform(s) with tid " .. otherPlatTid .. " to group with.");
+			return false;
+		}
+
+		if (updateGroupInfo)
+		{
+			//We need to update the 'group' variables each time
+			//we get a new member.
+			for (int iPlat = 0; iPlat < group.members.Size(); ++iPlat)
+			{
+				let plat = group.GetMember(iPlat);
+				if (plat)
+				{
+					plat.groupPos = plat.pos;
+					plat.groupAngle = plat.angle;
+					plat.groupPitch = plat.pitch;
+					plat.groupRoll = plat.roll;
+				}
+			}
+		}
+		return true;
 	}
 
 	//============================
@@ -2053,9 +2075,9 @@ extend class FCW_Platform
 		if (!group)
 			return true;
 
-		double delta = DeltaAngle(spawnAngle, angle);
-		double piDelta = DeltaAngle(spawnPitch, pitch);
-		double roDelta = DeltaAngle(spawnRoll, roll);
+		double delta = DeltaAngle(groupAngle, angle);
+		double piDelta = DeltaAngle(groupPitch, pitch);
+		double roDelta = DeltaAngle(groupRoll, roll);
 
 		double cFirst = 0, sFirst = 0;
 		double cY, sY;
@@ -2086,51 +2108,48 @@ extend class FCW_Platform
 				//the attached platform's 'spawnPoint'.
 				//So we pretty much always go in the opposite direction
 				//using our 'spawnPoint' as a reference point.
-				vector3 offset = level.Vec3Diff(pos, (spawnPoint.xy, spawnZ));
-				newPos = level.Vec3Offset((plat.spawnPoint.xy, plat.spawnZ), offset);
+				vector3 offset = level.Vec3Diff(pos, groupPos);
+				newPos = level.Vec3Offset(plat.groupPos, offset);
 
 				if (changeAng)
-					newAngle = plat.spawnAngle - delta;
+					newAngle = plat.groupAngle - delta;
 				if (changePi)
-					newPitch = plat.spawnPitch - piDelta;
+					newPitch = plat.groupPitch - piDelta;
 				if (changeRo)
-					newRoll = plat.spawnRoll - roDelta;
+					newRoll = plat.groupRoll - roDelta;
 			}
 			else //Non-mirror movement. Orbiting happens here.
 			{
 				if (cFirst == sFirst) //Not called cos() and sin() yet?
 				{
-					//'spawnAngle' is a uint16 but we need it
-					//as a double to get the intended orbit result.
-					double sAng = spawnAngle;
-					cFirst = cos(-sAng); sFirst = sin(-sAng);
+					cFirst = cos(-groupAngle); sFirst = sin(-groupAngle);
 					cY = cos(delta);   sY = sin(delta);
 					cP = cos(piDelta); sP = sin(piDelta);
 					cR = cos(roDelta); sR = sin(roDelta);
-					cLast = cos(sAng);   sLast = sin(sAng);
+					cLast = cos(groupAngle);   sLast = sin(groupAngle);
 				}
-				vector3 offset = level.Vec3Diff((spawnPoint.xy, spawnZ), (plat.spawnPoint.xy, plat.spawnZ));
+				vector3 offset = level.Vec3Diff(groupPos, plat.groupPos);
 
 				//Rotate the offset. The order here matters.
 				offset.xy = (offset.x*cFirst - offset.y*sFirst, offset.x*sFirst + offset.y*cFirst); //Rotate to 0 angle degrees of origin
 				offset = (offset.x, offset.y*cR - offset.z*sR, offset.y*sR + offset.z*cR);  //X axis (roll)
 				offset = (offset.x*cP + offset.z*sP, offset.y, -offset.x*sP + offset.z*cP); //Y axis (pitch)
 				offset = (offset.x*cY - offset.y*sY, offset.x*sY + offset.y*cY, offset.z);  //Z axis (yaw/angle)
-				offset.xy = (offset.x*cLast - offset.y*sLast, offset.x*sLast + offset.y*cLast); //Rotate back to origin's 'spawnAngle'
+				offset.xy = (offset.x*cLast - offset.y*sLast, offset.x*sLast + offset.y*cLast); //Rotate back to origin's 'groupAngle'
 
 				newPos = level.Vec3Offset(pos, offset);
 
 				if (changeAng)
-					newAngle = plat.spawnAngle + delta;
+					newAngle = plat.groupAngle + delta;
 
 				if (changePi || changeRo)
 				{
-					double diff = DeltaAngle(spawnAngle, plat.spawnAngle);
+					double diff = DeltaAngle(groupAngle, plat.groupAngle);
 					double c = cos(diff), s = sin(diff);
 					if (changePi)
-						newPitch = plat.spawnPitch + piDelta*c - roDelta*s;
+						newPitch = plat.groupPitch + piDelta*c - roDelta*s;
 					if (changeRo)
-						newRoll = plat.spawnRoll + piDelta*s + roDelta*c;
+						newRoll = plat.groupRoll + piDelta*s + roDelta*c;
 				}
 			}
 
@@ -2620,5 +2639,66 @@ extend class FCW_Platform
 		ActorIterator it = platTid ? level.CreateActorIterator(platTid, "FCW_Platform") : null;
 		for (let plat = FCW_Platform(it ? it.Next() : act); plat; plat = it ? FCW_Platform(it.Next()) : null)
 			plat.args[ARG_CRUSHDMG] = damage;
+	}
+
+	//============================
+	// MakeGroup (ACS utility)
+	//============================
+	static void MakeGroup (Actor act, int platTid, int otherPlatTid)
+	{
+		if (platTid && !otherPlatTid)
+		{
+			//Swap them. (If zero, 'otherPlatTid' is activator.)
+			int firstPlatTid = platTid;
+			platTid = otherPlatTid;
+			otherPlatTid = firstPlatTid;
+		}
+
+		ActorIterator it = platTid ? level.CreateActorIterator(platTid, "FCW_Platform") : null;
+		for (let plat = FCW_Platform(it ? it.Next() : act); plat; plat = it ? FCW_Platform(it.Next()) : null)
+			plat.SetUpGroup(otherPlatTid, true);
+	}
+
+	//============================
+	// LeaveGroup (ACS utility)
+	//============================
+	static void LeaveGroup (Actor act, int platTid)
+	{
+		ActorIterator it = platTid ? level.CreateActorIterator(platTid, "FCW_Platform") : null;
+		for (let plat = FCW_Platform(it ? it.Next() : act); plat; plat = it ? FCW_Platform(it.Next()) : null)
+		{
+			if (!plat.group)
+				continue;
+
+			int index = plat.group.members.Find(plat);
+			if (index < plat.group.members.Size())
+				plat.group.members.Delete(index);
+
+			if (plat.group.origin == plat)
+				plat.group.origin = null;
+
+			plat.group = null;
+		}
+	}
+
+	//============================
+	// DisbandGroup (ACS utility)
+	//============================
+	static void DisbandGroup (Actor act, int platTid)
+	{
+		ActorIterator it = platTid ? level.CreateActorIterator(platTid, "FCW_Platform") : null;
+		for (let plat = FCW_Platform(it ? it.Next() : act); plat; plat = it ? FCW_Platform(it.Next()) : null)
+		{
+			if (!plat.group)
+				continue;
+
+			for (int iPlat = 0; iPlat < plat.group.members.Size(); ++iPlat)
+			{
+				let member = plat.group.GetMember(iPlat);
+				if (member && member != plat)
+					member.group = null;
+			}
+			plat.group = null;
+		}
 	}
 }
