@@ -328,112 +328,17 @@ extend class FCW_Platform
 	}
 
 	//============================
-	// SetUpGroup
+	// OnDestroy (override)
 	//============================
-	private bool SetUpGroup (int otherPlatTid, bool updateGroupInfo)
+	override void OnDestroy ()
 	{
-		let it = level.CreateActorIterator(otherPlatTid, "FCW_Platform");
-		FCW_Platform plat;
-		Array<FCW_Platform> newMembers;
-		bool foundOne = false;
-		while (plat = FCW_Platform(it.Next()))
+		if (portTwin)
 		{
-			if (plat != self)
-				foundOne = true;
-
-			if (plat.group) //Target is in its own group?
-			{
-				if (!group) //We don't have a group?
-				{
-					newMembers.Push(self);
-					plat.group.Add(self);
-				}
-				else if (plat.group != group) //Both are in different groups?
-				{
-					newMembers.Append(group.members);
-					plat.group.MergeWith(group);
-				}
-				//else - nothing happens because it's the same group or plat == self
-			}
-			else if (group) //We're in a group but target doesn't have a group?
-			{
-				newMembers.Push(plat);
-				group.Add(plat);
-			}
-			else if (plat != self) //Neither are in a group
-			{
-				let newGroup = FCW_PlatformGroup.Create();
-				newGroup.Add(self);
-				newGroup.Add(plat);
-			}
+			if (portTwin.portTwin == self)
+				portTwin.portTwin = null; //No infinite recursions
+			portTwin.Destroy();
 		}
-
-		if (!foundOne)
-		{
-			Console.Printf("\n\ckPlatform class '" .. GetClassName() .. "' with tid " .. tid .. " at position " .. pos .. ":\n" ..
-				"\ckCan't find platform(s) with tid " .. otherPlatTid .. " to group with.");
-			return false;
-		}
-
-		if (!updateGroupInfo)
-			return true;
-
-		let ori = group.origin;
-		if (!ori)
-		for (int iPlat = 0; iPlat < group.members.Size(); ++iPlat)
-		{
-			//With no designated origin, just update everyone's
-			//group info to where they are.
-			plat = group.GetMember(iPlat);
-			if (plat)
-			{
-				plat.groupPos = plat.pos;
-				plat.groupAngle = plat.angle;
-				plat.groupPitch = plat.pitch;
-				plat.groupRoll = plat.roll;
-			}
-		}
-		else if (newMembers.Size())
-		{
-			//Set our group info so it'll follow around the origin
-			double delta = DeltaAngle(ori.angle, ori.groupAngle);
-			double piDelta = DeltaAngle(ori.pitch, ori.groupPitch);
-			double roDelta = DeltaAngle(ori.roll, ori.groupRoll);
-
-			for (int i = 0; i < newMembers.Size(); ++i)
-			{
-				plat = newMembers[i];
-				if (!plat)
-					continue;
-
-				if (plat.args[ARG_OPTIONS] & OPTFLAG_MIRROR)
-				{
-					vector3 offset = level.Vec3Diff(ori.groupPos, ori.pos);
-					plat.groupPos = level.Vec3Offset(plat.pos, offset);
-
-					plat.groupAngle = plat.angle - delta;
-					plat.groupPitch = plat.pitch - piDelta;
-					plat.groupRoll = plat.roll - roDelta;
-				}
-				else
-				{
-					//This is not ideal, but at the time of typing I'm burnt out.
-					//For now, I don't recommend trying to add members to active groups
-					//unless they're mirrors or there's no pitch/roll rotation.
-					vector3 offset = level.Vec3Diff(ori.pos, plat.pos);
-					offset = RotateVector3(offset, delta, piDelta, roDelta, ori.groupAngle);
-					plat.groupPos = level.Vec3Offset(ori.groupPos, offset);
-
-					plat.groupAngle = plat.angle + delta;
-					double diff = DeltaAngle(ori.groupAngle, plat.groupAngle);
-					double c = cos(diff), s = sin(diff);
-
-					plat.groupPitch = plat.pitch + piDelta*c - roDelta*s;
-					plat.groupRoll = plat.roll + piDelta*s + roDelta*c;
-				}
-			}
-		}
-		return true;
+		Super.OnDestroy();
 	}
 
 	//============================
@@ -503,17 +408,140 @@ extend class FCW_Platform
 	}
 
 	//============================
-	// OnDestroy (override)
+	// SetUpGroup
 	//============================
-	override void OnDestroy ()
+	private bool SetUpGroup (int otherPlatTid, bool updateGroupInfo)
 	{
-		if (portTwin)
+		let it = level.CreateActorIterator(otherPlatTid, "FCW_Platform");
+		FCW_Platform plat;
+		Array<FCW_Platform> newMembers;
+		bool foundOne = false;
+		while (plat = FCW_Platform(it.Next()))
 		{
-			if (portTwin.portTwin == self)
-				portTwin.portTwin = null; //No infinite recursions
-			portTwin.Destroy();
+			if (plat != self)
+				foundOne = true;
+
+			if (plat.group) //Target is in its own group?
+			{
+				if (!group) //We don't have a group?
+				{
+					newMembers.Push(self);
+					plat.group.Add(self);
+				}
+				else if (plat.group != group) //Both are in different groups?
+				{
+					newMembers.Append(group.members);
+					plat.group.MergeWith(group);
+				}
+				//else - nothing happens because it's the same group or plat == self
+			}
+			else if (group) //We're in a group but target doesn't have a group?
+			{
+				newMembers.Push(plat);
+				group.Add(plat);
+			}
+			else if (plat != self) //Neither are in a group
+			{
+				let newGroup = FCW_PlatformGroup.Create();
+				newGroup.Add(self);
+				newGroup.Add(plat);
+			}
 		}
-		Super.OnDestroy();
+
+		if (!foundOne)
+		{
+			Console.Printf("\n\ckPlatform class '" .. GetClassName() .. "' with tid " .. tid .. " at position " .. pos .. ":\n" ..
+				"\ckCan't find platform(s) with tid " .. otherPlatTid .. " to group with.");
+			return false;
+		}
+
+		if (!updateGroupInfo)
+			return true;
+
+		let ori = group.origin;
+		if (!ori)
+		for (int i = 0; i < group.members.Size(); ++i)
+		{
+			//With no designated origin, just update everyone's
+			//group info to where they are.
+			plat = group.GetMember(i);
+			if (plat)
+			{
+				plat.groupPos = plat.pos;
+				plat.groupAngle = plat.angle;
+				plat.groupPitch = plat.pitch;
+				plat.groupRoll = plat.roll;
+			}
+		}
+		else if (newMembers.Size())
+		{
+			//Only set up the new members' group info relative
+			//to the origin.
+			//(This is similar to MoveGroup() but backwards.)
+			double delta = DeltaAngle(ori.angle, ori.groupAngle);
+			double piDelta = DeltaAngle(ori.pitch, ori.groupPitch);
+			double roDelta = DeltaAngle(ori.roll, ori.groupRoll);
+
+			for (int i = 0; i < newMembers.Size(); ++i)
+			{
+				plat = newMembers[i];
+				if (!plat)
+					continue;
+
+				if (plat.args[ARG_OPTIONS] & OPTFLAG_MIRROR)
+				{
+					vector3 offset = level.Vec3Diff(ori.groupPos, ori.pos);
+					plat.groupPos = level.Vec3Offset(plat.pos, offset);
+
+					plat.groupAngle = plat.angle - delta;
+					plat.groupPitch = plat.pitch - piDelta;
+					plat.groupRoll = plat.roll - roDelta;
+				}
+				else //Set up for proper orbiting
+				{
+					vector3 offset = level.Vec3Diff(ori.pos, plat.pos);
+					offset = RotateVector3(offset, delta, piDelta, roDelta, ori.groupAngle, true);
+					plat.groupPos = level.Vec3Offset(ori.groupPos, offset);
+
+					plat.groupAngle = plat.angle + delta;
+					double diff = DeltaAngle(ori.groupAngle, plat.groupAngle);
+					double c = cos(diff), s = sin(diff);
+
+					plat.groupPitch = plat.pitch + piDelta*c - roDelta*s;
+					plat.groupRoll = plat.roll + piDelta*s + roDelta*c;
+				}
+			}
+		}
+		return true;
+	}
+
+	//============================
+	// RotateVector3
+	//============================
+	static vector3 RotateVector3 (vector3 vec, double yDelta, double pDelta, double rDelta, double baseAngle, bool backward)
+	{
+		double cFirst = cos(-baseAngle), sFirst = sin(-baseAngle);
+		double cY = cos(yDelta), sY = sin(yDelta);
+		double cP = cos(pDelta), sP = sin(pDelta);
+		double cR = cos(rDelta), sR = sin(rDelta);
+		double cLast = cos(baseAngle), sLast = sin(baseAngle);
+
+		vec.xy = (vec.x*cFirst - vec.y*sFirst, vec.x*sFirst + vec.y*cFirst); //Rotate to 0 angle
+		if (backward)
+		{
+			vec = (vec.x*cY - vec.y*sY, vec.x*sY + vec.y*cY, vec.z);  //Z axis (yaw/angle)
+			vec = (vec.x*cP + vec.z*sP, vec.y, -vec.x*sP + vec.z*cP); //Y axis (pitch)
+			vec = (vec.x, vec.y*cR - vec.z*sR, vec.y*sR + vec.z*cR);  //X axis (roll)
+		}
+		else
+		{
+			vec = (vec.x, vec.y*cR - vec.z*sR, vec.y*sR + vec.z*cR);  //X axis (roll)
+			vec = (vec.x*cP + vec.z*sP, vec.y, -vec.x*sP + vec.z*cP); //Y axis (pitch)
+			vec = (vec.x*cY - vec.y*sY, vec.x*sY + vec.y*cY, vec.z);  //Z axis (yaw/angle)
+		}
+		vec.xy = (vec.x*cLast - vec.y*sLast, vec.x*sLast + vec.y*cLast); //Rotate back to 'baseAngle'
+
+		return vec;
 	}
 
 	//============================
@@ -2115,26 +2143,6 @@ extend class FCW_Platform
 	}
 
 	//============================
-	// RotateVector3
-	//============================
-	static vector3 RotateVector3 (vector3 vec, double yDelta, double pDelta, double rDelta, double baseAngle)
-	{
-		double cFirst = cos(-baseAngle), sFirst = sin(-baseAngle);
-		double cY = cos(yDelta), sY = sin(yDelta);
-		double cP = cos(pDelta), sP = sin(pDelta);
-		double cR = cos(rDelta), sR = sin(rDelta);
-		double cLast = cos(baseAngle), sLast = sin(baseAngle);
-
-		vec.xy = (vec.x*cFirst - vec.y*sFirst, vec.x*sFirst + vec.y*cFirst); //Rotate to 0 angle 
-		vec = (vec.x, vec.y*cR - vec.z*sR, vec.y*sR + vec.z*cR);  //X axis (roll)
-		vec = (vec.x*cP + vec.z*sP, vec.y, -vec.x*sP + vec.z*cP); //Y axis (pitch)
-		vec = (vec.x*cY - vec.y*sY, vec.x*sY + vec.y*cY, vec.z);  //Z axis (yaw/angle)
-		vec.xy = (vec.x*cLast - vec.y*sLast, vec.x*sLast + vec.y*cLast); //Rotate back to 'baseAngle'
-
-		return vec;
-	}
-
-	//============================
 	// MoveGroup
 	//============================
 	private bool MoveGroup (int moveType)
@@ -2182,7 +2190,7 @@ extend class FCW_Platform
 			else //Non-mirror movement. Orbiting happens here.
 			{
 				vector3 offset = level.Vec3Diff(groupPos, plat.groupPos);
-				offset = RotateVector3(offset, delta, piDelta, roDelta, groupAngle);
+				offset = RotateVector3(offset, delta, piDelta, roDelta, groupAngle, false);
 				newPos = level.Vec3Offset(pos, offset);
 
 				if (changeAng)
