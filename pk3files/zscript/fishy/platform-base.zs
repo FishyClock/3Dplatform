@@ -2244,7 +2244,7 @@ extend class FCW_Platform
 	//============================
 	override void Deactivate (Actor activator)
 	{
-		if (!bActive)
+		if (!bActive || bPortCopy)
 			return;
 
 		if (!group || !group.origin)
@@ -2252,7 +2252,7 @@ extend class FCW_Platform
 			if (time <= 1.0) //Not reached destination?
 				Stopped(oldPos, pos);
 
-			if (portTwin && portTwin.bNoBlockmap)
+			if (portTwin && portTwin.bNoBlockmap && portTwin.bPortCopy)
 			{
 				portTwin.portTwin = null;
 				portTwin.Destroy();
@@ -2268,7 +2268,7 @@ extend class FCW_Platform
 					if (time <= 1.0) //Not reached destination?
 						plat.Stopped(plat.oldPos, plat.pos);
 
-					if (plat.portTwin && plat.portTwin.bNoBlockmap)
+					if (plat.portTwin && plat.portTwin.bNoBlockmap && plat.portTwin.bPortCopy)
 					{
 						plat.portTwin.portTwin = null;
 						plat.portTwin.Destroy();
@@ -2286,6 +2286,9 @@ extend class FCW_Platform
 	{
 		if (!bActive || (group && group.origin != self))
 		{
+			if (bPortCopy)
+				return;
+
 			if (portTwin)
 				portTwin.bActive = false;
 
@@ -2372,7 +2375,7 @@ extend class FCW_Platform
 	//============================
 	override void Tick ()
 	{
-		//Portal copies aren't meant to think. Not even advance states.
+		//Portal copies aren't meant to think themselves. Not even advance states.
 		if (bPortCopy || IsFrozen())
 			return;
 
@@ -2489,7 +2492,9 @@ extend class FCW_Platform
 					}
 				}
 
-				//Make sure we're exactly at our intended position
+				//Make sure we're exactly at our intended position.
+				//(It doesn't matter if we can't fit at this "intended position"
+				//because that's what the "stuck actors" logic is there for.)
 				bool faceAng = ((args[ARG_OPTIONS] & OPTFLAG_FACEMOVE) && (args[ARG_OPTIONS] & (OPTFLAG_ANGLE)));
 				bool facePi = ((args[ARG_OPTIONS] & OPTFLAG_FACEMOVE) && (args[ARG_OPTIONS] & (OPTFLAG_PITCH)));
 				bool faceRo = ((args[ARG_OPTIONS] & OPTFLAG_FACEMOVE) && (args[ARG_OPTIONS] & (OPTFLAG_ROLL)));
@@ -2551,7 +2556,8 @@ extend class FCW_Platform
 		holdTime = 0;
 		timeFrac = 1.0 / max(1, travelTime); //Time unit is always in tics from the ACS side
 		bActive = true;
-		if (group) group.origin = self;
+		if (group)
+			group.origin = self;
 		pPrev = pCurr = pos;
 		pPrevAngs = pCurrAngs = (
 			Normalize180(angle),
@@ -2633,8 +2639,12 @@ extend class FCW_Platform
 	static bool IsActive (Actor act, int platTid)
 	{
 		ActorIterator it = platTid ? level.CreateActorIterator(platTid, "FCW_Platform") : null;
-		let plat = FCW_Platform(it ? it.Next() : act);
-		return (plat && plat.PlatIsActive());
+		for (let plat = FCW_Platform(it ? it.Next() : act); plat; plat = it ? FCW_Platform(it.Next()) : null)
+		{
+			if (plat.PlatIsActive())
+				return true;
+		}
+		return false;
 	}
 
 	//============================
@@ -2661,8 +2671,12 @@ extend class FCW_Platform
 	static bool HasMoved (Actor act, int platTid)
 	{
 		ActorIterator it = platTid ? level.CreateActorIterator(platTid, "FCW_Platform") : null;
-		let plat = FCW_Platform(it ? it.Next() : act);
-		return (plat && plat.PlatHasMoved());
+		for (let plat = FCW_Platform(it ? it.Next() : act); plat; plat = it ? FCW_Platform(it.Next()) : null)
+		{
+			if (plat.PlatHasMoved())
+				return true;
+		}
+		return false;
 	}
 
 	//============================
@@ -2746,9 +2760,9 @@ extend class FCW_Platform
 			if (!plat.group)
 				continue;
 
-			for (int iPlat = 0; iPlat < plat.group.members.Size(); ++iPlat)
+			for (int i = 0; i < plat.group.members.Size(); ++i)
 			{
-				let member = plat.group.GetMember(iPlat);
+				let member = plat.group.GetMember(i);
 				if (member && member != plat)
 					member.group = null;
 			}
