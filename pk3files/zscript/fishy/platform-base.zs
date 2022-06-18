@@ -162,6 +162,9 @@ class FCW_PlatformGroup play
 			if (plat)
 				Add(plat);
 		}
+
+		if (!origin && otherGroup.origin)
+			origin = otherGroup.origin;
 	}
 }
 
