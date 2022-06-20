@@ -233,6 +233,8 @@ extend class FCW_Platform
 	Line lastUPort;
 	private FCW_Platform portTwin; //Helps with collision when dealing with unlinked line portals
 	private bool bPortCopy;
+	double portDelta;
+	int acsFlags;
 
 	//Unlike PathFollower classes, our interpolations are done with
 	//vector3 coordinates instead of checking InterpolationPoint positions.
@@ -280,6 +282,8 @@ extend class FCW_Platform
 		lastUPort = null;
 		portTwin = null;
 		bPortCopy = false;
+		portDelta = 0;
+		acsFlags = 0;
 
 		pCurr = pPrev = pNext = pNextNext = (0, 0, 0);
 		pCurrAngs = pPrevAngs = pNextAngs = pNextNextAngs = (0, 0, 0);
@@ -799,14 +803,9 @@ extend class FCW_Platform
 	//============================
 	private void SetInterpolationCoordinates ()
 	{
-		bool changeAng = (args[ARG_OPTIONS] & OPTFLAG_ANGLE);
-		bool changePi = (args[ARG_OPTIONS] & OPTFLAG_PITCH);
-		bool changeRo = (args[ARG_OPTIONS] & OPTFLAG_ROLL);
-
 		//Take into account angle changes when
 		//passing through non-static line portals.
 		//All checked angles have to be adjusted.
-		double delta = (currNode && changeAng && !goToNode) ? DeltaAngle(currNode.angle, angle) : 0;
 		if (prevNode && !goToNode)
 		{
 			//'pPrev' has to be adjusted if 'currNode' position is different from platform's.
@@ -817,25 +816,25 @@ extend class FCW_Platform
 			vector3 offset = currNode ? currNode.Vec3To(self) : (0, 0, 0);
 			pPrev = pos + Vec3To(prevNode) + offset; //Make it portal aware in a way so TryMove() can handle it
 			pPrevAngs = (
-			changeAng ? Normalize180(prevNode.angle + delta) : angle,
-			changePi  ? Normalize180(prevNode.pitch) : pitch,
-			changeRo  ? Normalize180(prevNode.roll) : roll);
+			Normalize180(prevNode.angle + portDelta),
+			Normalize180(prevNode.pitch),
+			Normalize180(prevNode.roll));
 		}
 
 		pCurr = pos;
 		if (!prevNode || goToNode)
 		{
 			pCurrAngs = (
-			changeAng ? Normalize180(angle) : angle,
-			changePi  ? Normalize180(pitch) : pitch,
-			changeRo  ? Normalize180(roll) : roll);
+			Normalize180(angle),
+			Normalize180(pitch),
+			Normalize180(roll));
 		}
 		else
 		{
 			pCurrAngs = pPrevAngs + (
-			changeAng ? DeltaAngle(pPrevAngs.x, angle) : 0,
-			changePi  ? DeltaAngle(pPrevAngs.y, pitch) : 0,
-			changeRo  ? DeltaAngle(pPrevAngs.z, roll) : 0);
+			DeltaAngle(pPrevAngs.x, angle),
+			DeltaAngle(pPrevAngs.y, pitch),
+			DeltaAngle(pPrevAngs.z, roll));
 		}
 
 		if (currNode && (currNode.next || goToNode))
@@ -844,17 +843,17 @@ extend class FCW_Platform
 
 			pNext = pos + Vec3To(nextNode); //Make it portal aware in a way so TryMove() can handle it
 			pNextAngs = pCurrAngs + (
-			changeAng ? DeltaAngle(pCurrAngs.x, nextNode.angle + delta) : 0,
-			changePi  ? DeltaAngle(pCurrAngs.y, nextNode.pitch) : 0,
-			changeRo  ? DeltaAngle(pCurrAngs.z, nextNode.roll)  : 0);
+			DeltaAngle(pCurrAngs.x, nextNode.angle + portDelta),
+			DeltaAngle(pCurrAngs.y, nextNode.pitch),
+			DeltaAngle(pCurrAngs.z, nextNode.roll));
 
 			if (nextNode.next)
 			{
 				pNextNext = pos + Vec3To(nextNode.next); //Make it portal aware in a way so TryMove() can handle it
 				pNextNextAngs = pNextAngs + (
-				changeAng ? DeltaAngle(pNextAngs.x, nextNode.next.angle + delta) : 0,
-				changePi  ? DeltaAngle(pNextAngs.y, nextNode.next.pitch) : 0,
-				changeRo  ? DeltaAngle(pNextAngs.z, nextNode.next.roll)  : 0);
+				DeltaAngle(pNextAngs.x, nextNode.next.angle + portDelta),
+				DeltaAngle(pNextAngs.y, nextNode.next.pitch),
+				DeltaAngle(pNextAngs.z, nextNode.next.roll));
 			}
 			else //No nextNode.next
 			{
@@ -1031,15 +1030,14 @@ extend class FCW_Platform
 				{
 					//Steal other platforms' passengers if
 					//A) We don't share groups and our 'top' is higher or...
-					//B) We don't share the "mirror" setting and the passenger's center is within our radius
+					//B) We don't share the "mirror" option and the passenger's center is within our radius
 					//and NOT within the other platform's radius.
-					//(In other words, groupmates with the same "mirror" setting never steal each other's passengers.)
+					//(In other words, groupmates with the same "mirror" option never steal each other's passengers.)
 					bool stealPassenger;
 					if (!group || group != plat.group)
 						stealPassenger = (top > plat.pos.z + plat.height);
 					else
-						stealPassenger = (
-							(args[ARG_OPTIONS] & OPTFLAG_MIRROR) ^ (plat.args[ARG_OPTIONS] & OPTFLAG_MIRROR) &&
+						stealPassenger = (((args[ARG_OPTIONS] ^ plat.args[ARG_OPTIONS]) & OPTFLAG_MIRROR) &&
 							OverlapXY(self, onTopOfMe[i], radius) && !OverlapXY(plat, onTopOfMe[i], plat.radius) );
 
 					if (stealPassenger)
@@ -1791,9 +1789,9 @@ extend class FCW_Platform
 
 			if (port)
 			{
-				double portDelta;
-				[portTwin.oldPos, portDelta] = TranslatePortalVector(oldPos, port, true);
-				portTwin.angle = angle + portDelta;
+				double angDiff;
+				[portTwin.oldPos, angDiff] = TranslatePortalVector(oldPos, port, true);
+				portTwin.angle = angle + angDiff;
 
 				if (oldPos != newPos)
 					portTwin.SetOrigin(TranslatePortalVector(pos, port, true), true);
@@ -1901,6 +1899,7 @@ extend class FCW_Platform
 				angDiff = DeltaAngle(oldAngle, angle);
 				if (angDiff)
 				{
+					portDelta += angDiff; //For SetInterpolationCoordinates()
 					myStartPos.xy = RotateVector(myStartPos.xy, angDiff);
 
 					if (step == 0)
@@ -2026,8 +2025,14 @@ extend class FCW_Platform
 		//A heavily modified version of the
 		//original function from PathFollower.
 
+		bool linear = (args[ARG_OPTIONS] & OPTFLAG_LINEAR);
+		bool changeAng = ((args[ARG_OPTIONS] | acsFlags) & OPTFLAG_ANGLE);
+		bool changePi  = ((args[ARG_OPTIONS] | acsFlags) & OPTFLAG_PITCH);
+		bool changeRo  = ((args[ARG_OPTIONS] | acsFlags) & OPTFLAG_ROLL);
+		bool faceMove = (args[ARG_OPTIONS] & OPTFLAG_FACEMOVE);
+
 		Vector3 dpos = (0, 0, 0);
-		if ((args[ARG_OPTIONS] & OPTFLAG_FACEMOVE) && time > 0)
+		if (faceMove && time > 0)
 			dpos = pos;
 
 		vector3 newPos;
@@ -2035,7 +2040,7 @@ extend class FCW_Platform
 		double newPitch = pitch;
 		double newRoll = roll;
 
-		if (args[ARG_OPTIONS] & OPTFLAG_LINEAR)
+		if (linear)
 		{
 			newPos.x = Lerp(pCurr.x, pNext.x);
 			newPos.y = Lerp(pCurr.y, pNext.y);
@@ -2048,9 +2053,12 @@ extend class FCW_Platform
 			newPos.z = Splerp(pPrev.z, pCurr.z, pNext.z, pNextNext.z);
 		}
 
-		if ((args[ARG_OPTIONS] & OPTFLAG_FACEMOVE) && (args[ARG_OPTIONS] & (OPTFLAG_ANGLE | OPTFLAG_PITCH | OPTFLAG_ROLL)))
+		if (faceMove && changeRo)
+			newRoll = 0; //Adjust roll
+
+		if (faceMove && (changeAng || changePi))
 		{
-			if (args[ARG_OPTIONS] & OPTFLAG_LINEAR)
+			if (linear)
 			{
 				dpos = pNext - pCurr;
 			}
@@ -2058,8 +2066,8 @@ extend class FCW_Platform
 			{
 				dpos = newPos - dpos;
 			}
-			else if (args[ARG_OPTIONS] & (OPTFLAG_ANGLE | OPTFLAG_PITCH))
-			{	//Spline but with time <= 0
+			else //Spline but with time <= 0
+			{
 				dpos = newPos;
 				time = timeFrac;
 				newPos.x = Splerp(pPrev.x, pCurr.x, pNext.x, pNextNext.x);
@@ -2071,47 +2079,46 @@ extend class FCW_Platform
 			}
 
 			//Adjust angle
-			if (args[ARG_OPTIONS] & OPTFLAG_ANGLE)
+			if (changeAng)
 				newAngle = VectorAngle(dpos.x, dpos.y);
 
 			//Adjust pitch
-			if (args[ARG_OPTIONS] & OPTFLAG_PITCH)
+			if (changePi)
 			{
 				double dist = dpos.xy.Length();
 				newPitch = dist ? VectorAngle(dist, -dpos.z) : 0;
 			}
-
-			//Adjust roll
-			if (args[ARG_OPTIONS] & OPTFLAG_ROLL)
-				newRoll = 0;
 		}
-		else
+
+		if (!faceMove)
 		{
-			//Whether angle/pitch/roll interpolates or not is
-			//determined in the interpolation coordinates.
-			//That way the ACS functions aren't restricted
-			//by the lack of OPTFLAG_ANGLE/PITCH/ROLL.
-			if (args[ARG_OPTIONS] & OPTFLAG_LINEAR)
+			if (linear)
 			{
 				//Interpolate angle
-				newAngle = Lerp(pCurrAngs.x, pNextAngs.x);
+				if (changeAng)
+					newAngle = Lerp(pCurrAngs.x, pNextAngs.x);
 
 				//Interpolate pitch
-				newPitch = Lerp(pCurrAngs.y, pNextAngs.y);
+				if (changePi)
+					newPitch = Lerp(pCurrAngs.y, pNextAngs.y);
 
 				//Interpolate roll
-				newRoll = Lerp(pCurrAngs.z, pNextAngs.z);
+				if (changeRo)
+					newRoll = Lerp(pCurrAngs.z, pNextAngs.z);
 			}
 			else //Spline
 			{
 				//Interpolate angle
-				newAngle = Splerp(pPrevAngs.x, pCurrAngs.x, pNextAngs.x, pNextNextAngs.x);
+				if (changeAng)
+					newAngle = Splerp(pPrevAngs.x, pCurrAngs.x, pNextAngs.x, pNextNextAngs.x);
 
 				//Interpolate pitch
-				newPitch = Splerp(pPrevAngs.y, pCurrAngs.y, pNextAngs.y, pNextNextAngs.y);
+				if (changePi)
+					newPitch = Splerp(pPrevAngs.y, pCurrAngs.y, pNextAngs.y, pNextNextAngs.y);
 
 				//Interpolate roll
-				newRoll = Splerp(pPrevAngs.z, pCurrAngs.z, pNextAngs.z, pNextNextAngs.z);
+				if (changeRo)
+					newRoll = Splerp(pPrevAngs.z, pCurrAngs.z, pNextAngs.z, pNextNextAngs.z);
 			}
 		}
 
@@ -2315,6 +2322,9 @@ extend class FCW_Platform
 
 			if (currNode)
 			{
+				portDelta = 0;
+				acsFlags = 0;
+
 				goToNode = (args[ARG_OPTIONS] & OPTFLAG_GOTONODE);
 				if (!goToNode) //Don't call specials if going to 'currNode'
 				{
@@ -2505,12 +2515,12 @@ extend class FCW_Platform
 				//Make sure we're exactly at our intended position.
 				//(It doesn't matter if we can't fit at this "intended position"
 				//because that's what the "stuck actors" logic is there for.)
-				bool faceAng = ((args[ARG_OPTIONS] & OPTFLAG_FACEMOVE) && (args[ARG_OPTIONS] & (OPTFLAG_ANGLE)));
-				bool facePi = ((args[ARG_OPTIONS] & OPTFLAG_FACEMOVE) && (args[ARG_OPTIONS] & (OPTFLAG_PITCH)));
-				bool faceRo = ((args[ARG_OPTIONS] & OPTFLAG_FACEMOVE) && (args[ARG_OPTIONS] & (OPTFLAG_ROLL)));
-				if (PlatMove(pNext, faceAng ? angle : pNextAngs.x,
-									facePi ? pitch : pNextAngs.y,
-									faceRo ? roll : pNextAngs.z, -1))
+				bool changeAng = (!(args[ARG_OPTIONS] & OPTFLAG_FACEMOVE) && ((args[ARG_OPTIONS] | acsFlags) & OPTFLAG_ANGLE));
+				bool changePi =  (!(args[ARG_OPTIONS] & OPTFLAG_FACEMOVE) && ((args[ARG_OPTIONS] | acsFlags) & OPTFLAG_PITCH));
+				bool changeRo =  (!(args[ARG_OPTIONS] & OPTFLAG_FACEMOVE) && ((args[ARG_OPTIONS] | acsFlags) & OPTFLAG_ROLL));
+				if (PlatMove(pNext, changeAng ? pNextAngs.x : angle,
+									changePi  ? pNextAngs.y : pitch,
+									changeRo  ? pNextAngs.z : roll, -1))
 				{
 					MoveGroup(-1);
 				}
@@ -2568,6 +2578,8 @@ extend class FCW_Platform
 		bActive = true;
 		if (group)
 			group.origin = self;
+		portDelta = 0;
+		acsFlags = (OPTFLAG_ANGLE | OPTFLAG_PITCH | OPTFLAG_ROLL);
 		pPrev = pCurr = pos;
 		pPrevAngs = pCurrAngs = (
 			Normalize180(angle),
@@ -2707,18 +2719,23 @@ extend class FCW_Platform
 		ActorIterator it = platTid ? level.CreateActorIterator(platTid, "FCW_Platform") : null;
 		for (let plat = FCW_Platform(it ? it.Next() : act); plat; plat = it ? FCW_Platform(it.Next()) : null)
 		{
+			// NOTE: Changing most options on an active platform has an immediate effect except for
+			// 'OPTFLAG_GOTONODE' which is checked in Activate() meaning you can't stop it from
+			// going to the first node once it's started. (Not like this anyway).
+			//
+			// And changing 'OPTFLAG_STARTACTIVE' after it has called PostBeginPlay() is utterly pointless.
+
 			int oldFlags = plat.args[ARG_OPTIONS];
 			int newFlags = (oldFlags & ~toClear) | toSet;
 			plat.args[ARG_OPTIONS] = newFlags;
 
-			//If the "mirror" option has changed and the group has an "origin",
-			//we must update the group info.
-			//(Having an "origin" usually means they are moving.)
-			if ((oldFlags & OPTFLAG_MIRROR) ^ (newFlags & OPTFLAG_MIRROR) &&
-				plat.group && plat.group.origin && plat != plat.group.origin)
-			{
+			//If for some reason you wanted to cancel ACS induced rotations, you can do it this way
+			plat.acsFlags &= ~(toClear & (OPTFLAG_ANGLE | OPTFLAG_PITCH | OPTFLAG_ROLL));
+
+			//If the "mirror" option has changed and the group has an "origin", we must
+			//update the group info. (Having an "origin" usually means they are moving.)
+			if (((oldFlags ^ newFlags) & OPTFLAG_MIRROR) && plat.group && plat.group.origin && plat != plat.group.origin)
 				plat.UpdateGroupInfo();
-			}
 		}
 	}
 
