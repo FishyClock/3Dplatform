@@ -413,7 +413,7 @@ extend class FCW_Platform
 	//============================
 	// SetUpGroup
 	//============================
-	private bool SetUpGroup (int otherPlatTid, bool updateGroupInfo)
+	private bool SetUpGroup (int otherPlatTid, bool doUpdateGroupInfo)
 	{
 		let it = level.CreateActorIterator(otherPlatTid, "FCW_Platform");
 		FCW_Platform plat;
@@ -458,7 +458,7 @@ extend class FCW_Platform
 			return false;
 		}
 
-		if (!updateGroupInfo)
+		if (!doUpdateGroupInfo)
 			return true;
 
 		let ori = group.origin;
@@ -480,42 +480,49 @@ extend class FCW_Platform
 		{
 			//Only set up the new members' group info relative
 			//to the origin.
-			//(This is similar to MoveGroup() but backwards.)
-			double delta = DeltaAngle(ori.angle, ori.groupAngle);
-			double piDelta = DeltaAngle(ori.pitch, ori.groupPitch);
-			double roDelta = DeltaAngle(ori.roll, ori.groupRoll);
-
 			for (int i = 0; i < newMembers.Size(); ++i)
 			{
 				plat = newMembers[i];
-				if (!plat)
-					continue;
-
-				if (plat.args[ARG_OPTIONS] & OPTFLAG_MIRROR)
-				{
-					vector3 offset = level.Vec3Diff(ori.groupPos, ori.pos);
-					plat.groupPos = level.Vec3Offset(plat.pos, offset);
-
-					plat.groupAngle = plat.angle - delta;
-					plat.groupPitch = plat.pitch - piDelta;
-					plat.groupRoll = plat.roll - roDelta;
-				}
-				else //Set up for proper orbiting
-				{
-					vector3 offset = level.Vec3Diff(ori.pos, plat.pos);
-					offset = RotateVector3(offset, delta, piDelta, roDelta, ori.groupAngle, true);
-					plat.groupPos = level.Vec3Offset(ori.groupPos, offset);
-
-					plat.groupAngle = plat.angle + delta;
-					double diff = DeltaAngle(ori.groupAngle, plat.groupAngle);
-					double c = cos(diff), s = sin(diff);
-
-					plat.groupPitch = plat.pitch + piDelta*c - roDelta*s;
-					plat.groupRoll = plat.roll + piDelta*s + roDelta*c;
-				}
+				if (plat)
+					plat.UpdateGroupInfo();
 			}
 		}
 		return true;
+	}
+
+	//============================
+	// UpdateGroupInfo
+	//============================
+	private void UpdateGroupInfo ()
+	{
+		//This is similar to MoveGroup() but backwards
+		let ori = group.origin;
+		double delta = DeltaAngle(ori.angle, ori.groupAngle);
+		double piDelta = DeltaAngle(ori.pitch, ori.groupPitch);
+		double roDelta = DeltaAngle(ori.roll, ori.groupRoll);
+
+		if (args[ARG_OPTIONS] & OPTFLAG_MIRROR)
+		{
+			vector3 offset = level.Vec3Diff(ori.groupPos, ori.pos);
+			groupPos = level.Vec3Offset(pos, offset);
+
+			groupAngle = angle - delta;
+			groupPitch = pitch - piDelta;
+			groupRoll = roll - roDelta;
+		}
+		else //Set up for proper orbiting
+		{
+			vector3 offset = level.Vec3Diff(ori.pos, pos);
+			offset = RotateVector3(offset, delta, piDelta, roDelta, ori.groupAngle, true);
+			groupPos = level.Vec3Offset(ori.groupPos, offset);
+
+			groupAngle = angle + delta;
+			double diff = DeltaAngle(ori.groupAngle, groupAngle);
+			double c = cos(diff), s = sin(diff);
+
+			groupPitch = pitch + piDelta*c - roDelta*s;
+			groupRoll = roll + piDelta*s + roDelta*c;
+		}
 	}
 
 	//============================
@@ -1032,7 +1039,7 @@ extend class FCW_Platform
 						stealPassenger = (top > plat.pos.z + plat.height);
 					else
 						stealPassenger = (
-							(args[ARG_OPTIONS] & OPTFLAG_MIRROR) != (plat.args[ARG_OPTIONS] & OPTFLAG_MIRROR) &&
+							(args[ARG_OPTIONS] & OPTFLAG_MIRROR) ^ (plat.args[ARG_OPTIONS] & OPTFLAG_MIRROR) &&
 							OverlapXY(self, onTopOfMe[i], radius) && !OverlapXY(plat, onTopOfMe[i], plat.radius) );
 
 					if (stealPassenger)
@@ -2699,7 +2706,20 @@ extend class FCW_Platform
 	{
 		ActorIterator it = platTid ? level.CreateActorIterator(platTid, "FCW_Platform") : null;
 		for (let plat = FCW_Platform(it ? it.Next() : act); plat; plat = it ? FCW_Platform(it.Next()) : null)
-			plat.args[ARG_OPTIONS] = (plat.args[ARG_OPTIONS] & ~toClear) | toSet;
+		{
+			int oldFlags = plat.args[ARG_OPTIONS];
+			int newFlags = (oldFlags & ~toClear) | toSet;
+			plat.args[ARG_OPTIONS] = newFlags;
+
+			//If the "mirror" option has changed and the group has an "origin",
+			//we must update the group info.
+			//(Having an "origin" usually means they are moving.)
+			if ((oldFlags & OPTFLAG_MIRROR) ^ (newFlags & OPTFLAG_MIRROR) &&
+				plat.group && plat.group.origin && plat != plat.group.origin)
+			{
+				plat.UpdateGroupInfo();
+			}
+		}
 	}
 
 	//============================
