@@ -1233,11 +1233,14 @@ extend class FCW_Platform
 
 			if (moved)
 			{
-				//Only remember the old position if 'mo' was moved.
-				//(Else we delete the 'passengers' entry containing 'mo', see below.)
-				preMovePos.Push(moOldPos.x);
-				preMovePos.Push(moOldPos.y);
-				preMovePos.Push(moOldPos.z);
+				if (!teleMove)
+				{
+					//Only remember the old position if 'mo' was moved.
+					//(Else we delete the 'passengers' entry containing 'mo', see below.)
+					preMovePos.Push(moOldPos.x);
+					preMovePos.Push(moOldPos.y);
+					preMovePos.Push(moOldPos.z);
+				}
 			}
 			else
 			{
@@ -1248,50 +1251,70 @@ extend class FCW_Platform
 				mo.A_ChangeLinkFlags(YES_BMAP);
 				passengers.Delete(i--);
 
-				//See if 'mo' would block the platform
-				let realPos = pos;
-				SetXYZ(endPos);
-				bool blocked = ( !teleMove && CollisionFlagChecks(mo, self) &&
-					OverlapZ(mo, self) && //Within Z range?
-					OverlapXY(mo, self) && //Within XY range?
-					mo.CanCollideWith(self, false) && self.CanCollideWith(mo, true) );
-				SetXYZ(realPos);
+				if (teleMove)
+					continue;
 
-				//See if the ones we moved already will collide with this one
-				//and if yes, move them back to their old positions.
-				//(If the platform's "blocked" then move everyone back unconditionally.)
-				for (int iOther = 0; iOther <= i; ++iOther)
+				Array<Actor> movedBack = { mo };
+				bool blocked = false;
+				for (int iMovedBack = 0; iMovedBack < movedBack.Size(); ++iMovedBack)
 				{
-					let otherMo = passengers[iOther];
-					if ( !blocked && ( !CollisionFlagChecks(otherMo, mo) ||
-						!OverlapZ(otherMo, mo) || //Out of Z range?
-						!OverlapXY(otherMo, mo) || //Out of XY range?
-						!otherMo.CanCollideWith(mo, false) || !mo.CanCollideWith(otherMo, true) ) )
+					mo = movedBack[iMovedBack];
+
+					if (!blocked)
 					{
-						continue;
+						//See if this 'mo' would block the platform
+						let realPos = pos;
+						SetXYZ(endPos);
+						if (CollisionFlagChecks(self, mo) &&
+							OverlapZ(self, mo) && //Within Z range?
+							OverlapXY(self, mo) && //Within XY range?
+							self.CanCollideWith(mo, false) && mo.CanCollideWith(self, true) )
+						{
+							blocked = true;
+						}
+						SetXYZ(realPos);
 					}
 
-					//Put 'otherMo' back at its old position
-					vector3 otherOldPos = (preMovePos[iOther*3], preMovePos[iOther*3 + 1], preMovePos[iOther*3 + 2]);
-					otherMo.SetOrigin(otherOldPos, true);
+					//See if the ones we moved already will collide with this one
+					//and if yes, move them back to their old positions.
+					//(If the platform's "blocked" then move everyone back unconditionally.)
+					for (int iOther = 0; iOther <= i; ++iOther)
+					{
+						let otherMo = passengers[iOther];
+						if (!blocked && ( !CollisionFlagChecks(otherMo, mo) ||
+							!OverlapZ(otherMo, mo) || //Out of Z range?
+							!OverlapXY(otherMo, mo) || //Out of XY range?
+							!otherMo.CanCollideWith(mo, false) || !mo.CanCollideWith(otherMo, true) ) )
+						{
+							continue;
+						}
 
-					otherMo.A_ChangeLinkFlags(YES_BMAP);
-					preMovePos.Delete(iOther*3, 3);
-					passengers.Delete(iOther--);
-					i--;
-				}
+						//Put 'otherMo' back at its old position
+						vector3 otherOldPos = (preMovePos[iOther*3], preMovePos[iOther*3 + 1], preMovePos[iOther*3 + 2]);
+						otherMo.SetOrigin(otherOldPos, true);
 
-				if (blocked)
-				{
-					for (i = 0; i < passengers.Size(); ++i)
-						passengers[i].A_ChangeLinkFlags(YES_BMAP); //Handle those that didn't get the chance to move
+						otherMo.A_ChangeLinkFlags(YES_BMAP);
+						preMovePos.Delete(iOther*3, 3);
+						passengers.Delete(iOther--);
+						i--;
 
-					if (portTwin)
-					for (i = 0; i < portTwin.passengers.Size(); ++i)
-						portTwin.passengers[i].A_ChangeLinkFlags(YES_BMAP);
+						if (!blocked)
+							movedBack.Push(otherMo);
+					}
 
-					PushObstacle(mo, level.Vec3Diff(startPos, endPos));
-					return false;
+					if (blocked)
+					{
+						for (i = 0; i < passengers.Size(); ++i)
+							passengers[i].A_ChangeLinkFlags(YES_BMAP); //Handle those that didn't get the chance to move
+
+						if (portTwin)
+						for (i = 0; i < portTwin.passengers.Size(); ++i)
+							portTwin.passengers[i].A_ChangeLinkFlags(YES_BMAP);
+
+						//It doesn't matter who "blocked" the platform; the first to move back always takes the blame
+						PushObstacle(movedBack[0], level.Vec3Diff(startPos, endPos));
+						return false;
+					}
 				}
 			}
 		}
