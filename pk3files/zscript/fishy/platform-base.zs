@@ -1255,25 +1255,18 @@ extend class FCW_Platform
 					continue;
 
 				Array<Actor> movedBack = { mo };
-				bool blocked = false;
 				for (int iMovedBack = 0; iMovedBack < movedBack.Size(); ++iMovedBack)
 				{
 					mo = movedBack[iMovedBack];
 
-					if (!blocked)
-					{
-						//See if this 'mo' would block the platform
-						let realPos = pos;
-						SetXYZ(endPos);
-						if (CollisionFlagChecks(self, mo) &&
+					//See if this 'mo' would block the platform
+					let realPos = pos;
+					SetXYZ(endPos);
+					bool blocked = (CollisionFlagChecks(self, mo) &&
 							OverlapZ(self, mo) && //Within Z range?
 							OverlapXY(self, mo) && //Within XY range?
-							self.CanCollideWith(mo, false) && mo.CanCollideWith(self, true) )
-						{
-							blocked = true;
-						}
-						SetXYZ(realPos);
-					}
+							self.CanCollideWith(mo, false) && mo.CanCollideWith(self, true) );
+					SetXYZ(realPos);
 
 					//See if the ones we moved already will collide with this one
 					//and if yes, move them back to their old positions.
@@ -1763,14 +1756,15 @@ extend class FCW_Platform
 				portTwin.portTwin = self;
 				portTwin.SetStateLabel("PortalCopy"); //Invisible
 				portTwin.bPortCopy = true;
-				portTwin.bCannotPush = bCannotPush;
-				portTwin.args[ARG_OPTIONS] = (args[ARG_OPTIONS] & (OPTFLAG_IGNOREGEO | OPTFLAG_ADDVELJUMP | OPTFLAG_HURTFULPUSH | OPTFLAG_NOPITCHROLL));
-				portTwin.args[ARG_CRUSHDMG] = args[ARG_CRUSHDMG];
 			}
 		}
 
 		if (portTwin)
 		{
+			portTwin.bCannotPush = bCannotPush;
+			portTwin.args[ARG_OPTIONS] = args[ARG_OPTIONS];
+			portTwin.args[ARG_CRUSHDMG] = args[ARG_CRUSHDMG];
+
 			if (portTwin.bNoBlockmap && port)
 			{
 				portTwin.A_ChangeLinkFlags(YES_BMAP);
