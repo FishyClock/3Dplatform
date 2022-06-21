@@ -1764,7 +1764,7 @@ extend class FCW_Platform
 				portTwin.SetStateLabel("PortalCopy"); //Invisible
 				portTwin.bPortCopy = true;
 				portTwin.bCannotPush = bCannotPush;
-				portTwin.args[ARG_OPTIONS] = (args[ARG_OPTIONS] & (OPTFLAG_IGNOREGEO | OPTFLAG_ADDVELJUMP | OPTFLAG_HURTFULPUSH));
+				portTwin.args[ARG_OPTIONS] = (args[ARG_OPTIONS] & (OPTFLAG_IGNOREGEO | OPTFLAG_ADDVELJUMP | OPTFLAG_HURTFULPUSH | OPTFLAG_NOPITCHROLL));
 				portTwin.args[ARG_CRUSHDMG] = args[ARG_CRUSHDMG];
 			}
 		}
