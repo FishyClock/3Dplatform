@@ -679,10 +679,11 @@ extend class FCW_Platform
 		}
 		else
 		{
-			//Don't bother if it's close to nothing
-			if (pushForce.x ~== 0) pushForce.x = 0;
-			if (pushForce.y ~== 0) pushForce.y = 0;
-			if (pushForce.z ~== 0) pushForce.z = 0;
+			//Don't accept close-to-zero velocity.
+			//And don't apply 'pushForce' if the obstacle's velocity speed is equal to or exceeds the 'pushForce' in a particular direction.
+			if (pushForce.x ~== 0 || (pushForce.x < 0 && pushed.vel.x <= pushForce.x) || (pushForce.x > 0 && pushed.vel.x >= pushForce.x)) pushForce.x = 0;
+			if (pushForce.y ~== 0 || (pushForce.y < 0 && pushed.vel.y <= pushForce.y) || (pushForce.y > 0 && pushed.vel.y >= pushForce.y)) pushForce.y = 0;
+			if (pushForce.z ~== 0 || (pushForce.z < 0 && pushed.vel.z <= pushForce.z) || (pushForce.z > 0 && pushed.vel.z >= pushForce.z)) pushForce.z = 0;
 		}
 
 		if (pushForce.z && !OverlapXY(self, pushed)) //Out of XY range?
@@ -1138,6 +1139,7 @@ extend class FCW_Platform
 				(cos(forward-90)*roDelta, sin(forward-90)*roDelta); //Right/left
 		}
 
+		vector3 pushForce = level.Vec3Diff(startPos, endPos);
 		Array<double> preMovePos; //Sadly we can't have a vector2/3 dyn array
 		for (int i = 0; i < passengers.Size(); ++i)
 		{
@@ -1254,6 +1256,10 @@ extend class FCW_Platform
 				if (teleMove)
 					continue;
 
+				Actor blocker = mo.blockingMobj;
+				if (blocker && !(blocker is "FCW_Platform"))
+					PushObstacle(blocker, pushForce);
+
 				Array<Actor> movedBack = { mo };
 				for (int iMovedBack = 0; iMovedBack < movedBack.Size(); ++iMovedBack)
 				{
@@ -1292,7 +1298,10 @@ extend class FCW_Platform
 						i--;
 
 						if (!blocked)
+						{
 							movedBack.Push(otherMo);
+							otherMo.blockingMobj = mo;
+						}
 					}
 
 					if (blocked)
@@ -1304,8 +1313,13 @@ extend class FCW_Platform
 						for (i = 0; i < portTwin.passengers.Size(); ++i)
 							portTwin.passengers[i].A_ChangeLinkFlags(YES_BMAP);
 
-						//It doesn't matter who "blocked" the platform; the first to move back always takes the blame
-						PushObstacle(movedBack[0], level.Vec3Diff(startPos, endPos));
+						PushObstacle(mo, pushForce);
+						if (mo != movedBack[0]) //We (potentially) already pushed/crushed the first one's blocker
+						{
+							blocker = mo.blockingMobj;
+							if (blocker && !(blocker is "FCW_Platform"))
+								PushObstacle(blocker, pushForce);
+						}
 						return false;
 					}
 				}
