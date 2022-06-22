@@ -1339,13 +1339,16 @@ extend class FCW_Platform
 		}
 
 		//Anyone left in the 'passengers' array has moved successfully.
-		//Change their angles.
+		//Adjust their angles and velocities.
 		for (int i = 0; i < passengers.Size(); ++i)
 		{
 			let mo = passengers[i];
 			mo.A_ChangeLinkFlags(YES_BMAP);
 			if (delta)
 				mo.A_SetAngle(Normalize180(mo.angle + delta), SPF_INTERPOLATE);
+
+			if (mo.bOnMobj) //Standing on platform or on another passenger?
+				mo.vel.xy = (mo.vel.x*c - mo.vel.y*s, mo.vel.x*s + mo.vel.y*c); //Rotate it
 		}
 
 		if (portTwin)
