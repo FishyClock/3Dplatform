@@ -911,10 +911,6 @@ extend class FCW_Platform
 		//In addition to fetching passengers, this is where corpses get crushed, too. Items won't get destroyed.
 		//Returns false if one or more actors are completely stuck inside platform unless 'ignoreObs' is true.
 
-		//Skip this if we have or don't have certain flags
-		if (!bSolid || bThruActors || !bActLikeBridge)
-			return true;
-
 		double top = pos.z + height;
 		Array<Actor> miscActors; //The actors on top of the passengers (We'll move those, too)
 		Array<Actor> onTopOfMe;
@@ -1783,8 +1779,6 @@ extend class FCW_Platform
 			return true;
 		}
 
-		bool isCarrier = (bSolid && !bThruActors && bActLikeBridge);
-
 		Line port = null;
 		if (!teleMove && isCarrier)
 		{
@@ -1797,15 +1791,24 @@ extend class FCW_Platform
 				portTwin.bPortCopy = true;
 			}
 		}
-		else if (portTwin && portTwin.bPortCopy && !isCarrier)
-		{
-			portTwin.portTwin = null;
-			portTwin.Destroy();
-			portTwin = null;
-		}
 
 		if (portTwin)
 		{
+			//Take into account SetActorFlag() shenanigans.
+			//For sanity's sake just copy some
+			//of the flags that are defined in
+			//the "default" block plus CANNOTPUSH.
+			//INTERPOLATEANGLES is a render flag so skip it.
+
+			portTwin.bActLikeBridge = bActLikeBridge;
+			portTwin.bNoGravity = bNoGravity;
+			portTwin.bCanPass = bCanPass;
+			portTwin.bSolid = bSolid;
+			portTwin.bShootable = bShootable;
+			portTwin.bNoDamage = bNoDamage;
+			portTwin.bNoBlood = bNoBlood;
+			portTwin.bDontThrust = bDontThrust;
+			portTwin.bNotAutoAimed = bNotAutoAimed;
 			portTwin.bCannotPush = bCannotPush;
 			portTwin.args[ARG_OPTIONS] = args[ARG_OPTIONS];
 			portTwin.args[ARG_CRUSHDMG] = args[ARG_CRUSHDMG];
