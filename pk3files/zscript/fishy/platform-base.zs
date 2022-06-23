@@ -458,8 +458,8 @@ extend class FCW_Platform
 
 		if (!foundOne)
 		{
-			Console.Printf("\n\ckPlatform class '" .. GetClassName() .. "' with tid " .. tid .. " at position " .. pos .. ":\n" ..
-				"\ckCan't find platform(s) with tid " .. otherPlatTid .. " to group with.");
+			Console.Printf("\n\ckPlatform class '" .. GetClassName() .. "' with tid " .. tid .. " at position " .. pos ..
+				":\n\ckCan't find platform(s) with tid " .. otherPlatTid .. " to group with.");
 			return false;
 		}
 
@@ -911,6 +911,10 @@ extend class FCW_Platform
 		//In addition to fetching passengers, this is where corpses get crushed, too. Items won't get destroyed.
 		//Returns false if one or more actors are completely stuck inside platform unless 'ignoreObs' is true.
 
+		//Skip this if we have or don't have certain flags
+		if (!bSolid || bThruActors || !bActLikeBridge)
+			return true;
+
 		double top = pos.z + height;
 		Array<Actor> miscActors; //The actors on top of the passengers (We'll move those, too)
 		Array<Actor> onTopOfMe;
@@ -1175,6 +1179,7 @@ extend class FCW_Platform
 				//then it has to be split up into smaller steps.
 				//This is needed for proper collision and to ensure
 				//lines with specials aren't skipped.
+				//NOTE: This was based on similar code from P_XYMovement().
 				double maxMove = max(1, mo.radius - 1);
 				double moveSpeed = max(abs(stepMove.x), abs(stepMove.y));
 				if (moveSpeed > maxMove)
@@ -1468,6 +1473,8 @@ extend class FCW_Platform
 
 			//To be a linked/static line portal, the portal groups must be non-zero
 			//and they must be different.
+			//This check is not a guarantee and I wish there was a
+			//IsLinkedLinePortal() function but at the time of typing there isn't one.
 			if (port.frontSector.portalGroup && dest.frontSector.portalGroup &&
 				port.frontSector.portalGroup != dest.frontSector.portalGroup)
 			{
@@ -1485,11 +1492,12 @@ extend class FCW_Platform
 				}
 			}
 
-			//Line bounding box
-			double minX2 = min(port.v1.p.x, port.v2.p.x);
-			double maxX2 = max(port.v1.p.x, port.v2.p.x);
-			double minY2 = min(port.v1.p.y, port.v2.p.y);
-			double maxY2 = max(port.v1.p.y, port.v2.p.y);
+			//Line bounding box.
+			//Reference for order: https://github.com/coelckers/gzdoom/blob/master/src/common/utility/m_bbox.h
+			double minX2 = port.bbox[2]; //left
+			double maxX2 = port.bbox[3]; //right
+			double minY2 = port.bbox[1]; //bottom
+			double maxY2 = port.bbox[0]; //top
 
 			if (minX1 >= maxX2 || minX2 >= maxX1 ||
 				minY1 >= maxY2 || minY2 >= maxY1)
@@ -1775,8 +1783,10 @@ extend class FCW_Platform
 			return true;
 		}
 
+		bool isCarrier = (bSolid && !bThruActors && bActLikeBridge);
+
 		Line port = null;
-		if (!teleMove)
+		if (!teleMove && isCarrier)
 		{
 			port = GetUnlinkedPortal();
 			if (port && !portTwin)
@@ -1786,6 +1796,12 @@ extend class FCW_Platform
 				portTwin.SetStateLabel("PortalCopy"); //Invisible
 				portTwin.bPortCopy = true;
 			}
+		}
+		else if (portTwin && portTwin.bPortCopy && !isCarrier)
+		{
+			portTwin.portTwin = null;
+			portTwin.Destroy();
+			portTwin = null;
 		}
 
 		if (portTwin)
