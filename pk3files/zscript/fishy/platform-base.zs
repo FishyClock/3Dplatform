@@ -1780,7 +1780,7 @@ extend class FCW_Platform
 		}
 
 		Line port = null;
-		if (!teleMove && isCarrier)
+		if (!teleMove)
 		{
 			port = GetUnlinkedPortal();
 			if (port && !portTwin)
