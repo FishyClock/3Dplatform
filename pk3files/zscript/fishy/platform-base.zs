@@ -678,17 +678,29 @@ extend class FCW_Platform
 		{
 			pushForce = (0, 0, 0);
 		}
+		else if (!OverlapXY(self, pushed)) //Out of XY range?
+		{
+			pushForce.z = 0;
+		}
 		else
 		{
-			//Don't accept close-to-zero velocity.
-			//And don't apply 'pushForce' if the obstacle's velocity speed is equal to or exceeds the 'pushForce' in a particular direction.
-			if (pushForce.x ~== 0 || (pushForce.x < 0 && pushed.vel.x <= pushForce.x) || (pushForce.x > 0 && pushed.vel.x >= pushForce.x)) pushForce.x = 0;
-			if (pushForce.y ~== 0 || (pushForce.y < 0 && pushed.vel.y <= pushForce.y) || (pushForce.y > 0 && pushed.vel.y >= pushForce.y)) pushForce.y = 0;
-			if (pushForce.z ~== 0 || (pushForce.z < 0 && pushed.vel.z <= pushForce.z) || (pushForce.z > 0 && pushed.vel.z >= pushForce.z)) pushForce.z = 0;
+			bool minForce = false;
+			if (pushForce.xy ~== (0, 0))
+			{
+				pushForce.x = 0.2;
+				minForce = true;
+			}
+
+			double delta = DeltaAngle(VectorAngle(pushForce.x, pushForce.y), AngleTo(pushed));
+			if (minForce || delta > 90 || delta < -90)
+				pushForce.xy = RotateVector(pushForce.xy, delta); //Push away from platform's center
 		}
 
-		if (pushForce.z && !OverlapXY(self, pushed)) //Out of XY range?
-			pushForce.z = 0;
+		//Don't accept close-to-zero velocity.
+		//And don't apply 'pushForce' if the obstacle's velocity speed is equal to or exceeds the 'pushForce' in a particular direction.
+		if (pushForce.x ~== 0 || (pushForce.x < 0 && pushed.vel.x <= pushForce.x) || (pushForce.x > 0 && pushed.vel.x >= pushForce.x)) pushForce.x = 0;
+		if (pushForce.y ~== 0 || (pushForce.y < 0 && pushed.vel.y <= pushForce.y) || (pushForce.y > 0 && pushed.vel.y >= pushForce.y)) pushForce.y = 0;
+		if (pushForce.z ~== 0 || (pushForce.z < 0 && pushed.vel.z <= pushForce.z) || (pushForce.z > 0 && pushed.vel.z >= pushForce.z)) pushForce.z = 0;
 
 		let oldZ = pushForce.z;
 		if (pushed.bCantLeaveFloorPic || //No Z pushing for CANTLEAVEFLOORPIC actors.
