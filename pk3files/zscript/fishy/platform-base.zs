@@ -1910,6 +1910,7 @@ extend class FCW_Platform
 		//If the move is equal or larger than our radius
 		//then it has to be split up into smaller steps.
 		//This is needed for proper collision.
+		//NOTE: This was based on similar code from P_XYMovement().
 		double maxMove = max(1, radius - 1);
 		double moveSpeed = max(abs(stepMove.x), abs(stepMove.y));
 		if (moveSpeed > maxMove)
