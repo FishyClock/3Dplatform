@@ -1464,7 +1464,7 @@ extend class FCW_Platform
 		double minY1 = pos.y - size;
 		double maxY1 = pos.y + size;
 
-		BlockLinesIterator it = lastUPort ? null : BlockLinesIterator.Create(self);
+		BlockLinesIterator it = lastUPort ? null : BlockLinesIterator.Create(self, size);
 		while (lastUPort || it.Next())
 		{
 			Line port = lastUPort ? lastUPort : it.curLine;
@@ -1474,7 +1474,7 @@ extend class FCW_Platform
 				if (lastUPort)
 				{
 					lastUPort = null;
-					it = BlockLinesIterator.Create(self);
+					it = BlockLinesIterator.Create(self, size);
 				}
 				continue;
 			}
@@ -1494,7 +1494,7 @@ extend class FCW_Platform
 					if (lastUPort)
 					{
 						lastUPort = null;
-						it = BlockLinesIterator.Create(self);
+						it = BlockLinesIterator.Create(self, size);
 					}
 					continue; //We don't want linked/static line portals
 				}
@@ -1513,7 +1513,7 @@ extend class FCW_Platform
 				if (lastUPort)
 				{
 					lastUPort = null;
-					it = BlockLinesIterator.Create(self);
+					it = BlockLinesIterator.Create(self, size);
 				}
 				continue; //BBoxes not intersecting
 			}
@@ -1523,7 +1523,7 @@ extend class FCW_Platform
 				if (lastUPort)
 				{
 					lastUPort = null;
-					it = BlockLinesIterator.Create(self);
+					it = BlockLinesIterator.Create(self, size);
 				}
 				continue; //Center point not in front of line
 			}
@@ -1536,7 +1536,7 @@ extend class FCW_Platform
 				if (lastUPort)
 				{
 					lastUPort = null;
-					it = BlockLinesIterator.Create(self);
+					it = BlockLinesIterator.Create(self, size);
 				}
 				continue; //All corners on one side; there's no intersection with line
 			}
