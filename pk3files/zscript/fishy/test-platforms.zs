@@ -106,3 +106,21 @@ class TESTBlueishPlatform : FCW_Platform
 		Stop;
 	}
 }
+
+class TESTPushCrate : FCW_Platform
+{
+	Default
+	{
+		Radius 48;
+		Height 80;
+		+PUSHABLE;
+		-NOGRAVITY;
+	}
+
+	States
+	{
+	Spawn:
+		MODL A -1;
+		Stop;
+	}
+}

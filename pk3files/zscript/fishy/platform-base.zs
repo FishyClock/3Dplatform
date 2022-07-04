@@ -236,6 +236,8 @@ extend class FCW_Platform
 	private bool bPortCopy;
 	double portDelta;
 	int acsFlags;
+	transient int lastGetNPTime; //Make sure there's only one GetNewPassengers() blockmap search per tic
+	transient bool lastGetNPResult;
 
 	//Unlike PathFollower classes, our interpolations are done with
 	//vector3 coordinates instead of checking InterpolationPoint positions.
@@ -285,6 +287,8 @@ extend class FCW_Platform
 		bPortCopy = false;
 		portDelta = 0;
 		acsFlags = 0;
+		lastGetNPTime = 0;
+		lastGetNPResult = false;
 
 		pCurr = pPrev = pNext = pNextNext = (0, 0, 0);
 		pCurrAngs = pPrevAngs = pNextAngs = pNextNextAngs = (0, 0, 0);
@@ -823,10 +827,7 @@ extend class FCW_Platform
 		if (prevNode && !goToNode)
 		{
 			//'pPrev' has to be adjusted if 'currNode' position is different from platform's.
-			//Which can happen because of non-static line portals.
-			//(But to be perfectly honest, the offsetting done here is
-			//arbitrary on my part because the differences on
-			//a spline path, with or without the offsetting, are subtle.)
+			//Which can happen because of non-static line portals or because of velocity movement.
 			vector3 offset = currNode ? currNode.Vec3To(self) : (0, 0, 0);
 			pPrev = pos + Vec3To(prevNode) + offset; //Make it portal aware in a way so TryMove() can handle it
 			pPrevAngs = (
@@ -890,6 +891,39 @@ extend class FCW_Platform
 	}
 
 	//============================
+	// AdjustInterpolationCoordinates
+	//============================
+	private void AdjustInterpolationCoordinates (vector3 startPos, vector3 endPos, double delta)
+	{
+		//Used for when crossing portals
+	
+		//Offset and possibly rotate the coordinates
+		pPrev -= startPos;
+		pCurr -= startPos;
+		pNext -= startPos;
+		pNextNext -= startPos;
+
+		if (delta)
+		{
+			pPrevAngs.x += delta;
+			pCurrAngs.x += delta;
+			pNextAngs.x += delta;
+			pNextNextAngs.x += delta;
+
+			//Rotate them
+			double c = cos(delta), s = sin(delta);
+			pPrev.xy = (pPrev.x*c - pPrev.y*s, pPrev.x*s + pPrev.y*c);
+			pCurr.xy = (pCurr.x*c - pCurr.y*s, pCurr.x*s + pCurr.y*c);
+			pNext.xy = (pNext.x*c - pNext.y*s, pNext.x*s + pNext.y*c);
+			pNextNext.xy = (pNextNext.x*c - pNextNext.y*s, pNextNext.x*s + pNextNext.y*c);
+		}
+		pPrev += endPos;
+		pCurr += endPos;
+		pNext += endPos;
+		pNextNext += endPos;
+	}
+
+	//============================
 	// IsCarriable
 	//============================
 	static bool IsCarriable (Actor mo)
@@ -922,6 +956,10 @@ extend class FCW_Platform
 	{
 		//In addition to fetching passengers, this is where corpses get crushed, too. Items won't get destroyed.
 		//Returns false if one or more actors are completely stuck inside platform unless 'ignoreObs' is true.
+
+		if (lastGetNPTime == level.mapTime)
+			return lastGetNPResult; //Already called in this tic
+		lastGetNPTime = level.mapTime;
 
 		double top = pos.z + height;
 		Array<Actor> miscActors; //The actors on top of the passengers (We'll move those, too)
@@ -1021,7 +1059,10 @@ extend class FCW_Platform
 			corpses[i].Grind(false);
 
 		if (!onTopOfMe.Size() && !miscActors.Size())
+		{
+			lastGetNPResult = result;
 			return result; //Found nothing new to carry so stop here
+		}
 
 		//Take into account the possibility that not all
 		//group members can be found in a blockmap search.
@@ -1092,6 +1133,7 @@ extend class FCW_Platform
 				}
 			}
 		}
+		lastGetNPResult = result;
 		return result;
 	}
 
@@ -1809,7 +1851,7 @@ extend class FCW_Platform
 			//Take into account SetActorFlag() shenanigans.
 			//For sanity's sake just copy some
 			//of the flags that are defined in
-			//the "default" block plus CANNOTPUSH.
+			//the "default" block plus CANNOTPUSH and PUSHABLE.
 			//INTERPOLATEANGLES is a render flag so skip it.
 
 			portTwin.bActLikeBridge = bActLikeBridge;
@@ -1822,6 +1864,7 @@ extend class FCW_Platform
 			portTwin.bDontThrust = bDontThrust;
 			portTwin.bNotAutoAimed = bNotAutoAimed;
 			portTwin.bCannotPush = bCannotPush;
+			portTwin.bPushable = bPushable;
 			portTwin.args[ARG_OPTIONS] = args[ARG_OPTIONS];
 			portTwin.args[ARG_CRUSHDMG] = args[ARG_CRUSHDMG];
 
@@ -2204,33 +2247,7 @@ extend class FCW_Platform
 			return false;
 
 		if (pos != newPos) //Crossed a portal?
-		{
-			//Offset and possibly rotate the coordinates
-			pPrev -= newPos;
-			pCurr -= newPos;
-			pNext -= newPos;
-			pNextNext -= newPos;
-
-			double delta = DeltaAngle(newAngle, angle);
-			if (delta)
-			{
-				pPrevAngs.x += delta;
-				pCurrAngs.x += delta;
-				pNextAngs.x += delta;
-				pNextNextAngs.x += delta;
-
-				//Rotate them
-				double c = cos(delta), s = sin(delta);
-				pPrev.xy = (pPrev.x*c - pPrev.y*s, pPrev.x*s + pPrev.y*c);
-				pCurr.xy = (pCurr.x*c - pCurr.y*s, pCurr.x*s + pCurr.y*c);
-				pNext.xy = (pNext.x*c - pNext.y*s, pNext.x*s + pNext.y*c);
-				pNextNext.xy = (pNextNext.x*c - pNextNext.y*s, pNextNext.x*s + pNextNext.y*c);
-			}
-			pPrev += pos;
-			pCurr += pos;
-			pNext += pos;
-			pNextNext += pos;
-		}
+			AdjustInterpolationCoordinates(newPos, pos, DeltaAngle(newAngle, angle));
 
 		//If one of our attached platforms is blocked, pretend
 		//we're blocked too. (Our move won't be cancelled.)
@@ -2342,6 +2359,8 @@ extend class FCW_Platform
 		if (!bActive || bPortCopy)
 			return;
 
+		vel = (0, 0, 0);
+
 		if (!group || !group.origin)
 		{
 			if (time <= 1.0) //Not reached destination?
@@ -2383,6 +2402,8 @@ extend class FCW_Platform
 		{
 			if (bPortCopy)
 				return;
+
+			vel = (0, 0, 0);
 
 			if (portTwin)
 				portTwin.bActive = false;
@@ -2469,6 +2490,24 @@ extend class FCW_Platform
 	}
 
 	//============================
+	// PlatVelMove
+	//============================
+	private bool PlatVelMove (vector3 velMove)
+	{
+		vector3 newPos = pos + velMove;
+		double startAngle = angle;
+		if (!PlatMove(newPos, angle, pitch, roll, 0))
+			return false;
+
+		pPrev += velMove;
+		pCurr += velMove;
+		if (pos != newPos) //Crossed a portal?
+			AdjustInterpolationCoordinates(newPos, pos, DeltaAngle(startAngle, angle));
+
+		return true;
+	}
+
+	//============================
 	// Tick (override)
 	//============================
 	override void Tick ()
@@ -2477,14 +2516,28 @@ extend class FCW_Platform
 		if (bPortCopy || IsFrozen())
 			return;
 
+		if (portTwin && portTwin.bPortCopy)
+		{
+			vel += portTwin.vel;
+			portTwin.vel = (0, 0, 0);
+		}
+
 		if (group)
 		{
 			if (group.members.Find(self) >= group.members.Size())
 				group.members.Push(self); //Ensure we're in the group array
 
-			if (!group.origin && bActive)
+			if (!group.origin && (bActive || vel != (0, 0, 0)))
+			{
 				group.origin = self;
+			}
+			else if (group.origin && group.origin != self)
+			{
+				group.origin.vel += vel;
+				vel = (0, 0, 0);
+			}
 		}
+		bool velocityMove = false;
 
 		if (!group || !group.origin)
 		{
@@ -2495,6 +2548,7 @@ extend class FCW_Platform
 				portTwin.HandleOldPassengers();
 				portTwin.HandleStuckActors();
 			}
+			velocityMove = (vel != (0, 0, 0) && PlatVelMove(vel));
 		}
 		else if (group.origin == self)
 		{
@@ -2512,6 +2566,19 @@ extend class FCW_Platform
 					}
 				}
 			}
+			velocityMove = (vel != (0, 0, 0) && PlatVelMove(vel) && MoveGroup(0));
+		}
+
+		if (!velocityMove)
+		{
+			vel = (0, 0, 0);
+		}
+		else
+		{
+			vel *= GetFriction();
+			if (abs(vel.x) < minVel) vel.x = 0;
+			if (abs(vel.y) < minVel) vel.y = 0;
+			if (abs(vel.z) < minVel) vel.z = 0;
 		}
 
 		while (bActive && (!group || group.origin == self))
@@ -2611,6 +2678,7 @@ extend class FCW_Platform
 				{
 					SetInterpolationCoordinates();
 					time -= 1.0;
+					vel = (0, 0, 0);
 				}
 			}
 			break;
@@ -2663,6 +2731,7 @@ extend class FCW_Platform
 			Normalize180(angle),
 			Normalize180(pitch),
 			Normalize180(roll));
+		vel = (0, 0, 0);
 	}
 
 	//

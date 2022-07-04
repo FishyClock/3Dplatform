@@ -42,6 +42,16 @@ Model TESTBlueishPlatform
 	FrameIndex MODL A 0 0
 }
 
+Model TESTPushCrate
+{
+	USEACTORPITCH
+	USEACTORROLL
+
+	Path "models"
+	Model 0 "TESTPushCrate.obj"
+	FrameIndex MODL A 0 0
+}
+
 Model DemoCavePlat
 {
 	USEACTORPITCH

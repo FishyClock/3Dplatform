@@ -1,0 +1,9 @@
+terrain TESTICE
+{
+	friction 1.2
+}
+
+terrain TESTMUD
+{
+	friction 0.3
+}
