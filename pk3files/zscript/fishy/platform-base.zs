@@ -287,7 +287,7 @@ extend class FCW_Platform
 		bPortCopy = false;
 		portDelta = 0;
 		acsFlags = 0;
-		lastGetNPTime = 0;
+		lastGetNPTime = -1;
 		lastGetNPResult = false;
 
 		pCurr = pPrev = pNext = pNextNext = (0, 0, 0);
@@ -327,7 +327,7 @@ extend class FCW_Platform
 			//In case the mapper placed walking monsters on the platform
 			//get something for HandleOldPassengers() to monitor.
 			GetNewPassengers(true);
-			return; 
+			return;
 		}
 
 		if (!SetUpPath(args[ARG_NODETID], noPrefix))
@@ -2492,12 +2492,37 @@ extend class FCW_Platform
 	//============================
 	// PlatVelMove
 	//============================
-	private bool PlatVelMove (vector3 velMove)
+	private bool PlatVelMove (out vector3 velMove)
 	{
+		//Apparently slamming into the floor/ceiling doesn't
+		//count as a cancelled move so take care of that.
+		if ((velMove.z < 0 && pos.z <= floorZ) ||
+			(velMove.z > 0 && pos.z + height >= ceilingZ))
+		{
+			velMove.z = 0;
+			if (velMove.xy == (0, 0))
+				return false;
+		}
+
 		vector3 newPos = pos + velMove;
 		double startAngle = angle;
 		if (!PlatMove(newPos, angle, pitch, roll, 0))
-			return false;
+		{
+			//Check if it's a culprit that blocks XY movement
+			if (!velMove.z || blockingLine || (blockingMobj && !OverlapXY(self, blockingMobj)))
+				return false;
+
+			//Try again but without the Z component
+			let oldBlocker = blockingMobj;
+			velMove.z = 0;
+			newPos.z = pos.z;
+			if (velMove.xy == (0, 0) || !PlatMove(newPos, angle, pitch, roll, 0))
+			{
+				if (!blockingMobj)
+					blockingMobj = oldBlocker;
+				return false;
+			}
+		}
 
 		pPrev += velMove;
 		pCurr += velMove;
@@ -2520,6 +2545,13 @@ extend class FCW_Platform
 		{
 			vel += portTwin.vel;
 			portTwin.vel = (0, 0, 0);
+		}
+
+		if (!bNoGravity && pos.z > floorZ && !stuckActors.Size())
+		{
+			let mo = blockingMobj;
+			if (!mo || abs(pos.z - (mo.pos.z + mo.height)) > TOP_EPSILON || !OverlapXY(self, mo))
+				FallAndSink(GetGravity(), floorZ);
 		}
 
 		if (group)
@@ -2573,12 +2605,11 @@ extend class FCW_Platform
 		{
 			vel = (0, 0, 0);
 		}
-		else
+		else if (!bNoGravity && vel.xy != (0, 0))
 		{
-			vel *= GetFriction();
+			vel.xy *= GetFriction();
 			if (abs(vel.x) < minVel) vel.x = 0;
 			if (abs(vel.y) < minVel) vel.y = 0;
-			if (abs(vel.z) < minVel) vel.z = 0;
 		}
 
 		while (bActive && (!group || group.origin == self))
@@ -2682,6 +2713,14 @@ extend class FCW_Platform
 				}
 			}
 			break;
+		}
+
+		if (!(args[ARG_OPTIONS] & OPTFLAG_IGNOREGEO))
+		{
+			if (pos.z < floorZ)
+				SetZ(floorZ);
+			else if (pos.z + height > ceilingZ)
+				SetZ(pos.z + height);
 		}
 
 		if (!group || !group.origin)
@@ -2827,7 +2866,7 @@ extend class FCW_Platform
 		if (group && group.origin)
 			plat = group.origin;
 
-		return (plat.bActive && (
+		return ((plat.bActive || plat.vel != (0, 0, 0)) && (
 				plat.pos != plat.oldPos ||
 				plat.angle != plat.oldAngle ||
 				plat.pitch != plat.oldPitch ||
