@@ -238,6 +238,7 @@ extend class FCW_Platform
 	int acsFlags;
 	transient int lastGetNPTime; //Make sure there's only one GetNewPassengers() blockmap search per tic
 	transient bool lastGetNPResult;
+	transient int lastGetUPTime; //Same deal for GetUnlinkedPortal()
 
 	//Unlike PathFollower classes, our interpolations are done with
 	//vector3 coordinates instead of checking InterpolationPoint positions.
@@ -289,6 +290,7 @@ extend class FCW_Platform
 		acsFlags = 0;
 		lastGetNPTime = -1;
 		lastGetNPResult = false;
+		lastGetUPTime = -1;
 
 		pCurr = pPrev = pNext = pNextNext = (0, 0, 0);
 		pCurrAngs = pPrevAngs = pNextAngs = pNextNextAngs = (0, 0, 0);
@@ -1497,6 +1499,10 @@ extend class FCW_Platform
 	//============================
 	private Line GetUnlinkedPortal ()
 	{
+		if (lastGetUPTime == level.mapTime)
+			return lastUPort; //Already called in this tic
+		lastGetUPTime = level.mapTime;
+
 		//Our bounding box
 		double size = radius + EXTRA_SIZE; //Pretend we're a bit bigger
 		double minX1 = pos.x - size;
@@ -2092,6 +2098,7 @@ extend class FCW_Platform
 			if (crossedPortal)
 			{
 				lastUPort = port.GetPortalDestination();
+				lastGetUPTime = -1;
 				port = GetUnlinkedPortal();
 			}
 		}
