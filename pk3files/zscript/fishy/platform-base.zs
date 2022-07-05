@@ -676,9 +676,9 @@ extend class FCW_Platform
 	//============================
 	private void PushObstacle (Actor pushed, vector3 pushForce)
 	{
-		//Respect CANNOTPUSH and DONTTHRUST unless it's a stuck actor
-		if ((bCannotPush || pushed.bDontThrust) &&
-			stuckActors.Find(pushed) >= stuckActors.Size())
+		if ((bCannotPush && stuckActors.Find(pushed) >= stuckActors.Size() ) || //Can't push it if we have CANNOTPUSH and this isn't an actor that's stuck in us.
+			(!pushed.bPushable && //Always push actors that have PUSHABLE.
+			(pushed.bDontThrust || pushed is "FCW_Platform") ) ) //Otherwise, only push it if it's a non-platform and doesn't have DONTTHRUST.
 		{
 			pushForce = (0, 0, 0);
 		}
@@ -1317,9 +1317,8 @@ extend class FCW_Platform
 					let oldCannotPush = bCannotPush;
 					bCannotPush = false;
 
-					let blocker = mo.blockingMobj;
-					if (blocker && !(blocker is "FCW_Platform"))
-						PushObstacle(blocker, pushForce);
+					if (mo.blockingMobj)
+						PushObstacle(mo.blockingMobj, pushForce);
 
 					bCannotPush = oldCannotPush;
 				}
@@ -1383,9 +1382,8 @@ extend class FCW_Platform
 							//'OPTFLAG_PASSCANPUSH' doesn't matter here since it's considered
 							//the platform doing the pushing/crushing.
 							//The blocker in this case can only be a former passenger.
-							let blocker = mo.blockingMobj;
-							if (blocker && !(blocker is "FCW_Platform"))
-								PushObstacle(blocker, pushForce);
+							if (mo.blockingMobj)
+								PushObstacle(mo.blockingMobj, pushForce);
 						}
 						return false;
 					}
@@ -1796,12 +1794,8 @@ extend class FCW_Platform
 				stuckActors.Delete(i--);
 				continue;
 			}
-
-			if (!(mo is "FCW_Platform"))
-			{
-				vector3 pushForce = level.Vec3Diff(pos, mo.pos + (0, 0, mo.height/2)).Unit();
-				PushObstacle(mo, pushForce);
-			}
+			vector3 pushForce = level.Vec3Diff(pos, mo.pos + (0, 0, mo.height/2)).Unit();
+			PushObstacle(mo, pushForce);
 		}
 	}
 
@@ -1986,7 +1980,7 @@ extend class FCW_Platform
 			if (!PlatTakeOneStep(newPos))
 			{
 				bPlatInMove = false;
-				if (blockingMobj && !(blockingMobj is "FCW_Platform"))
+				if (blockingMobj)
 				{
 					let mo = blockingMobj;
 					if (portTwin && !portTwin.bNoBlockmap && port &&
@@ -2067,7 +2061,7 @@ extend class FCW_Platform
 				{
 					bPlatInMove = false;
 					GoBack();
-					if (portTwin.blockingMobj && !(portTwin.blockingMobj is "FCW_Platform"))
+					if (portTwin.blockingMobj)
 					{
 						vector3 twinPushForce = pushForce;
 						if (angDiff)
@@ -2541,10 +2535,17 @@ extend class FCW_Platform
 		if (bPortCopy || IsFrozen())
 			return;
 
+		//Any of the copy's received velocities are passed on to the non-copy twin
 		if (portTwin && portTwin.bPortCopy)
 		{
-			vel += portTwin.vel;
+			vector3 pVel = portTwin.vel;
 			portTwin.vel = (0, 0, 0);
+
+			//NOTE: Needs fixing
+			//if (lastUPort && pVel.xy != (0, 0))
+			//	pVel = TranslatePortalVector(pVel, lastUPort, false);
+
+			vel += pVel;
 		}
 
 		if (!bNoGravity && pos.z > floorZ && !stuckActors.Size())
@@ -2565,12 +2566,15 @@ extend class FCW_Platform
 			}
 			else if (group.origin && group.origin != self)
 			{
-				group.origin.vel += vel;
+				group.origin.vel += vel; //Any member's received velocity is passed on to the origin
 				vel = (0, 0, 0);
 			}
 		}
 		bool velocityMove = false;
 
+		//The group origin, if there is one, thinks for the whole group.
+		//That means the order in which they think depends on where
+		//they are in the group array and not where they are in the thinker list.
 		if (!group || !group.origin)
 		{
 			HandleOldPassengers();
