@@ -1595,11 +1595,19 @@ extend class FCW_Platform
 	//============================
 	// TranslatePortalVector
 	//============================
-	static vector3, double TranslatePortalVector (vector3 vec, Line port, bool isPos)
+	static vector3, double TranslatePortalVector (vector3 vec, Line port, bool isPos, bool backward)
 	{
 		Line dest;
 		if (!port || !(dest = port.GetPortalDestination()))
 			return vec, 0;
+
+		if (backward)
+		{
+			//Swap them
+			Line oldPort = port;
+			port = dest;
+			dest = oldPort;
+		}
 
 		double delta = DeltaAngle(180 +
 		VectorAngle(port.delta.x, port.delta.y),
@@ -1839,7 +1847,7 @@ extend class FCW_Platform
 			port = GetUnlinkedPortal();
 			if (port && !portTwin)
 			{
-				portTwin = FCW_Platform(Spawn(GetClass(), TranslatePortalVector(pos, port, true)));
+				portTwin = FCW_Platform(Spawn(GetClass(), TranslatePortalVector(pos, port, true, false)));
 				portTwin.portTwin = self;
 				portTwin.SetStateLabel("PortalCopy"); //Invisible
 				portTwin.bPortCopy = true;
@@ -1871,7 +1879,7 @@ extend class FCW_Platform
 			if (portTwin.bNoBlockmap && port)
 			{
 				portTwin.A_ChangeLinkFlags(YES_BMAP);
-				portTwin.SetOrigin(TranslatePortalVector(pos, port, true), true);
+				portTwin.SetOrigin(TranslatePortalVector(pos, port, true, false), true);
 			}
 			else if (!portTwin.bNoBlockmap && !port)
 			{
@@ -1910,11 +1918,11 @@ extend class FCW_Platform
 			if (port)
 			{
 				double angDiff;
-				[portTwin.oldPos, angDiff] = TranslatePortalVector(oldPos, port, true);
+				[portTwin.oldPos, angDiff] = TranslatePortalVector(oldPos, port, true, false);
 				portTwin.angle = angle + angDiff;
 
 				if (oldPos != newPos)
-					portTwin.SetOrigin(TranslatePortalVector(pos, port, true), true);
+					portTwin.SetOrigin(TranslatePortalVector(pos, port, true, false), true);
 				else if (portTwin.oldPos != portTwin.pos)
 					portTwin.SetOrigin(portTwin.oldPos, true);
 			}
@@ -1992,7 +2000,7 @@ extend class FCW_Platform
 					if (portTwin && !portTwin.bNoBlockmap && port &&
 						mo.Distance3D(portTwin) < mo.Distance3D(self))
 					{
-						portTwin.PushObstacle(mo, TranslatePortalVector(pushForce, port, false));
+						portTwin.PushObstacle(mo, TranslatePortalVector(pushForce, port, false, false));
 					}
 					else
 					{
@@ -2045,9 +2053,9 @@ extend class FCW_Platform
 				vector3 twinPos;
 				if (newPos.xy == pos.xy)
 				{
-					[portTwin.oldPos, angDiff] = TranslatePortalVector(oldPos, port, true);
+					[portTwin.oldPos, angDiff] = TranslatePortalVector(oldPos, port, true, false);
 					portTwin.angle = angle + angDiff;
-					twinPos = TranslatePortalVector(pos, port, true);
+					twinPos = TranslatePortalVector(pos, port, true, false);
 				}
 				else
 				{
@@ -2477,7 +2485,7 @@ extend class FCW_Platform
 		if (portTwin && !portTwin.bNoBlockmap && portTwin.passengers.Size())
 		{
 			if (lastUPort)
-				pushForce = TranslatePortalVector(pushForce, lastUPort, false);
+				pushForce = TranslatePortalVector(pushForce, lastUPort, false, false);
 
 			for (int i = 0; i < portTwin.passengers.Size(); ++i)
 			{
@@ -2548,9 +2556,8 @@ extend class FCW_Platform
 			vector3 pVel = portTwin.vel;
 			portTwin.vel = (0, 0, 0);
 
-			//NOTE: Needs fixing
-			//if (lastUPort && pVel.xy != (0, 0))
-			//	pVel = TranslatePortalVector(pVel, lastUPort, false);
+			if (lastUPort && pVel.xy != (0, 0))
+				pVel = TranslatePortalVector(pVel, lastUPort, false, true);
 
 			vel += pVel;
 		}
