@@ -50,6 +50,8 @@ class FCW_Platform : Actor abstract
 		//$Arg3 Crush Damage
 		//$Arg3Tooltip If an obstacle is pushed against a wall,\nthe damage is applied once per 4 tics.
 
+		FCW_Platform.AirFriction 0.99; //For platforms that have +PUSHABLE and +NOGRAVITY
+
 		+INTERPOLATEANGLES;
 		+ACTLIKEBRIDGE;
 		+NOGRAVITY;
@@ -247,6 +249,9 @@ extend class FCW_Platform
 	//2) Can be arbitrarily set through ACS (See utility functions below).
 	vector3 pCurr, pPrev, pNext, pNextNext; //Positions in the world.
 	vector3 pCurrAngs, pPrevAngs, pNextAngs, pNextNextAngs; //X = angle, Y = pitch, Z = roll.
+
+	double platAirFric;
+	property AirFriction: platAirFric;
 
 	States
 	{
@@ -1708,10 +1713,10 @@ extend class FCW_Platform
 		//Don't call TryMove() nor Vec3Offset() for it.
 		SetZ(newPos.z);
 		bool moved = bPortCopy ? FitsAtPosition(self, newPos) : TryMove(newPos.xy, 1);
+		let mo = blockingMobj;
 
-		if (!moved && blockingMobj && !(blockingMobj is "FCW_Platform"))
+		if (!moved && mo && !(mo is "FCW_Platform"))
 		{
-			let mo = blockingMobj;
 			let moOldZ = mo.pos.z;
 			let moNewZ = newPos.z + self.height;
 
@@ -1734,31 +1739,26 @@ extend class FCW_Platform
 					mo.CheckPortalTransition(); //Handle sector portals properly
 				}
 			}
-
-			if (!moved) //Blocked by actor that isn't a platform?
-			{
-				SetZ(oldPos.z);
-				return false;
-			}
 		}
-
-		if (!moved) //Blocked by geometry or another platform?
+		else if (!moved) //Blocked by geometry or another platform?
 		{
 			if (args[ARG_OPTIONS] & OPTFLAG_IGNOREGEO)
 			{
+				moved = true;
 				if (!bPortCopy)
 					SetOrigin(level.Vec3Offset(pos, newPos - pos), true);
 			}
-			else
-			{
-				SetZ(oldPos.z);
-				return false;
-			}
 		}
 
-		if (bPortCopy)
+		if (moved && bPortCopy)
+		{
 			SetOrigin(newPos, true);
-
+		}
+		else if (!moved)
+		{
+			SetZ(oldPos.z);
+			return false;
+		}
 		return true;
 	}
 
@@ -2501,44 +2501,48 @@ extend class FCW_Platform
 	//============================
 	// PlatVelMove
 	//============================
-	private bool PlatVelMove (out vector3 velMove)
+	private void PlatVelMove ()
 	{
 		//Apparently slamming into the floor/ceiling doesn't
 		//count as a cancelled move so take care of that.
-		if ((velMove.z < 0 && pos.z <= floorZ) ||
-			(velMove.z > 0 && pos.z + height >= ceilingZ))
+		if ((vel.z < 0 && pos.z <= floorZ) ||
+			(vel.z > 0 && pos.z + height >= ceilingZ))
 		{
-			velMove.z = 0;
-			if (velMove.xy == (0, 0))
-				return false;
+			if (!(args[ARG_OPTIONS] & OPTFLAG_IGNOREGEO))
+				vel.z = 0;
 		}
 
-		vector3 newPos = pos + velMove;
+		if (vel == (0, 0, 0))
+			return; //Nothing to do here
+
+		vector3 newPos = pos + vel;
 		double startAngle = angle;
 		if (!PlatMove(newPos, angle, pitch, roll, 0))
 		{
 			//Check if it's a culprit that blocks XY movement
-			if (!velMove.z || blockingLine || (blockingMobj && !OverlapXY(self, blockingMobj)))
-				return false;
+			if (!vel.z || blockingLine || (blockingMobj && !OverlapXY(self, blockingMobj)))
+			{
+				vel = (0, 0, 0);
+				return;
+			}
 
 			//Try again but without the Z component
 			let oldBlocker = blockingMobj;
-			velMove.z = 0;
+			vel.z = 0;
 			newPos.z = pos.z;
-			if (velMove.xy == (0, 0) || !PlatMove(newPos, angle, pitch, roll, 0))
+			if (vel.xy == (0, 0) || !PlatMove(newPos, angle, pitch, roll, 0))
 			{
 				if (!blockingMobj)
 					blockingMobj = oldBlocker;
-				return false;
+				vel = (0, 0, 0);
+				return;
 			}
 		}
 
-		pPrev += velMove;
-		pCurr += velMove;
+		pPrev += vel;
+		pCurr += vel;
 		if (pos != newPos) //Crossed a portal?
 			AdjustInterpolationCoordinates(newPos, pos, DeltaAngle(startAngle, angle));
-
-		return true;
 	}
 
 	//============================
@@ -2562,13 +2566,6 @@ extend class FCW_Platform
 			vel += pVel;
 		}
 
-		if (!bNoGravity && pos.z > floorZ && !stuckActors.Size())
-		{
-			let mo = blockingMobj;
-			if (!mo || abs(pos.z - (mo.pos.z + mo.height)) > TOP_EPSILON || !OverlapXY(self, mo))
-				FallAndSink(GetGravity(), floorZ);
-		}
-
 		if (group)
 		{
 			if (group.members.Find(self) >= group.members.Size())
@@ -2584,7 +2581,8 @@ extend class FCW_Platform
 				vel = (0, 0, 0);
 			}
 		}
-		bool velocityMove = false;
+
+		double oldFloorZ = floorZ;
 
 		//The group origin, if there is one, thinks for the whole group.
 		//That means the order in which they think depends on where
@@ -2598,7 +2596,7 @@ extend class FCW_Platform
 				portTwin.HandleOldPassengers();
 				portTwin.HandleStuckActors();
 			}
-			velocityMove = (vel != (0, 0, 0) && PlatVelMove(vel));
+			PlatVelMove();
 		}
 		else if (group.origin == self)
 		{
@@ -2616,18 +2614,9 @@ extend class FCW_Platform
 					}
 				}
 			}
-			velocityMove = (vel != (0, 0, 0) && PlatVelMove(vel) && MoveGroup(0));
-		}
-
-		if (!velocityMove)
-		{
-			vel = (0, 0, 0);
-		}
-		else if (!bNoGravity && vel.xy != (0, 0))
-		{
-			vel.xy *= GetFriction();
-			if (abs(vel.x) < minVel) vel.x = 0;
-			if (abs(vel.y) < minVel) vel.y = 0;
+			PlatVelMove();
+			if (vel != (0, 0, 0) && !MoveGroup(0))
+				vel = (0, 0, 0);
 		}
 
 		while (bActive && (!group || group.origin == self))
@@ -2738,8 +2727,35 @@ extend class FCW_Platform
 			if (pos.z < floorZ)
 				SetZ(floorZ);
 			else if (pos.z + height > ceilingZ)
-				SetZ(pos.z + height);
+				SetZ(ceilingZ - height);
 		}
+
+		//Handle friction
+		let mo = blockingMobj;
+		bool onGround = (pos.z <= floorZ || stuckActors.Size() || (mo && abs(pos.z - (mo.pos.z + mo.height)) <= TOP_EPSILON && OverlapXY(self, mo)));
+
+		if (vel.xy != (0, 0))
+		{
+			vel.xy *= onGround ? GetFriction() : platAirFric;
+			if (abs(vel.x) < minVel) vel.x = 0;
+			if (abs(vel.y) < minVel) vel.y = 0;
+		}
+
+		if (vel.z)
+		{
+			if (onGround && vel.z < 0)
+			{
+				vel.z = 0;
+			}
+			else if (bNoGravity)
+			{
+				vel.z *= platAirFric;
+				if (abs(vel.z) < minVel) vel.z = 0;
+			}
+		}
+
+		if (!bNoGravity && !onGround)
+			FallAndSink(GetGravity(), oldFloorZ);
 
 		if (!group || !group.origin)
 		{
