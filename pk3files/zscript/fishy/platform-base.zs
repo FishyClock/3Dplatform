@@ -2786,7 +2786,7 @@ extend class FCW_Platform
 		bool onGround = (bOnMobj || pos.z <= floorZ);
 
 		//Use 'lastGetNPTime' to avoid yet another blockmap search - basically do this only if we haven't tried to move
-		if (!onGround && lastGetNPTime != level.mapTime && (!bNoGravity || vel != (0, 0, 0)))
+		if (!bNoGravity && !onGround && lastGetNPTime != level.mapTime)
 		{
 			AddZ(-TOP_EPSILON);
 			onGround = bOnMobj = !TestMobjZ(true);
