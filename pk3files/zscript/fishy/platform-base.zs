@@ -1039,6 +1039,14 @@ extend class FCW_Platform
 					}
 					continue;
 				}
+
+				if (!ignoreObs && !bOnMobj &&
+					abs(pos.z - (mo.pos.z + mo.height)) <= TOP_EPSILON && //Are we standing on 'mo'?
+					CollisionFlagChecks(self, mo) &&
+					self.CanCollideWith(mo, false) && mo.CanCollideWith(self, true) )
+				{
+					bOnMobj = true;
+				}
 			}
 
 			if (canCarry && !oldPassenger)
@@ -1774,7 +1782,8 @@ extend class FCW_Platform
 					bOnMobj = true;
 					SetZ(moTop);
 					oldPos.z = moTop;
-					CheckPortalTransition(); //Handle sector portals properly
+					if (!bPortCopy)
+						CheckPortalTransition(); //Handle sector portals properly
 
 					//Try to adjust our twin
 					if (portTwin && !portTwin.bNoBlockmap)
@@ -2787,11 +2796,7 @@ extend class FCW_Platform
 
 		//Use 'lastGetNPTime' to avoid yet another blockmap search - basically do this only if we haven't tried to move
 		if (!bNoGravity && !onGround && lastGetNPTime != level.mapTime)
-		{
-			AddZ(-TOP_EPSILON);
 			onGround = bOnMobj = !TestMobjZ(true);
-			AddZ(TOP_EPSILON);
-		}
 
 		if (vel.xy != (0, 0))
 		{
