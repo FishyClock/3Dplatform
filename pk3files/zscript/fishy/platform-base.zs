@@ -1606,12 +1606,18 @@ extend class FCW_Platform
 		if (!port || !(dest = port.GetPortalDestination()))
 			return vec, 0;
 
+		int portAlignment = isPos ? port.GetPortalAlignment() : 0;
+
 		if (backward)
 		{
 			//Swap them
 			Line oldPort = port;
 			port = dest;
 			dest = oldPort;
+
+			//If this is a portal, use its alignment. Else still use the other one's.
+			if (port.IsLinePortal())
+				portAlignment = isPos ? port.GetPortalAlignment() : 0;
 		}
 
 		double delta = DeltaAngle(180 +
@@ -1625,8 +1631,7 @@ extend class FCW_Platform
 		if (isPos)
 			vec.xy += dest.v2.p;
 
-		if (isPos)
-		switch (port.GetPortalAlignment())
+		switch (portAlignment)
 		{
 			case 1: //Floor
 				vec.z += dest.frontSector.floorPlane.ZatPoint(dest.v2.p) - port.frontSector.floorPlane.ZatPoint(port.v1.p);
@@ -1757,6 +1762,35 @@ extend class FCW_Platform
 		else if (!moved)
 		{
 			SetZ(oldPos.z);
+			if (newPos.z < oldPos.z)
+			{
+				let mo = blockingMobj;
+				if (mo && mo.pos.z < oldPos.z && OverlapXY(self, mo))
+				{
+					//We're attempting to go down, but the obstacle is below us.
+					//Try to stand on it.
+					double moTop = mo.pos.z + mo.height;
+					if (pos.z != moTop && FitsAtPosition(self, (oldPos.xy, moTop)))
+					{
+						SetZ(moTop);
+						oldPos.z = moTop;
+						CheckPortalTransition(); //Handle sector portals properly
+
+						//Try to adjust our twin
+						if (portTwin && !portTwin.bNoBlockmap)
+						{
+							vector3 twinPos = TranslatePortalVector(oldPos, (bPortCopy ? portTwin.lastUPort : lastUPort), true, bPortCopy);
+							if (twinPos != oldPos && portTwin.pos.z != twinPos.z && FitsAtPosition(portTwin, twinPos))
+							{
+								portTwin.SetZ(twinPos.z);
+								portTwin.oldPos.z = twinPos.z;
+								if (!portTwin.bPortCopy)
+									portTwin.CheckPortalTransition(); //Handle sector portals properly
+							}
+						}
+					}
+				}
+			}
 			return false;
 		}
 		return true;
