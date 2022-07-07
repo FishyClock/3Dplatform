@@ -1032,6 +1032,7 @@ extend class FCW_Platform
 						else if (!ignoreObs)
 						{
 							result = false;
+							bOnMobj = true;
 							if (stuckActors.Find(mo) >= stuckActors.Size())
 								stuckActors.Push(mo);
 						}
@@ -1057,6 +1058,7 @@ extend class FCW_Platform
 			else if (!ignoreObs)
 			{
 				result = false;
+				bOnMobj = true;
 				if (stuckActors.Find(mo) >= stuckActors.Size())
 					stuckActors.Push(mo);
 			}
@@ -1764,29 +1766,27 @@ extend class FCW_Platform
 			SetZ(oldPos.z);
 			if (newPos.z < oldPos.z)
 			{
+				//If an obstacle is below us and we're attempting to go down, try to stand on it
 				let mo = blockingMobj;
-				if (mo && mo.pos.z < oldPos.z && OverlapXY(self, mo))
+				double moTop;
+				if (mo && (moTop = mo.pos.z + mo.height) < oldPos.z && OverlapXY(self, mo) && FitsAtPosition(self, (oldPos.xy, moTop)))
 				{
-					//We're attempting to go down, but the obstacle is below us.
-					//Try to stand on it.
-					double moTop = mo.pos.z + mo.height;
-					if (moTop < oldPos.z && FitsAtPosition(self, (oldPos.xy, moTop)))
-					{
-						SetZ(moTop);
-						oldPos.z = moTop;
-						CheckPortalTransition(); //Handle sector portals properly
+					bOnMobj = true;
+					SetZ(moTop);
+					oldPos.z = moTop;
+					CheckPortalTransition(); //Handle sector portals properly
 
-						//Try to adjust our twin
-						if (portTwin && !portTwin.bNoBlockmap)
+					//Try to adjust our twin
+					if (portTwin && !portTwin.bNoBlockmap)
+					{
+						vector3 twinPos = TranslatePortalVector(oldPos, (bPortCopy ? portTwin.lastUPort : lastUPort), true, bPortCopy);
+						if (twinPos != oldPos && portTwin.pos.z != twinPos.z && FitsAtPosition(portTwin, twinPos))
 						{
-							vector3 twinPos = TranslatePortalVector(oldPos, (bPortCopy ? portTwin.lastUPort : lastUPort), true, bPortCopy);
-							if (twinPos != oldPos && portTwin.pos.z != twinPos.z && FitsAtPosition(portTwin, twinPos))
-							{
-								portTwin.SetZ(twinPos.z);
-								portTwin.oldPos.z = twinPos.z;
-								if (!portTwin.bPortCopy)
-									portTwin.CheckPortalTransition(); //Handle sector portals properly
-							}
+							portTwin.bOnMobj = true;
+							portTwin.SetZ(twinPos.z);
+							portTwin.oldPos.z = twinPos.z;
+							if (!portTwin.bPortCopy)
+								portTwin.CheckPortalTransition(); //Handle sector portals properly
 						}
 					}
 				}
@@ -1833,6 +1833,8 @@ extend class FCW_Platform
 	//============================
 	private void HandleStuckActors ()
 	{
+		double top = pos.z + height;
+
 		for (int i = 0; i < stuckActors.Size(); ++i)
 		{
 			let mo = stuckActors[i];
@@ -1842,9 +1844,25 @@ extend class FCW_Platform
 				stuckActors.Delete(i--);
 				continue;
 			}
+
+			int index = passengers.Find(mo);
+			if (index < passengers.Size())
+			{
+				//Try to have it on top of us and deliberately ignore if it gets stuck in another actor
+				if (top <= mo.ceilingZ - mo.height)
+				{
+					mo.SetZ(top);
+					stuckActors.Delete(i--);
+					continue;
+				}
+				passengers.Delete(index); //Stuck actors can't be passengers
+			}
 			vector3 pushForce = level.Vec3Diff(pos, mo.pos + (0, 0, mo.height/2)).Unit();
 			PushObstacle(mo, pushForce);
 		}
+
+		if (stuckActors.Size())
+			bOnMobj = true;
 	}
 
 	//============================
@@ -2561,13 +2579,10 @@ extend class FCW_Platform
 			}
 
 			//Try again but without the Z component
-			let oldBlocker = blockingMobj;
 			vel.z = 0;
 			newPos.z = pos.z;
 			if (vel.xy == (0, 0) || !PlatMove(newPos, angle, pitch, roll, 0))
 			{
-				if (!blockingMobj)
-					blockingMobj = oldBlocker;
 				vel = (0, 0, 0);
 				return;
 			}
@@ -2617,18 +2632,21 @@ extend class FCW_Platform
 		}
 
 		double oldFloorZ = floorZ;
+		bOnMobj = false; //This can be "true" later if hitting a lower obstacle while going down or we have stuck actors
+		if (portTwin && portTwin.bPortCopy)
+			portTwin.bOnMobj = false;
 
 		//The group origin, if there is one, thinks for the whole group.
 		//That means the order in which they think depends on where
 		//they are in the group array and not where they are in the thinker list.
 		if (!group || !group.origin)
 		{
-			HandleOldPassengers();
 			HandleStuckActors();
+			HandleOldPassengers();
 			if (portTwin && portTwin.bPortCopy)
 			{
-				portTwin.HandleOldPassengers();
 				portTwin.HandleStuckActors();
+				portTwin.HandleOldPassengers();
 			}
 			PlatVelMove();
 		}
@@ -2639,12 +2657,12 @@ extend class FCW_Platform
 				let plat = group.GetMember(iPlat);
 				if (plat)
 				{
-					plat.HandleOldPassengers();
 					plat.HandleStuckActors();
+					plat.HandleOldPassengers();
 					if (plat.portTwin && plat.portTwin.bPortCopy)
 					{
-						plat.portTwin.HandleOldPassengers();
 						plat.portTwin.HandleStuckActors();
+						plat.portTwin.HandleOldPassengers();
 					}
 				}
 			}
@@ -2765,8 +2783,15 @@ extend class FCW_Platform
 		}
 
 		//Handle friction
-		let mo = blockingMobj;
-		bool onGround = (pos.z <= floorZ || stuckActors.Size() || (mo && abs(pos.z - (mo.pos.z + mo.height)) <= TOP_EPSILON && OverlapXY(self, mo)));
+		bool onGround = (bOnMobj || pos.z <= floorZ);
+
+		//Use 'lastGetNPTime' to avoid yet another blockmap search - basically do this only if we haven't tried to move
+		if (!onGround && lastGetNPTime != level.mapTime && (!bNoGravity || vel != (0, 0, 0)))
+		{
+			AddZ(-TOP_EPSILON);
+			onGround = bOnMobj = !TestMobjZ(true);
+			AddZ(TOP_EPSILON);
+		}
 
 		if (vel.xy != (0, 0))
 		{
