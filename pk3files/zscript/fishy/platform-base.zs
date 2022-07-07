@@ -1770,7 +1770,7 @@ extend class FCW_Platform
 					//We're attempting to go down, but the obstacle is below us.
 					//Try to stand on it.
 					double moTop = mo.pos.z + mo.height;
-					if (pos.z != moTop && FitsAtPosition(self, (oldPos.xy, moTop)))
+					if (moTop < oldPos.z && FitsAtPosition(self, (oldPos.xy, moTop)))
 					{
 						SetZ(moTop);
 						oldPos.z = moTop;
