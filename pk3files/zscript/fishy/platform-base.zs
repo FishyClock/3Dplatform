@@ -2876,7 +2876,11 @@ extend class FCW_Platform
 							grav = thisGrav;
 					}
 				}
+
+				let oldNoGrav = bNoGravity;
+				bNoGravity = false; //Don't let our NOGRAVITY cancel FallAndSink()
 				FallAndSink(grav, oldFloorZ);
+				bNoGravity = oldNoGrav;
 			}
 		}
 
