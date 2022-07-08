@@ -2641,7 +2641,7 @@ extend class FCW_Platform
 		}
 
 		double oldFloorZ = floorZ;
-		bOnMobj = false; //This can be "true" later if hitting a lower obstacle while going down or we have stuck actors
+		bOnMobj = false; //Aside from standing on an actor, this can also be "true" later if hitting a lower obstacle while going down or we have stuck actors
 		if (portTwin && portTwin.bPortCopy)
 			portTwin.bOnMobj = false;
 
@@ -2783,43 +2783,102 @@ extend class FCW_Platform
 			break;
 		}
 
-		if (!(args[ARG_OPTIONS] & OPTFLAG_IGNOREGEO))
+		if (!group || !group.origin)
 		{
-			if (pos.z < floorZ)
-				SetZ(floorZ);
-			else if (pos.z + height > ceilingZ)
-				SetZ(ceilingZ - height);
-		}
-
-		//Handle friction
-		bool onGround = (bOnMobj || pos.z <= floorZ);
-
-		//Use 'lastGetNPTime' to avoid yet another blockmap search - basically do this only if we haven't tried to move
-		if (!bNoGravity && !onGround && lastGetNPTime != level.mapTime)
-			onGround = bOnMobj = !TestMobjZ(true);
-
-		if (vel.xy != (0, 0))
-		{
-			vel.xy *= onGround ? GetFriction() : platAirFric;
-			if (abs(vel.x) < minVel) vel.x = 0;
-			if (abs(vel.y) < minVel) vel.y = 0;
-		}
-
-		if (vel.z)
-		{
-			if (onGround && vel.z < 0)
+			if (!(args[ARG_OPTIONS] & OPTFLAG_IGNOREGEO))
 			{
-				vel.z = 0;
+				if (pos.z < floorZ)
+					SetZ(floorZ);
+				else if (pos.z + height > ceilingZ)
+					SetZ(ceilingZ - height);
 			}
-			else if (bNoGravity)
+		}
+		else if (group.origin == self)
+		{
+			for (int iPlat = 0; iPlat < group.members.Size(); ++iPlat)
 			{
-				vel.z *= platAirFric;
-				if (abs(vel.z) < minVel) vel.z = 0;
+				let plat = group.GetMember(iPlat);
+				if (plat && !(plat.args[ARG_OPTIONS] & OPTFLAG_IGNOREGEO))
+				{
+					if (plat.pos.z < plat.floorZ)
+						plat.SetZ(plat.floorZ);
+					else if (plat.pos.z + plat.height > plat.ceilingZ)
+						plat.SetZ(plat.ceilingZ - plat.height);
+				}
 			}
 		}
 
-		if (!bNoGravity && !onGround)
-			FallAndSink(GetGravity(), oldFloorZ);
+		//Handle friction and gravity
+		if (!group || !group.origin || group.origin == self)
+		{
+			bool onGround = (bOnMobj || pos.z <= floorZ);
+			bool yesGravity = !bNoGravity;
+
+			//Use 'lastGetNPTime' to avoid yet another blockmap search - basically do this only if we haven't tried to move
+			if (yesGravity && !onGround && lastGetNPTime != level.mapTime)
+				onGround = bOnMobj = !TestMobjZ(true);
+
+			if (group && group.origin)
+			for (int iPlat = 0; (!onGround || !yesGravity) && iPlat < group.members.Size(); ++iPlat)
+			{
+				let plat = group.GetMember(iPlat);
+				if (plat && plat != self)
+				{
+					//Find a member who is gravity bound and/or is "on the ground"
+					onGround |= (plat.bOnMobj || plat.pos.z <= plat.floorZ);
+					yesGravity |= !plat.bNoGravity;
+
+					if (yesGravity && !onGround && plat.lastGetNPTime != level.mapTime)
+						onGround = !plat.TestMobjZ(true);
+				}
+			}
+
+			if (vel != (0, 0, 0))
+			{
+				double fric = onGround ? GetFriction() : platAirFric;
+
+				if (group && group.origin)
+				for (int iPlat = 0; fric > 0 && iPlat < group.members.Size(); ++iPlat)
+				{
+					let plat = group.GetMember(iPlat);
+					if (plat && plat != self)
+					{
+						//Get the lowest friction from the group
+						double thisFric = onGround ? plat.GetFriction() : plat.platAirFric;
+						if (thisFric < fric)
+							fric = thisFric;
+					}
+				}
+
+				if (!onGround)
+					vel *= fric;
+				else
+					vel.xy *= fric;
+
+				if (abs(vel.x) < minVel) vel.x = 0;
+				if (abs(vel.y) < minVel) vel.y = 0;
+				if ((onGround && vel.z < 0) || abs(vel.z) < minVel) vel.z = 0;
+			}
+
+			if (yesGravity && !onGround)
+			{
+				double grav = GetGravity();
+
+				if (group && group.origin)
+				for (int iPlat = 0; iPlat < group.members.Size(); ++iPlat)
+				{
+					let plat = group.GetMember(iPlat);
+					if (plat && plat != self)
+					{
+						//Get the highest gravity from the group
+						double thisGrav = plat.GetGravity();
+						if (thisGrav > grav)
+							grav = thisGrav;
+					}
+				}
+				FallAndSink(grav, oldFloorZ);
+			}
+		}
 
 		if (!group || !group.origin)
 		{
