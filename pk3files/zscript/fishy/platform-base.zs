@@ -328,36 +328,19 @@ extend class FCW_Platform
 			}
 		}
 
+		//In case the mapper placed walking monsters on the platform
+		//get something for HandleOldPassengers() to monitor.
+		GetNewPassengers(true);
+
 		//Print no (additional) warnings if we're not supposed to have a interpolation point
 		if (!args[ARG_NODETID])
-		{
-			//In case the mapper placed walking monsters on the platform
-			//get something for HandleOldPassengers() to monitor.
-			GetNewPassengers(true);
 			return;
-		}
 
 		if (!SetUpPath(args[ARG_NODETID], noPrefix))
 			return;
 
 		if (args[ARG_OPTIONS] & OPTFLAG_STARTACTIVE)
 			Activate(self);
-		else							//In case the mapper placed walking monsters on the platform
-			GetNewPassengers(true);		//get something for HandleOldPassengers() to monitor.
-	}
-
-	//============================
-	// OnDestroy (override)
-	//============================
-	override void OnDestroy ()
-	{
-		if (portTwin)
-		{
-			if (portTwin.portTwin == self)
-				portTwin.portTwin = null; //No infinite recursions
-			portTwin.Destroy();
-		}
-		Super.OnDestroy();
 	}
 
 	//============================
@@ -1456,8 +1439,8 @@ extend class FCW_Platform
 			//No 3D floors means 'floorZ' is the current sector's floor height.
 			//(In other words 'floorZ' is not another actor's top that's below.)
 
-			//Is 'mo' below our 'top'? Or is there a 3D floor above our 'top' that's also below 'mo'?
-			if (mo.pos.z < top - TOP_EPSILON || mo.floorZ > top + TOP_EPSILON ||
+			//Is 'mo' below our Z? Or is there a 3D floor above our 'top' that's also below 'mo'?
+			if (mo.pos.z < pos.z || mo.floorZ > top + TOP_EPSILON ||
 				!OverlapXY(self, mo)) //Is out of XY range?
 			{
 				//Add velocity to the passenger we just lost track of.
@@ -2437,10 +2420,7 @@ extend class FCW_Platform
 				Stopped(oldPos, pos);
 
 			if (portTwin && portTwin.bNoBlockmap && portTwin.bPortCopy)
-			{
-				portTwin.portTwin = null;
 				portTwin.Destroy();
-			}
 		}
 		else if (group.origin == self)
 		{
@@ -2453,10 +2433,7 @@ extend class FCW_Platform
 						plat.Stopped(plat.oldPos, plat.pos);
 
 					if (plat.portTwin && plat.portTwin.bNoBlockmap && plat.portTwin.bPortCopy)
-					{
-						plat.portTwin.portTwin = null;
 						plat.portTwin.Destroy();
-					}
 				}
 			}
 		}
@@ -2609,7 +2586,15 @@ extend class FCW_Platform
 	override void Tick ()
 	{
 		//Portal copies aren't meant to think themselves. Not even advance states.
-		if (bPortCopy || IsFrozen())
+		//The only thing it should do is remove itself if its twin is gone.
+		if (bPortCopy)
+		{
+			if (!portTwin)
+				Destroy();
+			return;
+		}
+
+		if (IsFrozen())
 			return;
 
 		//Any of the copy's received velocities are passed on to the non-copy twin
