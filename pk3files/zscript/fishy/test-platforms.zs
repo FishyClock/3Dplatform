@@ -115,6 +115,7 @@ class TESTPushCrate : FCW_Platform
 		Height 80;
 		+PUSHABLE;
 		-NOGRAVITY;
+		+FCW_Platform.CARRIABLE;
 	}
 
 	States
