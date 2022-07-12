@@ -994,9 +994,7 @@ extend class FCW_Platform
 			let plat = FCW_Platform(mo);
 			if (plat)
 				otherPlats.Push(plat);
-			bool isCarrier = (plat && plat.passengers.Find(self) < plat.passengers.Size());
-			bool canCarry = (!isCarrier &&
-						(!portTwin || portTwin.passengers.Find(mo) >= portTwin.passengers.Size()) && //Don't take your twin's passengers here
+			bool canCarry = ((!portTwin || portTwin.passengers.Find(mo) >= portTwin.passengers.Size()) && //Don't take your twin's passengers here
 						IsCarriable(mo));
 
 			//Check XY overlap
@@ -1049,7 +1047,7 @@ extend class FCW_Platform
 				}
 			}
 
-			if (canCarry && !oldPassenger && mo.bOnMobj)
+			if (canCarry && !oldPassenger && (mo.bNoGravity || mo.bOnMobj))
 				miscActors.Push(mo); //We'll compare this later against the passengers
 		}
 
@@ -1261,7 +1259,25 @@ extend class FCW_Platform
 			bool moved;
 			if (mo is "FCW_Platform")
 			{
-				moved = FCW_Platform(mo).PlatMove(moNewPos, mo.angle, mo.pitch, mo.roll, teleMove);
+				let plat = FCW_Platform(mo);
+				if (plat.bActive)
+				{
+					//Try to move this active platform, then forget about it;
+					//Don't try to move it back later etc. If we moved it, adjust its
+					//interpolation coordinates.
+					double moNewAngle = mo.angle + delta;
+					if (plat.PlatMove(moNewPos, moNewAngle, mo.pitch, mo.roll, teleMove))
+					{
+						plat.pPrev += pushForce;
+						plat.pCurr += pushForce;
+						if (moNewPos != mo.pos)
+							plat.AdjustInterpolationCoordinates(moNewPos, mo.pos, DeltaAngle(moNewAngle, mo.angle));
+					}
+					mo.A_ChangeLinkFlags(YES_BMAP);
+					passengers.Delete(i--);
+					continue;
+				}
+				moved = plat.PlatMove(moNewPos, mo.angle, mo.pitch, mo.roll, teleMove); //In this case, the angle change comes later like with all passengers
 			}
 			else if (teleMove)
 			{
@@ -2690,9 +2706,10 @@ extend class FCW_Platform
 		}
 
 		double oldFloorZ = floorZ;
-		bOnMobj = false; //Aside from standing on an actor, this can also be "true" later if hitting a lower obstacle while going down or we have stuck actors
+		if (lastGetNPTime != level.mapTime)
+			bOnMobj = false; //Aside from standing on an actor, this can also be "true" later if hitting a lower obstacle while going down or we have stuck actors
 		if (portTwin && portTwin.bPortCopy)
-			portTwin.bOnMobj = false;
+			portTwin.bOnMobj = bOnMobj;
 
 		//The group origin, if there is one, thinks for the whole group.
 		//That means the order in which they think depends on where
