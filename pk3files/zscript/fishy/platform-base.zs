@@ -1089,9 +1089,32 @@ extend class FCW_Platform
 				otherPlats.Push(plat);
 		}
 
+		int oldSize = onTopOfMe.Size();
+		for (int i = 0; i < oldSize; ++i)
+		{
+			let plat = FCW_Platform(onTopOfMe[i]);
+
+			//If this is a platform with a group, add each of its members as a (potential) passenger
+			if (plat && plat.group)
+			for (int iPlat = 0; iPlat < plat.group.members.Size(); ++iPlat)
+			{
+				let member = plat.group.GetMember(iPlat);
+				if (member && member != plat)
+				{
+					int index = miscActors.Find(member);
+					if (index < miscActors.Size())
+						miscActors.Delete(index);
+
+					if (onTopOfMe.Find(member) >= onTopOfMe.Size() && passengers.Find(member) >= passengers.Size())
+						onTopOfMe.Push(member);
+				}
+			}
+		}
+
 		for (int iPlat = 0; iPlat < otherPlats.Size(); ++iPlat)
 		{
 			let plat = otherPlats[iPlat];
+			bool carriesMe = (plat.passengers.Find(self) < plat.passengers.Size());
 
 			for (int i = 0; i < onTopOfMe.Size(); ++i)
 			{
@@ -1103,12 +1126,15 @@ extend class FCW_Platform
 					//B) We don't share the "mirror" option and the passenger's center is within our radius
 					//and NOT within the other platform's radius.
 					//(In other words, groupmates with the same "mirror" option never steal each other's passengers.)
-					bool stealPassenger;
-					if (!group || group != plat.group)
-						stealPassenger = (top > plat.pos.z + plat.height);
-					else
-						stealPassenger = (((args[ARG_OPTIONS] ^ plat.args[ARG_OPTIONS]) & OPTFLAG_MIRROR) &&
-							OverlapXY(self, onTopOfMe[i], radius) && !OverlapXY(plat, onTopOfMe[i], plat.radius) );
+					bool stealPassenger = false;
+					if (!carriesMe) //Never commit theft if we're one of its passengers
+					{
+						if (!group || group != plat.group)
+							stealPassenger = (top > plat.pos.z + plat.height);
+						else
+							stealPassenger = (((args[ARG_OPTIONS] ^ plat.args[ARG_OPTIONS]) & OPTFLAG_MIRROR) &&
+								OverlapXY(self, onTopOfMe[i], radius) && !OverlapXY(plat, onTopOfMe[i], plat.radius) );
+					}
 
 					if (stealPassenger)
 						plat.passengers.Delete(index);
@@ -1123,27 +1149,6 @@ extend class FCW_Platform
 			}
 		}
 		passengers.Append(onTopOfMe);
-
-		for (int i = 0; i < onTopOfMe.Size(); ++i)
-		{
-			let plat = FCW_Platform(onTopOfMe[i]);
-
-			//If this is a platform with a group, add each member as a passenger
-			if (plat && plat.group)
-			for (int iPlat = 0; iPlat < plat.group.members.Size(); ++iPlat)
-			{
-				let member = plat.group.GetMember(iPlat);
-				if (member && member != plat)
-				{
-					int index = miscActors.Find(member);
-					if (index < miscActors.Size())
-						miscActors.Delete(index);
-
-					if (passengers.Find(member) >= passengers.Size())
-						passengers.Push(member);
-				}
-			}
-		}
 
 		//Now figure out which of the misc actors are on top of/stuck inside
 		//established passengers.
