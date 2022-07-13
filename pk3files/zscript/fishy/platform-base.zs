@@ -968,8 +968,8 @@ extend class FCW_Platform
 		lastGetNPTime = level.mapTime;
 
 		double top = pos.z + height;
-		Array<Actor> miscActors; //The actors on top of the passengers (We'll move those, too)
-		Array<Actor> onTopOfMe;
+		Array<Actor> miscActors; //The actors on top of or stuck inside confirmed passengers (We'll move those, too)
+		Array<Actor> newPass; //Potential new passengers, usually (but not always) detected on top of us
 		Array<Actor> tryZFix;
 		Array<FCW_Platform> otherPlats;
 
@@ -990,7 +990,7 @@ extend class FCW_Platform
 			if (mo == self || mo == portTwin)
 				continue;
 
-			bool oldPassenger = (passengers.Find(mo) < passengers.Size());
+			bool oldPass = (passengers.Find(mo) < passengers.Size());
 			let plat = FCW_Platform(mo);
 			if (plat)
 				otherPlats.Push(plat);
@@ -1005,8 +1005,8 @@ extend class FCW_Platform
 				if (mo.pos.z >= top - TOP_EPSILON && (ignoreObs || mo.pos.z <= top + TOP_EPSILON) && //On top of us?
 					mo.floorZ <= top + TOP_EPSILON) //No 3D floor above our 'top' that's below 'mo'?
 				{
-					if (canCarry && !oldPassenger)
-						onTopOfMe.Push(mo);
+					if (canCarry && !oldPass)
+						newPass.Push(mo);
 					continue;
 				}
 
@@ -1047,7 +1047,7 @@ extend class FCW_Platform
 				}
 			}
 
-			if (canCarry && !oldPassenger && (mo.bNoGravity || mo.bOnMobj))
+			if (canCarry && !oldPass && (mo.bNoGravity || mo.bOnMobj))
 				miscActors.Push(mo); //We'll compare this later against the passengers
 		}
 
@@ -1059,7 +1059,7 @@ extend class FCW_Platform
 				mo.SetZ(top);
 				mo.CheckPortalTransition(); //Handle sector portals properly
 				if (passengers.Find(mo) >= passengers.Size())
-					onTopOfMe.Push(mo);
+					newPass.Push(mo);
 			}
 			else if (!ignoreObs)
 			{
@@ -1073,7 +1073,7 @@ extend class FCW_Platform
 		for (int i = 0; i < corpses.Size(); ++i)
 			corpses[i].Grind(false);
 
-		if (!onTopOfMe.Size() && !miscActors.Size())
+		if (!newPass.Size() && !miscActors.Size())
 		{
 			lastGetNPResult = result;
 			return result; //Found nothing new to carry so stop here
@@ -1089,10 +1089,10 @@ extend class FCW_Platform
 				otherPlats.Push(plat);
 		}
 
-		int oldSize = onTopOfMe.Size();
+		int oldSize = newPass.Size();
 		for (int i = 0; i < oldSize; ++i)
 		{
-			let plat = FCW_Platform(onTopOfMe[i]);
+			let plat = FCW_Platform(newPass[i]);
 
 			//If this is a platform with a group, add each of its members as a (potential) passenger
 			if (plat && plat.group)
@@ -1105,85 +1105,97 @@ extend class FCW_Platform
 					if (index < miscActors.Size())
 						miscActors.Delete(index);
 
-					if (onTopOfMe.Find(member) >= onTopOfMe.Size() && passengers.Find(member) >= passengers.Size())
-						onTopOfMe.Push(member);
+					if (newPass.Find(member) >= newPass.Size() && passengers.Find(member) >= passengers.Size())
+						newPass.Push(member);
 				}
 			}
 		}
 
-		for (int iPlat = 0; iPlat < otherPlats.Size(); ++iPlat)
+		do
 		{
-			let plat = otherPlats[iPlat];
-			bool carriesMe = (plat.passengers.Find(self) < plat.passengers.Size());
-
-			for (int i = 0; i < onTopOfMe.Size(); ++i)
+			for (int iPlat = 0; (newPass.Size() || miscActors.Size()) && iPlat < otherPlats.Size(); ++iPlat)
 			{
-				let index = plat.passengers.Find(onTopOfMe[i]);
-				if (index < plat.passengers.Size())
+				let plat = otherPlats[iPlat];
+				bool carriesMe = (plat.passengers.Find(self) < plat.passengers.Size());
+
+				for (int i = 0; i < newPass.Size(); ++i)
 				{
-					//Steal other platforms' passengers if
-					//A) We don't share groups and our 'top' is higher or...
-					//B) We don't share the "mirror" option and the passenger's center is within our radius
-					//and NOT within the other platform's radius.
-					//(In other words, groupmates with the same "mirror" option never steal each other's passengers.)
-					bool stealPassenger = false;
-					if (!carriesMe) //Never commit theft if we're one of its passengers
+					let index = plat.passengers.Find(newPass[i]);
+					if (index < plat.passengers.Size())
 					{
-						if (!group || group != plat.group)
-							stealPassenger = (top > plat.pos.z + plat.height);
+						//Steal other platforms' passengers if
+						//A) We don't share groups and our 'top' is higher or...
+						//B) We don't share the "mirror" option and the passenger's center is within our radius
+						//and NOT within the other platform's radius.
+						//(In other words, groupmates with the same "mirror" option never steal each other's passengers.)
+						bool stealPassenger = false;
+						if (!carriesMe) //Never commit theft if we're one of its passengers
+						{
+							if (!group || group != plat.group)
+								stealPassenger = (top > plat.pos.z + plat.height);
+							else
+								stealPassenger = (((args[ARG_OPTIONS] ^ plat.args[ARG_OPTIONS]) & OPTFLAG_MIRROR) &&
+									OverlapXY(self, newPass[i], radius) && !OverlapXY(plat, newPass[i], plat.radius) );
+						}
+
+						if (stealPassenger)
+							plat.passengers.Delete(index);
 						else
-							stealPassenger = (((args[ARG_OPTIONS] ^ plat.args[ARG_OPTIONS]) & OPTFLAG_MIRROR) &&
-								OverlapXY(self, onTopOfMe[i], radius) && !OverlapXY(plat, onTopOfMe[i], plat.radius) );
+							newPass.Delete(i--);
 					}
-
-					if (stealPassenger)
-						plat.passengers.Delete(index);
-					else
-						onTopOfMe.Delete(i--);
 				}
-			}
-			for (int i = 0; i < miscActors.Size(); ++i)
-			{
-				if (plat.passengers.Find(miscActors[i]) < plat.passengers.Size())
-					miscActors.Delete(i--);
-			}
-		}
-		passengers.Append(onTopOfMe);
-
-		//Now figure out which of the misc actors are on top of/stuck inside
-		//established passengers.
-		for (int i = 0; miscActors.Size() && i < passengers.Size(); ++i)
-		{
-			let mo = passengers[i];
-			if (!mo)
-			{
-				passengers.Delete(i--);
-				continue;
-			}
-			double moTop = mo.pos.z + mo.height;
-
-			for (int iOther = 0; iOther < miscActors.Size(); ++iOther)
-			{
-				let otherMo = miscActors[iOther];
-
-				if ( ( abs(otherMo.pos.z - moTop) <= TOP_EPSILON || OverlapZ(mo, otherMo) ) && //Is 'otherMo' on top of 'mo' or stuck inside 'mo'?
-					OverlapXY(mo, otherMo) ) //Within XY range?
+				for (int i = 0; i < miscActors.Size(); ++i)
 				{
-					miscActors.Delete(iOther--); //Don't compare this one against other passengers anymore
-					passengers.Push(otherMo);
+					if (plat.passengers.Find(miscActors[i]) < plat.passengers.Size())
+						miscActors.Delete(i--);
+				}
+			}
+			passengers.Append(newPass);
+			newPass.Clear();
 
-					//If this is a platform with a group, add each member as a passenger
-					let plat = FCW_Platform(otherMo);
-					if (plat && plat.group)
-					for (int iPlat = 0; iPlat < plat.group.members.Size(); ++iPlat)
+			//Now figure out which of the misc actors are on top of/stuck inside
+			//established passengers.
+			for (int i = 0; miscActors.Size() && i < passengers.Size(); ++i)
+			{
+				let mo = passengers[i];
+				if (!mo)
+				{
+					passengers.Delete(i--);
+					continue;
+				}
+				double moTop = mo.pos.z + mo.height;
+
+				for (int iOther = 0; iOther < miscActors.Size(); ++iOther)
+				{
+					let otherMo = miscActors[iOther];
+
+					if ( ( abs(otherMo.pos.z - moTop) <= TOP_EPSILON || OverlapZ(mo, otherMo) ) && //Is 'otherMo' on top of 'mo' or stuck inside 'mo'?
+						OverlapXY(mo, otherMo) ) //Within XY range?
 					{
-						let member = plat.group.GetMember(iPlat);
-						if (member && member != plat && passengers.Find(member) >= passengers.Size())
-							passengers.Push(member);
+						miscActors.Delete(iOther--); //Don't compare this one against other passengers anymore
+						passengers.Push(otherMo);
+
+						//If this is a platform with a group, add each member as a (potential) passenger
+						let plat = FCW_Platform(otherMo);
+						if (plat && plat.group)
+						for (int iPlat = 0; iPlat < plat.group.members.Size(); ++iPlat)
+						{
+							let member = plat.group.GetMember(iPlat);
+							if (member && member != plat &&
+								newPass.Find(member) >= newPass.Size() && passengers.Find(member) >= passengers.Size())
+							{
+								//We need to check if this platform isn't another platform's passenger.
+								//ie the 'otherPlats' for loop (above) needs to run one more time.
+								newPass.Push(member);
+							}
+						}
 					}
 				}
 			}
+			miscActors.Clear();
 		}
+		while (newPass.Size());
+
 		lastGetNPResult = result;
 		return result;
 	}
