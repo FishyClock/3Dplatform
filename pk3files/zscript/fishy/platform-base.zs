@@ -944,6 +944,10 @@ extend class FCW_Platform
 			if (!plat.bCarriable)
 				return false;
 
+			//If either one has this option then don't carry it
+			if ((args[ARG_OPTIONS] | plat.args[ARG_OPTIONS]) & OPTFLAG_IGNOREGEO)
+				return false;
+
 			//Don't carry platform if it's in our group
 			if (group && plat.group && group == plat.group)
 				return false;
