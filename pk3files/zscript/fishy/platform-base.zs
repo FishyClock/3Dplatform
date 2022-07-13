@@ -1120,7 +1120,6 @@ extend class FCW_Platform
 			for (int iPlat = 0; (newPass.Size() || miscActors.Size()) && iPlat < otherPlats.Size(); ++iPlat)
 			{
 				let plat = otherPlats[iPlat];
-				bool carriesMe = (plat.passengers.Find(self) < plat.passengers.Size());
 
 				for (int i = 0; i < newPass.Size(); ++i)
 				{
@@ -1132,15 +1131,12 @@ extend class FCW_Platform
 						//B) We don't share the "mirror" option and the passenger's center is within our radius
 						//and NOT within the other platform's radius.
 						//(In other words, groupmates with the same "mirror" option never steal each other's passengers.)
-						bool stealPassenger = false;
-						if (!carriesMe) //Never commit theft if we're one of its passengers
-						{
-							if (!group || group != plat.group)
-								stealPassenger = (top > plat.pos.z + plat.height);
-							else
-								stealPassenger = (((args[ARG_OPTIONS] ^ plat.args[ARG_OPTIONS]) & OPTFLAG_MIRROR) &&
-									OverlapXY(self, newPass[i], radius) && !OverlapXY(plat, newPass[i], plat.radius) );
-						}
+						bool stealPassenger;
+						if (!group || group != plat.group)
+							stealPassenger = (top > plat.pos.z + plat.height);
+						else
+							stealPassenger = (((args[ARG_OPTIONS] ^ plat.args[ARG_OPTIONS]) & OPTFLAG_MIRROR) &&
+								OverlapXY(self, newPass[i], radius) && !OverlapXY(plat, newPass[i], plat.radius) );
 
 						if (stealPassenger)
 							plat.passengers.Delete(index);
@@ -2090,6 +2086,27 @@ extend class FCW_Platform
 			if (teleMove || pos == newPos)
 				GoBack();
 			return false;
+		}
+
+		//Before we try to move them, for every passenger that's another platform
+		//call their GetNewPassengers() now so that they can take some of our
+		//passengers at this point.
+		//More importantly, this avoids having the 'passengers' array suddenly
+		//altered just by moving another platform within MovePassengers().
+		for (int i = 0; i < passengers.Size(); ++i)
+		{
+			let plat = FCW_Platform(passengers[i]);
+			if (plat)
+				plat.GetNewPassengers(teleMove);
+		}
+
+		//Same deal for our portal twin
+		if (portTwin && !portTwin.bNoBlockmap && !teleMove)
+		for (int i = 0; i < portTwin.passengers.Size(); ++i)
+		{
+			let plat = FCW_Platform(portTwin.passengers[i]);
+			if (plat)
+				plat.GetNewPassengers(teleMove);
 		}
 
 		if (teleMove || pos == newPos)
