@@ -2093,11 +2093,12 @@ extend class FCW_Platform
 		//passengers at this point.
 		//More importantly, this avoids having the 'passengers' array suddenly
 		//altered just by moving another platform within MovePassengers().
+		Array<FCW_Platform> plats;
 		for (int i = 0; i < passengers.Size(); ++i)
 		{
 			let plat = FCW_Platform(passengers[i]);
 			if (plat)
-				plat.GetNewPassengers(teleMove);
+				plats.Push(plat);
 		}
 
 		//Same deal for our portal twin
@@ -2106,8 +2107,10 @@ extend class FCW_Platform
 		{
 			let plat = FCW_Platform(portTwin.passengers[i]);
 			if (plat)
-				plat.GetNewPassengers(teleMove);
+				plats.Push(plat);
 		}
+		for (int i = 0; i < plats.Size(); ++i)
+			plats[i].GetNewPassengers(teleMove);
 
 		if (teleMove || pos == newPos)
 		{
