@@ -2125,7 +2125,7 @@ extend class FCW_Platform
 
 		for (int i = 0; i < plats.Size(); ++i)
 		{
-			plats[i].bOnMobj = (plats[i].stuckActors.Size());
+			//plats[i].bOnMobj = (plats[i].stuckActors.Size());
 			plats[i].GetNewPassengers(teleMove);
 		}
 
