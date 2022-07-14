@@ -974,7 +974,7 @@ extend class FCW_Platform
 		double top = pos.z + height;
 		Array<Actor> miscActors; //The actors on top of or stuck inside confirmed passengers (We'll move those, too)
 		Array<Actor> newPass; //Potential new passengers, usually (but not always) detected on top of us
-		Array<Actor> tryZFix;
+		Array<Actor> tryZFix, tryZFixItems;
 		Array<FCW_Platform> otherPlats;
 
 		//Call Grind() after we're done iterating because destroying
@@ -1021,9 +1021,8 @@ extend class FCW_Platform
 						if (!ignoreObs)
 							corpses.Push(mo);
 					}
-					else if ((CollisionFlagChecks(self, mo) &&
-						self.CanCollideWith(mo, false) && mo.CanCollideWith(self, true) ) ||
-						(mo is "Inventory" && mo.bSpecial) ) //Item that can be picked up?
+					else if (CollisionFlagChecks(self, mo) &&
+						self.CanCollideWith(mo, false) && mo.CanCollideWith(self, true) )
 					{
 						//Try to correct 'mo' Z so it can ride us, too.
 						//But only if its 'maxStepHeight' allows it.
@@ -1038,6 +1037,13 @@ extend class FCW_Platform
 							if (stuckActors.Find(mo) >= stuckActors.Size())
 								stuckActors.Push(mo);
 						}
+					}
+					else if (mo is "Inventory" && mo.bSpecial) //Item that can be picked up?
+					{
+						//Try to correct 'mo' Z so it can ride us, too.
+						//But only if its 'maxStepHeight' allows it.
+						if (canCarry && top - mo.pos.z <= mo.maxStepHeight)
+							tryZFixItems.Push(mo);
 					}
 					continue;
 				}
@@ -1071,6 +1077,18 @@ extend class FCW_Platform
 				bOnMobj = true;
 				if (stuckActors.Find(mo) >= stuckActors.Size())
 					stuckActors.Push(mo);
+			}
+		}
+
+		for (int i = 0; i < tryZFixItems.Size(); ++i)
+		{
+			let mo = tryZFixItems[i];
+			if (FitsAtPosition(mo, (mo.pos.xy, top)))
+			{
+				mo.SetZ(top);
+				mo.CheckPortalTransition(); //Handle sector portals properly
+				if (passengers.Find(mo) >= passengers.Size())
+					newPass.Push(mo);
 			}
 		}
 
