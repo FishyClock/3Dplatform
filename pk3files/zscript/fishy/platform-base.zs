@@ -2106,13 +2106,6 @@ extend class FCW_Platform
 			return false;
 		}
 
-		//Before we try to move them, for every passenger that's another platform
-		//call their GetNewPassengers() now so that they can take some of our
-		//passengers at this point.
-		//More importantly, this avoids having the 'passengers' array suddenly
-		//altered just by moving another platform within MovePassengers().
-		//That would screw up 'passengers' being in sync with another
-		//array called 'preMovePos'.
 		Array<FCW_Platform> plats;
 		for (int i = 0; i < passengers.Size(); ++i)
 		{
