@@ -1,4 +1,4 @@
-version "4.6"
+version "4.8.2"
 
 #include "zscript/fishy/platform-base.zs"
 #include "zscript/fishy/test-platforms.zs"

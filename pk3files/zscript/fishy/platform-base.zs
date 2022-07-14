@@ -2707,7 +2707,7 @@ extend class FCW_Platform
 	override void Tick ()
 	{
 		//Portal copies aren't meant to think themselves. Not even advance states.
-		//The only thing it should do is remove itself if its twin is gone.
+		//The only thing a copy should do is remove itself if its twin is gone.
 		if (bPortCopy)
 		{
 			if (!portTwin)
@@ -2735,7 +2735,7 @@ extend class FCW_Platform
 			if (group.members.Find(self) >= group.members.Size())
 				group.members.Push(self); //Ensure we're in the group array
 
-			if (!group.origin && (bActive || vel != (0, 0, 0)))
+			if ((!group.origin || (!group.origin.bActive && group.origin.vel == (0, 0, 0))) && (bActive || vel != (0, 0, 0)))
 			{
 				group.origin = self;
 			}
@@ -2983,11 +2983,7 @@ extend class FCW_Platform
 							grav = thisGrav;
 					}
 				}
-
-				let oldNoGrav = bNoGravity;
-				bNoGravity = false; //Don't let our NOGRAVITY cancel FallAndSink()
 				FallAndSink(grav, oldFloorZ);
-				bNoGravity = oldNoGrav;
 			}
 		}
 
@@ -3016,6 +3012,61 @@ extend class FCW_Platform
 
 		if (tics != -1 && --tics <= 0)
 			SetState(curState.nextState);
+	}
+
+	//============================
+	// FallAndSink (override)
+	//============================
+	override void FallAndSink (double grav, double oldFloorZ)
+	{
+		//This is a modified version of the original function
+
+		double startVelZ = vel.z;
+		int wLevel = waterLevel;
+
+		if (group && group.origin)
+		for (int iPlat = 0; iPlat < group.members.Size(); ++iPlat)
+		{
+			let plat = group.GetMember(iPlat);
+			if (plat && plat != self)
+			{
+				//Get the deepest water level from the group
+				double thisLevel = plat.waterLevel;
+				if (thisLevel > wLevel)
+					wLevel = thisLevel;
+			}
+		}
+
+		if (wLevel == 0)
+		{
+			// [RH] Double gravity only if running off a ledge. Coming down from
+			// an upward thrust (e.g. a jump) should not double it.
+			if (vel.z == 0 && oldFloorZ > floorZ && pos.z == oldFloorZ)
+				vel.z -= grav + grav;
+			else
+				vel.z -= grav;
+		}
+		else if (wLevel >= 1)
+		{
+			double sinkSpeed = -0.5; // -WATER_SINK_SPEED;
+
+			// Scale sinkSpeed by its mass, with
+			// 100 being equivalent to a player.
+			sinkSpeed = sinkSpeed * clamp(mass, 1, 4000) / 100;
+
+			if (vel.z < sinkSpeed)
+			{ // Dropping too fast, so slow down toward sinkSpeed.
+				vel.z -= max(sinkSpeed * 2, -8.0);
+				if (vel.z > sinkSpeed)
+					vel.z = sinkSpeed;
+			}
+			else if (vel.z > sinkSpeed)
+			{ // Dropping too slow/going up, so trend toward sinkSpeed.
+				vel.z = startVelZ + max(sinkSpeed / 3, -8.0);
+				if (vel.z < sinkSpeed)
+					vel.z = sinkSpeed;
+			}
+		}
 	}
 
 	//============================
