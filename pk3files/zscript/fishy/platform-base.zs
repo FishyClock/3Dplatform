@@ -2111,6 +2111,8 @@ extend class FCW_Platform
 		//passengers at this point.
 		//More importantly, this avoids having the 'passengers' array suddenly
 		//altered just by moving another platform within MovePassengers().
+		//That would screw up 'passengers' being in sync with another
+		//array called 'preMovePos'.
 		Array<FCW_Platform> plats;
 		for (int i = 0; i < passengers.Size(); ++i)
 		{
@@ -2127,8 +2129,12 @@ extend class FCW_Platform
 			if (plat)
 				plats.Push(plat);
 		}
+
 		for (int i = 0; i < plats.Size(); ++i)
+		{
+			plats[i].bOnMobj = (plats[i].stuckActors.Size());
 			plats[i].GetNewPassengers(teleMove);
+		}
 
 		if (teleMove || pos == newPos)
 		{
