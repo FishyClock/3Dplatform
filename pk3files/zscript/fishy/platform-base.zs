@@ -241,6 +241,7 @@ extend class FCW_Platform
 	transient int lastGetNPTime; //Make sure there's only one GetNewPassengers() blockmap search per tic
 	transient bool lastGetNPResult;
 	transient int lastGetUPTime; //Same deal for GetUnlinkedPortal()
+	bool bPlatMovedOnMobj; //Signals that we were moved by another platform as a passenger and it shouldn't nullify the bOnMobj result
 
 	//Unlike PathFollower classes, our interpolations are done with
 	//vector3 coordinates instead of checking InterpolationPoint positions.
@@ -298,6 +299,7 @@ extend class FCW_Platform
 		lastGetNPTime = -1;
 		lastGetNPResult = false;
 		lastGetUPTime = -1;
+		bPlatMovedOnMobj = false;
 
 		pCurr = pPrev = pNext = pNextNext = (0, 0, 0);
 		pCurrAngs = pPrevAngs = pNextAngs = pNextNextAngs = (0, 0, 0);
@@ -964,8 +966,13 @@ extend class FCW_Platform
 	//============================
 	private bool GetNewPassengers (bool ignoreObs)
 	{
-		//In addition to fetching passengers, this is where corpses get crushed, too. Items won't get destroyed.
-		//Returns false if one or more actors are completely stuck inside platform unless 'ignoreObs' is true.
+		// In addition to fetching passengers, this is where corpses get crushed, too. Items won't get destroyed.
+		// Returns false if one or more actors are completely stuck inside platform unless 'ignoreObs' is true.
+		//
+		// Note: if we're another platform's passenger and this gets called because we're being moved by that
+		// platform's MovePassengers() function then our carrier's passengers won't be detected during this
+		// blockmap search since they're temporarily excluded from the blockmap.
+		// This is a good thing because it means there's no chance of stealing our carrier's passengers.
 
 		if (lastGetNPTime == level.mapTime)
 			return lastGetNPResult; //Already called in this tic
@@ -994,10 +1001,14 @@ extend class FCW_Platform
 			if (mo == self || mo == portTwin)
 				continue;
 
-			bool oldPass = (passengers.Find(mo) < passengers.Size());
 			let plat = FCW_Platform(mo);
 			if (plat)
+			{
+				
 				otherPlats.Push(plat);
+			}
+
+			bool oldPass = (passengers.Find(mo) < passengers.Size());
 			bool canCarry = ((!portTwin || portTwin.passengers.Find(mo) >= portTwin.passengers.Size()) && //Don't take your twin's passengers here
 						IsCarriable(mo));
 
@@ -1005,6 +1016,16 @@ extend class FCW_Platform
 			double blockDist = radius + mo.radius;
 			if (abs(it.position.x - mo.pos.x) < blockDist && abs(it.position.y - mo.pos.y) < blockDist)
 			{
+				if (plat && (plat.bPlatInMove || (plat.portTwin && plat.portTwin.bPlatInMove) ) ) //This is probably the platform that's carrying/moving us
+				{
+					if (!ignoreObs && !bOnMobj &&
+						(abs(pos.z - (mo.pos.z + mo.height)) <= TOP_EPSILON || OverlapZ(self, mo) ) ) //Are we standing on 'mo'?
+					{
+						bOnMobj = true;
+					}
+					continue;
+				}
+
 				//'ignoreObs' makes anything above our 'top' legit unless there's a 3D floor in the way.
 				if (mo.pos.z >= top - TOP_EPSILON && (ignoreObs || mo.pos.z <= top + TOP_EPSILON) && //On top of us?
 					mo.floorZ <= top + TOP_EPSILON) //No 3D floor above our 'top' that's below 'mo'?
@@ -1281,6 +1302,8 @@ extend class FCW_Platform
 		{
 			let mo = passengers[i];
 			let moOldPos = mo.pos;
+			let moOldNoDropoff = mo.bNoDropoff;
+			let plat = FCW_Platform(mo);
 
 			vector3 offset = level.Vec3Diff(startPos, moOldPos);
 			offset.xy = (offset.x*c - offset.y*s, offset.x*s + offset.y*c); //Rotate it
@@ -1292,9 +1315,9 @@ extend class FCW_Platform
 				moNewPos.z = top;
 
 			bool moved;
-			if (mo is "FCW_Platform")
+			if (plat)
 			{
-				let plat = FCW_Platform(mo);
+				mo.bNoDropoff = false;
 				if (plat.bActive)
 				{
 					//Try to move this active platform, then forget about it;
@@ -1308,11 +1331,26 @@ extend class FCW_Platform
 						if (moNewPos != mo.pos)
 							plat.AdjustInterpolationCoordinates(moNewPos, mo.pos, DeltaAngle(moNewAngle, mo.angle));
 					}
-					mo.A_ChangeLinkFlags(YES_BMAP);
+					plat.bPlatMovedOnMobj = plat.bOnMobj;
+
+					if (mo && !mo.bDestroyed)
+					{
+						mo.bNoDropoff = moOldNoDropoff;
+						mo.A_ChangeLinkFlags(YES_BMAP);
+						mo.A_ChangeLinkFlags(YES_BMAP);
+					}
 					passengers.Delete(i--);
 					continue;
 				}
+
 				moved = plat.PlatMove(moNewPos, mo.angle, mo.pitch, mo.roll, teleMove); //In this case, the angle change comes later like with all passengers
+				if (!mo || mo.bDestroyed)
+				{
+					passengers.Delete(i--);
+					continue;
+				}
+				plat.bPlatMovedOnMobj = plat.bOnMobj;
+				mo.bNoDropoff = moOldNoDropoff;
 			}
 			else if (teleMove)
 			{
@@ -1343,7 +1381,6 @@ extend class FCW_Platform
 
 				//NODROPOFF overrides TryMove()'s second argument,
 				//but the passenger should be treated like a flying object.
-				let moOldNoDropoff = mo.bNoDropoff;
 				mo.bNoDropoff = false;
 				moved = true;
 				for (int step = 0; step < maxSteps; ++step)
@@ -1407,10 +1444,10 @@ extend class FCW_Platform
 			{
 				if (mo.pos != moOldPos)
 				{
-					if (!(mo is "FCW_Platform"))
+					if (!plat)
 						mo.SetOrigin(moOldPos, true);
 					else
-						FCW_Platform(mo).PlatMove(moOldPos, mo.angle, mo.pitch, mo.roll, 1);
+						plat.PlatMove(moOldPos, mo.angle, mo.pitch, mo.roll, 1);
 				}
 
 				//This passenger will be 'solid' for the others
@@ -1420,7 +1457,7 @@ extend class FCW_Platform
 				if (teleMove)
 					continue;
 
-				if (!mo.bCannotPush && (args[ARG_OPTIONS] & OPTFLAG_PASSCANPUSH))
+				if (!plat && !mo.bCannotPush && (args[ARG_OPTIONS] & OPTFLAG_PASSCANPUSH))
 				{
 					let oldCannotPush = bCannotPush;
 					bCannotPush = false;
@@ -1461,10 +1498,11 @@ extend class FCW_Platform
 
 						//Put 'otherMo' back at its old position
 						vector3 otherOldPos = (preMovePos[iOther*3], preMovePos[iOther*3 + 1], preMovePos[iOther*3 + 2]);
-						if (!(mo is "FCW_Platform"))
+						plat = FCW_Platform(otherMo);
+						if (!plat)
 							otherMo.SetOrigin(otherOldPos, true);
 						else
-							FCW_Platform(mo).PlatMove(otherOldPos, mo.angle, mo.pitch, mo.roll, 1);
+							plat.PlatMove(otherOldPos, mo.angle, mo.pitch, mo.roll, 1);
 
 						otherMo.A_ChangeLinkFlags(YES_BMAP);
 						preMovePos.Delete(iOther*3, 3);
@@ -1488,7 +1526,7 @@ extend class FCW_Platform
 							portTwin.passengers[i].A_ChangeLinkFlags(YES_BMAP);
 
 						PushObstacle(mo, pushForce);
-						if (mo != movedBack[0]) //We (potentially) already pushed/crushed the first one's blocker
+						if (!(mo is "FCW_Platform") && mo != movedBack[0]) //We (potentially) already pushed/crushed the first one's blocker
 						{
 							//'OPTFLAG_PASSCANPUSH' doesn't matter here since it's considered
 							//the platform doing the pushing/crushing.
@@ -1510,10 +1548,11 @@ extend class FCW_Platform
 			mo.A_ChangeLinkFlags(YES_BMAP);
 			if (delta)
 			{
-				if (!(mo is "FCW_Platform"))
+				let plat = FCW_Platform(mo);
+				if (!plat)
 					mo.A_SetAngle(Normalize180(mo.angle + delta), SPF_INTERPOLATE);
 				else
-					FCW_Platform(mo).PlatMove(mo.pos, mo.angle + delta, mo.pitch, mo.roll, -1);
+					plat.PlatMove(mo.pos, mo.angle + delta, mo.pitch, mo.roll, -1);
 			}
 			if (mo.bOnMobj) //Standing on platform or on another passenger?
 				mo.vel.xy = (mo.vel.x*c - mo.vel.y*s, mo.vel.x*s + mo.vel.y*c); //Rotate its velocity
@@ -2106,29 +2145,6 @@ extend class FCW_Platform
 			return false;
 		}
 
-		Array<FCW_Platform> plats;
-		for (int i = 0; i < passengers.Size(); ++i)
-		{
-			let plat = FCW_Platform(passengers[i]);
-			if (plat)
-				plats.Push(plat);
-		}
-
-		//Same deal for our portal twin
-		if (portTwin && !portTwin.bNoBlockmap && !teleMove)
-		for (int i = 0; i < portTwin.passengers.Size(); ++i)
-		{
-			let plat = FCW_Platform(portTwin.passengers[i]);
-			if (plat)
-				plats.Push(plat);
-		}
-
-		for (int i = 0; i < plats.Size(); ++i)
-		{
-			//plats[i].bOnMobj = (plats[i].stuckActors.Size());
-			plats[i].GetNewPassengers(teleMove);
-		}
-
 		if (teleMove || pos == newPos)
 		{
 			if (pos != newPos)
@@ -2140,7 +2156,11 @@ extend class FCW_Platform
 			if (teleMove && portTwin && !portTwin.bNoBlockmap)
 				portTwin.A_ChangeLinkFlags(NO_BMAP);
 
-			if (!MovePassengers(oldPos, pos, angle, delta, piDelta, roDelta, teleMove))
+			bPlatInMove = true;
+			bool movedThem = MovePassengers(oldPos, pos, angle, delta, piDelta, roDelta, teleMove);
+			bPlatInMove = false;
+
+			if (!movedThem)
 			{
 				GoBack();
 				return false;
@@ -2764,8 +2784,8 @@ extend class FCW_Platform
 		}
 
 		double oldFloorZ = floorZ;
-		if (lastGetNPTime != level.mapTime)
-			bOnMobj = false; //Aside from standing on an actor, this can also be "true" later if hitting a lower obstacle while going down or we have stuck actors
+		bOnMobj = bPlatMovedOnMobj; //Aside from standing on an actor, this can also be "true" later if hitting a lower obstacle while going down or we have stuck actors
+
 		if (portTwin && portTwin.bPortCopy)
 			portTwin.bOnMobj = bOnMobj;
 
@@ -2953,7 +2973,7 @@ extend class FCW_Platform
 					yesGravity |= !plat.bNoGravity;
 
 					if (yesGravity && !onGround && plat.lastGetNPTime != level.mapTime)
-						onGround = !plat.TestMobjZ(true);
+						onGround = plat.bOnMobj = !plat.TestMobjZ(true);
 				}
 			}
 
@@ -3006,6 +3026,7 @@ extend class FCW_Platform
 
 		if (!group || !group.origin)
 		{
+			bPlatMovedOnMobj = false;
 			AdvanceStates();
 		}
 		else if (group.origin == self)
@@ -3014,7 +3035,10 @@ extend class FCW_Platform
 			{
 				let plat = group.GetMember(iPlat);
 				if (plat)
+				{
+					plat.bPlatMovedOnMobj = false;
 					plat.AdvanceStates();
+				}
 			}
 		}
 	}
