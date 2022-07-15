@@ -1336,7 +1336,6 @@ extend class FCW_Platform
 					{
 						mo.bNoDropoff = moOldNoDropoff;
 						mo.A_ChangeLinkFlags(YES_BMAP);
-						mo.A_ChangeLinkFlags(YES_BMAP);
 					}
 					passengers.Delete(i--);
 					continue;
