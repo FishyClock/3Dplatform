@@ -241,7 +241,6 @@ extend class FCW_Platform
 	transient int lastGetNPTime; //Make sure there's only one GetNewPassengers() blockmap search per tic
 	transient bool lastGetNPResult;
 	transient int lastGetUPTime; //Same deal for GetUnlinkedPortal()
-	bool bPlatMovedOnMobj; //Signals that we were moved by another platform as a passenger and it shouldn't nullify the bOnMobj result
 
 	//Unlike PathFollower classes, our interpolations are done with
 	//vector3 coordinates instead of checking InterpolationPoint positions.
@@ -299,7 +298,6 @@ extend class FCW_Platform
 		lastGetNPTime = -1;
 		lastGetNPResult = false;
 		lastGetUPTime = -1;
-		bPlatMovedOnMobj = false;
 
 		pCurr = pPrev = pNext = pNextNext = (0, 0, 0);
 		pCurrAngs = pPrevAngs = pNextAngs = pNextNextAngs = (0, 0, 0);
@@ -1331,7 +1329,6 @@ extend class FCW_Platform
 						if (moNewPos != mo.pos)
 							plat.AdjustInterpolationCoordinates(moNewPos, mo.pos, DeltaAngle(moNewAngle, mo.angle));
 					}
-					plat.bPlatMovedOnMobj = plat.bOnMobj;
 
 					if (mo && !mo.bDestroyed)
 					{
@@ -1349,7 +1346,6 @@ extend class FCW_Platform
 					passengers.Delete(i--);
 					continue;
 				}
-				plat.bPlatMovedOnMobj = plat.bOnMobj;
 				mo.bNoDropoff = moOldNoDropoff;
 			}
 			else if (teleMove)
@@ -2784,7 +2780,7 @@ extend class FCW_Platform
 		}
 
 		double oldFloorZ = floorZ;
-		bOnMobj = bPlatMovedOnMobj; //Aside from standing on an actor, this can also be "true" later if hitting a lower obstacle while going down or we have stuck actors
+		bOnMobj = false; //Aside from standing on an actor, this can also be "true" later if hitting a lower obstacle while going down or we have stuck actors
 
 		if (portTwin && portTwin.bPortCopy)
 			portTwin.bOnMobj = bOnMobj;
@@ -2958,9 +2954,13 @@ extend class FCW_Platform
 			bool onGround = (bOnMobj || pos.z <= floorZ);
 			bool yesGravity = !bNoGravity;
 
-			//Use 'lastGetNPTime' to avoid yet another blockmap search - basically do this only if we haven't tried to move
-			if (yesGravity && !onGround && lastGetNPTime != level.mapTime)
-				onGround = bOnMobj = !TestMobjZ(true);
+			if (yesGravity && !onGround)
+			{
+				Actor mo;
+				onGround = bOnMobj = ((lastGetNPTime == level.mapTime && !lastGetNPResult) ||
+					((mo = blockingMobj) && mo.pos.z <= pos.z && OverlapXY(self, mo)) ||
+					!TestMobjZ(true) );
+			}
 
 			if (group && group.origin)
 			for (int iPlat = 0; (!onGround || !yesGravity) && iPlat < group.members.Size(); ++iPlat)
@@ -2972,8 +2972,13 @@ extend class FCW_Platform
 					onGround |= (plat.bOnMobj || plat.pos.z <= plat.floorZ);
 					yesGravity |= !plat.bNoGravity;
 
-					if (yesGravity && !onGround && plat.lastGetNPTime != level.mapTime)
-						onGround = plat.bOnMobj = !plat.TestMobjZ(true);
+					if (yesGravity && !onGround)
+					{
+						Actor mo;
+						onGround = plat.bOnMobj = ((plat.lastGetNPTime == level.mapTime && !plat.lastGetNPResult) ||
+							((mo = plat.blockingMobj) && mo.pos.z <= plat.pos.z && OverlapXY(plat, mo)) ||
+							!plat.TestMobjZ(true) );
+					}
 				}
 			}
 
@@ -3026,7 +3031,6 @@ extend class FCW_Platform
 
 		if (!group || !group.origin)
 		{
-			bPlatMovedOnMobj = false;
 			AdvanceStates();
 		}
 		else if (group.origin == self)
@@ -3035,10 +3039,7 @@ extend class FCW_Platform
 			{
 				let plat = group.GetMember(iPlat);
 				if (plat)
-				{
-					plat.bPlatMovedOnMobj = false;
 					plat.AdvanceStates();
-				}
 			}
 		}
 	}
