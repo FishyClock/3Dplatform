@@ -2780,20 +2780,18 @@ extend class FCW_Platform
 		}
 
 		double oldFloorZ = floorZ;
-		bOnMobj = false; //Aside from standing on an actor, this can also be "true" later if hitting a lower obstacle while going down or we have stuck actors
-
-		if (portTwin && portTwin.bPortCopy)
-			portTwin.bOnMobj = bOnMobj;
 
 		//The group origin, if there is one, thinks for the whole group.
 		//That means the order in which they think depends on where
 		//they are in the group array and not where they are in the thinker list.
 		if (!group || !group.origin)
 		{
+			bOnMobj = false; //Aside from standing on an actor, this can also be "true" later if hitting a lower obstacle while going down or we have stuck actors
 			HandleStuckActors();
 			HandleOldPassengers();
 			if (portTwin && portTwin.bPortCopy)
 			{
+				portTwin.bOnMobj = bOnMobj;
 				portTwin.HandleStuckActors();
 				portTwin.HandleOldPassengers();
 			}
@@ -2806,10 +2804,12 @@ extend class FCW_Platform
 				let plat = group.GetMember(iPlat);
 				if (plat)
 				{
+					plat.bOnMobj = false;
 					plat.HandleStuckActors();
 					plat.HandleOldPassengers();
 					if (plat.portTwin && plat.portTwin.bPortCopy)
 					{
+						plat.portTwin.bOnMobj = plat.bOnMobj;
 						plat.portTwin.HandleStuckActors();
 						plat.portTwin.HandleOldPassengers();
 					}
@@ -3062,9 +3062,12 @@ extend class FCW_Platform
 	override void FallAndSink (double grav, double oldFloorZ)
 	{
 		//This is a modified version of the original function
+		if (!grav)
+			return;
 
 		double startVelZ = vel.z;
 		int wLevel = waterLevel;
+		int m = mass;
 
 		if (group && group.origin)
 		for (int iPlat = 0; iPlat < group.members.Size(); ++iPlat)
@@ -3072,10 +3075,11 @@ extend class FCW_Platform
 			let plat = group.GetMember(iPlat);
 			if (plat && plat != self)
 			{
-				//Get the deepest water level from the group
-				double thisLevel = plat.waterLevel;
-				if (thisLevel > wLevel)
-					wLevel = thisLevel;
+				//Get the deepest water level and biggest mass from the group
+				if (plat.waterLevel > wLevel)
+					wLevel = plat.waterLevel;
+				if (plat.mass > m)
+					m = plat.mass;
 			}
 		}
 
@@ -3092,9 +3096,9 @@ extend class FCW_Platform
 		{
 			double sinkSpeed = -0.5; // -WATER_SINK_SPEED;
 
-			// Scale sinkSpeed by its mass, with
+			// Scale sinkSpeed by mass (m), with
 			// 100 being equivalent to a player.
-			sinkSpeed = sinkSpeed * clamp(mass, 1, 4000) / 100;
+			sinkSpeed = sinkSpeed * clamp(m, 1, 4000) / 100;
 
 			if (vel.z < sinkSpeed)
 			{ // Dropping too fast, so slow down toward sinkSpeed.
