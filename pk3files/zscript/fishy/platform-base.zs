@@ -636,12 +636,15 @@ extend class FCW_Platform
 	//============================
 	// FitsAtPosition
 	//============================
-	static bool FitsAtPosition (Actor mo, vector3 testPos)
+	static bool FitsAtPosition (Actor mo, vector3 testPos, bool ignoreActors = false)
 	{
 		//Unlike TestMobjLocation(), CheckMove() takes into account
 		//actors that have the flags FLOORHUGGER, CEILINGHUGGER
 		//and CANTLEAVEFLOORPIC.
 
+		let oldThruActors = mo.bThruActors;
+		if (ignoreActors)
+			mo.bThruActors = true; //Makes P_CheckPosition() not iterate through the thing blockmap; it skips calling PIT_CheckThing()
 		let oldZ = mo.pos.z;
 		mo.SetZ(testPos.z); //Because setting Z has an effect on CheckMove()'s outcome
 
@@ -650,6 +653,7 @@ extend class FCW_Platform
 			testPos.z >= tm.floorZ &&				//This is something that TestMobjLocation() checks
 			testPos.z + mo.height <= tm.ceilingZ);	//and that CheckMove() does not account for.
 
+		mo.bThruActors = oldThruActors;
 		mo.SetZ(oldZ);
 		return result;
 	}
@@ -1001,10 +1005,7 @@ extend class FCW_Platform
 
 			let plat = FCW_Platform(mo);
 			if (plat)
-			{
-				
 				otherPlats.Push(plat);
-			}
 
 			bool oldPass = (passengers.Find(mo) < passengers.Size());
 			bool canCarry = ((!portTwin || portTwin.passengers.Find(mo) >= portTwin.passengers.Size()) && //Don't take your twin's passengers here
@@ -1017,7 +1018,8 @@ extend class FCW_Platform
 				if (plat && (plat.bPlatInMove || (plat.portTwin && plat.portTwin.bPlatInMove) ) ) //This is probably the platform that's carrying/moving us
 				{
 					if (!ignoreObs && !bOnMobj &&
-						(abs(pos.z - (mo.pos.z + mo.height)) <= TOP_EPSILON || OverlapZ(self, mo) ) ) //Are we standing on 'mo'?
+						(abs(pos.z - (mo.pos.z + mo.height)) <= TOP_EPSILON || //Are we standing on 'mo'?
+						OverlapZ(self, mo) ) )
 					{
 						bOnMobj = true;
 					}
@@ -1083,7 +1085,7 @@ extend class FCW_Platform
 		for (int i = 0; i < tryZFix.Size(); ++i)
 		{
 			let mo = tryZFix[i];
-			if (FitsAtPosition(mo, (mo.pos.xy, top)))
+			if (FitsAtPosition(mo, (mo.pos.xy, top), true))
 			{
 				mo.SetZ(top);
 				mo.CheckPortalTransition(); //Handle sector portals properly
@@ -1102,7 +1104,7 @@ extend class FCW_Platform
 		for (int i = 0; i < tryZFixItems.Size(); ++i)
 		{
 			let mo = tryZFixItems[i];
-			if (FitsAtPosition(mo, (mo.pos.xy, top)))
+			if (FitsAtPosition(mo, (mo.pos.xy, top), true))
 			{
 				mo.SetZ(top);
 				mo.CheckPortalTransition(); //Handle sector portals properly
@@ -1871,7 +1873,7 @@ extend class FCW_Platform
 			//If we could carry it, try to set the obstacle on top of us
 			//if its 'maxStepHeight' allows it.
 			if (moNewZ > moOldZ && moNewZ - moOldZ <= mo.maxStepHeight &&
-				IsCarriable(mo) && FitsAtPosition(mo, (mo.pos.xy, moNewZ)))
+				IsCarriable(mo) && FitsAtPosition(mo, (mo.pos.xy, moNewZ), mo is "FCW_Platform")) //If it's a platform then ignore possible actor collision
 			{
 				mo.SetZ(moNewZ);
 
@@ -1957,6 +1959,10 @@ extend class FCW_Platform
 
 			if (stuckActors.Find(mo) < stuckActors.Size())
 				continue; //Already in the array
+
+			let plat = FCW_Platform(mo);
+			if (plat && (plat.bPlatInMove || (plat.portTwin && plat.portTwin.bPlatInMove) ) )
+				continue; //This is likely the platform that carries us; ignore it
 
 			double blockDist = radius + mo.radius;
 			if (abs(it.position.x - mo.pos.x) >= blockDist || abs(it.position.y - mo.pos.y) >= blockDist)
