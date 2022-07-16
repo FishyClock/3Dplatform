@@ -218,6 +218,7 @@ extend class FCW_Platform
 	double oldAngle;
 	double oldPitch;
 	double oldRoll;
+	FCW_PlatformGroup group;
 	vector3 groupPos;
 	double groupAngle;
 	double groupPitch;
@@ -232,7 +233,6 @@ extend class FCW_Platform
 	bool goToNode;
 	Array<Actor> passengers;
 	Array<Actor> stuckActors;
-	FCW_PlatformGroup group;
 	Line lastUPort;
 	private FCW_Platform portTwin; //Helps with collision when dealing with unlinked line portals
 	private bool bPortCopy;
@@ -275,6 +275,7 @@ extend class FCW_Platform
 		oldAngle = angle;
 		oldPitch = pitch;
 		oldRoll = roll;
+		group = null;
 		groupPos = pos;
 		groupAngle = angle;
 		groupPitch = pitch;
@@ -289,7 +290,6 @@ extend class FCW_Platform
 		goToNode = false;
 		passengers.Clear();
 		stuckActors.Clear();
-		group = null;
 		lastUPort = null;
 		portTwin = null;
 		bPortCopy = false;
@@ -350,7 +350,7 @@ extend class FCW_Platform
 	//============================
 	private bool SetUpPath (int nodeTid, bool noPrefix)
 	{
-		String prefix = noPrefix ? "" :  "\n\ckPlatform class '" .. GetClassName() .. "' with tid " .. tid .. " at position " .. pos .. ":\n";
+		String prefix = noPrefix ? "" : "\n\ckPlatform class '" .. GetClassName() .. "' with tid " .. tid .. " at position " .. pos .. ":\n";
 		let it = level.CreateActorIterator(nodeTid, "InterpolationPoint");
 		firstNode = InterpolationPoint(it.Next());
 		if (!firstNode)
