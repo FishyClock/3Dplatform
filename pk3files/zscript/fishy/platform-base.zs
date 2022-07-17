@@ -255,15 +255,6 @@ extend class FCW_Platform
 	int platFlags; //Not to be confused with the above "option flags"
 	flagdef Carriable: platFlags, 0;
 
-	States
-	{
-	//Portal twins that are invisible and aren't meant
-	//to have fancy states/animations/etc.
-	PortalCopy:
-		TNT1 A -1;
-		Stop;
-	}
-
 	//============================
 	// BeginPlay (override)
 	//============================
@@ -1004,7 +995,7 @@ extend class FCW_Platform
 				continue;
 
 			let plat = FCW_Platform(mo);
-			if (plat)
+			if (plat && plat.passengers.Size() && !plat.bPlatInMove && (!plat.portTwin || !plat.portTwin.bPlatInMove))
 				otherPlats.Push(plat);
 
 			bool oldPass = (passengers.Find(mo) < passengers.Size());
@@ -1128,8 +1119,11 @@ extend class FCW_Platform
 		for (int iPlat = 0; iPlat < group.members.Size(); ++iPlat)
 		{
 			let plat = group.GetMember(iPlat);
-			if (plat && plat != self && otherPlats.Find(plat) >= otherPlats.Size())
+			if (plat && plat != self && otherPlats.Find(plat) >= otherPlats.Size() &&
+				plat.passengers.Size() && !plat.bPlatInMove && (!plat.portTwin || !plat.portTwin.bPlatInMove))
+			{
 				otherPlats.Push(plat);
+			}
 		}
 
 		int oldSize = newPass.Size();
@@ -1249,14 +1243,14 @@ extend class FCW_Platform
 		if (!passengers.Size())
 			return true; //No passengers? Nothing to do
 
-		//The goal is to move all passengers as if they were one entity.
-		//The only things that should block any of them are
-		//non-passengers and geometry.
-		//The exception is if a passenger can't fit at its new position
-		//in which case it will be "solid" for the others.
+		// The goal is to move all passengers as if they were one entity.
+		// The only things that should block any of them are
+		// non-passengers and geometry.
+		// The exception is if a passenger can't fit at its new position
+		// in which case it will be "solid" for the others.
 		//
-		//To accomplish this each of them will temporarily
-		//be removed from the blockmap.
+		// To accomplish this each of them will temporarily
+		// be removed from the blockmap.
 
 		for (int i = 0; i < passengers.Size(); ++i)
 		{
@@ -1332,6 +1326,8 @@ extend class FCW_Platform
 							plat.AdjustInterpolationCoordinates(moNewPos, mo.pos, DeltaAngle(moNewAngle, mo.angle));
 					}
 
+					//In the unlikely event the plat has one of the flags CANPUSHWALLS, CANUSEWALLS, ACTIVATEMCROSS or ACTIVATEPCROSS
+					//and gets Thing_Remove()'d by activating a line.
 					if (mo && !mo.bDestroyed)
 					{
 						mo.bNoDropoff = moOldNoDropoff;
@@ -1996,9 +1992,10 @@ extend class FCW_Platform
 			if (index < passengers.Size())
 			{
 				//Try to have it on top of us and deliberately ignore if it gets stuck in another actor
-				if (top <= mo.ceilingZ - mo.height)
+				if (FitsAtPosition(mo, (mo.pos.xy, top), true))
 				{
 					mo.SetZ(top);
+					mo.CheckPortalTransition(); //Handle sector portals properly
 					stuckActors.Delete(i--);
 					continue;
 				}
@@ -2048,8 +2045,8 @@ extend class FCW_Platform
 			{
 				portTwin = FCW_Platform(Spawn(GetClass(), TranslatePortalVector(pos, port, true, false)));
 				portTwin.portTwin = self;
-				portTwin.SetStateLabel("PortalCopy"); //Invisible
 				portTwin.bPortCopy = true;
+				portTwin.A_ChangeLinkFlags(FLAG_NO_CHANGE, 1); //Set NOSECTOR flag
 			}
 		}
 
