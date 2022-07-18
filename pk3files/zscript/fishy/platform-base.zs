@@ -995,7 +995,7 @@ extend class FCW_Platform
 				continue;
 
 			let plat = FCW_Platform(mo);
-			if (plat && plat.passengers.Size() && !plat.bPlatInMove && (!plat.portTwin || !plat.portTwin.bPlatInMove))
+			if (plat)
 				otherPlats.Push(plat);
 
 			bool oldPass = (passengers.Find(mo) < passengers.Size());
@@ -1107,52 +1107,23 @@ extend class FCW_Platform
 		for (int i = 0; i < corpses.Size(); ++i)
 			corpses[i].Grind(false);
 
-		if (!newPass.Size() && !miscActors.Size())
+		if (newPass.Size() || miscActors.Size())
 		{
-			lastGetNPResult = result;
-			return result; //Found nothing new to carry so stop here
-		}
-
-		//Take into account the possibility that not all
-		//group members can be found in a blockmap search.
-		if (group)
-		for (int iPlat = 0; iPlat < group.members.Size(); ++iPlat)
-		{
-			let plat = group.GetMember(iPlat);
-			if (plat && plat != self && otherPlats.Find(plat) >= otherPlats.Size() &&
-				plat.passengers.Size() && !plat.bPlatInMove && (!plat.portTwin || !plat.portTwin.bPlatInMove))
+			//Take into account the possibility that not all
+			//group members can be found in a blockmap search.
+			if (group)
+			for (int iPlat = 0; iPlat < group.members.Size(); ++iPlat)
 			{
-				otherPlats.Push(plat);
+				let plat = group.GetMember(iPlat);
+				if (plat && plat != self && otherPlats.Find(plat) >= otherPlats.Size())
+					otherPlats.Push(plat);
 			}
-		}
 
-		int oldSize = newPass.Size();
-		for (int i = 0; i < oldSize; ++i)
-		{
-			let plat = FCW_Platform(newPass[i]);
-
-			//If this is a platform with a group, add each of its members as a (potential) passenger
-			if (plat && plat.group)
-			for (int iPlat = 0; iPlat < plat.group.members.Size(); ++iPlat)
-			{
-				let member = plat.group.GetMember(iPlat);
-				if (member && member != plat)
-				{
-					int index = miscActors.Find(member);
-					if (index < miscActors.Size())
-						miscActors.Delete(index);
-
-					if (newPass.Find(member) >= newPass.Size() && passengers.Find(member) >= passengers.Size())
-						newPass.Push(member);
-				}
-			}
-		}
-
-		do
-		{
 			for (int iPlat = 0; (newPass.Size() || miscActors.Size()) && iPlat < otherPlats.Size(); ++iPlat)
 			{
 				let plat = otherPlats[iPlat];
+				if (!plat.passengers.Size() || plat.bPlatInMove || (plat.portTwin && plat.portTwin.bPlatInMove))
+					continue;
 
 				for (int i = 0; i < newPass.Size(); ++i)
 				{
@@ -1184,7 +1155,6 @@ extend class FCW_Platform
 				}
 			}
 			passengers.Append(newPass);
-			newPass.Clear();
 
 			//Now figure out which of the misc actors are on top of/stuck inside
 			//established passengers.
@@ -1207,28 +1177,51 @@ extend class FCW_Platform
 					{
 						miscActors.Delete(iOther--); //Don't compare this one against other passengers anymore
 						passengers.Push(otherMo);
-
-						//If this is a platform with a group, add each member as a (potential) passenger
-						let plat = FCW_Platform(otherMo);
-						if (plat && plat.group)
-						for (int iPlat = 0; iPlat < plat.group.members.Size(); ++iPlat)
-						{
-							let member = plat.group.GetMember(iPlat);
-							if (member && member != plat &&
-								newPass.Find(member) >= newPass.Size() && passengers.Find(member) >= passengers.Size())
-							{
-								//We need to check if this platform isn't another platform's passenger.
-								//ie the 'otherPlats' for loop (above) needs to run one more time.
-								newPass.Push(member);
-							}
-						}
 					}
 				}
 			}
-			miscActors.Clear();
 		}
-		while (newPass.Size());
 
+		//If we have passengers that are grouped platforms,
+		//prune 'passengers' array; we only want one member per group.
+		//Preferably the origin.
+		Array<FCW_PlatformGroup> otherGroups;
+		for (int i = 0; i < passengers.Size(); ++i)
+		{
+			let plat = FCW_Platform(passengers[i]);
+			if (!plat || !plat.group)
+				continue;
+
+			if (otherGroups.Find(plat.group) < otherGroups.Size())
+			{
+				passengers.Delete(i--);
+				continue;
+			}
+			otherGroups.Push(plat.group);
+
+			if (plat.group.origin)
+			{
+				passengers[i] = plat.group.origin;
+				continue;
+			}
+
+			//No origin, so pick the closest member. (We'll make them the new origin.)
+			double dist = Distance3D(plat);
+			for (int iPlat = 0; iPlat < plat.group.members.Size(); ++iPlat)
+			{
+				let member = plat.group.GetMember(iPlat);
+				if (member && member != plat)
+				{
+					double thisDist = Distance3D(member);
+					if (thisDist < dist)
+					{
+						dist = thisDist;
+						passengers[i] = member;
+					}
+				}
+			}
+			plat.group.origin = FCW_Platform(passengers[i]);
+		}
 		lastGetNPResult = result;
 		return result;
 	}
@@ -1318,7 +1311,7 @@ extend class FCW_Platform
 					//Don't try to move it back later etc. If we moved it, adjust its
 					//interpolation coordinates.
 					double moNewAngle = mo.angle + delta;
-					if (plat.PlatMove(moNewPos, moNewAngle, mo.pitch, mo.roll, teleMove))
+					if (plat.PlatMove(moNewPos, moNewAngle, mo.pitch, mo.roll, teleMove) && plat.MoveGroup(teleMove))
 					{
 						plat.pPrev += pushForce;
 						plat.pCurr += pushForce;
@@ -1337,7 +1330,7 @@ extend class FCW_Platform
 					continue;
 				}
 
-				moved = plat.PlatMove(moNewPos, mo.angle, mo.pitch, mo.roll, teleMove); //In this case, the angle change comes later like with all passengers
+				moved = (plat.PlatMove(moNewPos, mo.angle, mo.pitch, mo.roll, teleMove) && plat.MoveGroup(teleMove)); //In this case, the angle change comes later like with all passengers
 				if (!mo || mo.bDestroyed)
 				{
 					passengers.Delete(i--);
@@ -1438,9 +1431,14 @@ extend class FCW_Platform
 				if (mo.pos != moOldPos)
 				{
 					if (!plat)
+					{
 						mo.SetOrigin(moOldPos, true);
+					}
 					else
+					{
 						plat.PlatMove(moOldPos, mo.angle, mo.pitch, mo.roll, 1);
+						plat.MoveGroup(1);
+					}
 				}
 
 				//This passenger will be 'solid' for the others
@@ -1493,9 +1491,14 @@ extend class FCW_Platform
 						vector3 otherOldPos = (preMovePos[iOther*3], preMovePos[iOther*3 + 1], preMovePos[iOther*3 + 2]);
 						plat = FCW_Platform(otherMo);
 						if (!plat)
+						{
 							otherMo.SetOrigin(otherOldPos, true);
+						}
 						else
+						{
 							plat.PlatMove(otherOldPos, mo.angle, mo.pitch, mo.roll, 1);
+							plat.MoveGroup(1);
+						}
 
 						otherMo.A_ChangeLinkFlags(YES_BMAP);
 						preMovePos.Delete(iOther*3, 3);
@@ -1543,9 +1546,14 @@ extend class FCW_Platform
 			{
 				let plat = FCW_Platform(mo);
 				if (!plat)
+				{
 					mo.A_SetAngle(Normalize180(mo.angle + delta), SPF_INTERPOLATE);
+				}
 				else
+				{
 					plat.PlatMove(mo.pos, mo.angle + delta, mo.pitch, mo.roll, -1);
+					plat.MoveGroup(-1);
+				}
 			}
 			if (mo.bOnMobj) //Standing on platform or on another passenger?
 				mo.vel.xy = (mo.vel.x*c - mo.vel.y*s, mo.vel.x*s + mo.vel.y*c); //Rotate its velocity
@@ -2471,6 +2479,9 @@ extend class FCW_Platform
 		if (!group)
 			return true;
 
+		Array<bool> oldNoBlockmap;
+		bool result = true;
+
 		double delta = DeltaAngle(groupAngle, angle);
 		double piDelta = DeltaAngle(groupPitch, pitch);
 		double roDelta = DeltaAngle(groupRoll, roll);
@@ -2478,7 +2489,17 @@ extend class FCW_Platform
 		for (int iPlat = 0; iPlat < group.members.Size(); ++iPlat)
 		{
 			let plat = group.GetMember(iPlat);
-			if (!plat || plat == self)
+			if (!plat)
+				continue;
+
+			if (bNoBlockmap) //Is group mover being moved like a passenger?
+			{
+				oldNoBlockmap.Push(plat.bNoBlockmap);
+				if (!plat.bNoBlockmap)
+					plat.A_ChangeLinkFlags(NO_BMAP);
+			}
+
+			if (plat == self)
 				continue;
 
 			bool changeAng = (plat.args[ARG_OPTIONS] & OPTFLAG_ANGLE);
@@ -2529,9 +2550,23 @@ extend class FCW_Platform
 			}
 
 			if (!plat.PlatMove(newPos, newAngle, newPitch, newRoll, moveType) && moveType != -1)
-				return false;
+				result = false;
+
+			//Thing_Remove() check
+			if ((!plat || plat.bDestroyed) && oldNoBlockmap.Size())
+				oldNoBlockmap.Pop();
+
+			if (!result)
+				break;
 		}
-		return true;
+
+		for (int i = 0; i < oldNoBlockmap.Size(); ++i)
+		{
+			let plat = group.GetMember(i);
+			if (plat != self && plat.bNoBlockmap != oldNoBlockmap[i])
+				plat.A_ChangeLinkFlags(oldNoBlockmap[i]);
+		}
+		return result;
 	}
 
 	//============================
