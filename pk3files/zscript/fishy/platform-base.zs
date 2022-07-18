@@ -1199,13 +1199,13 @@ extend class FCW_Platform
 			}
 			otherGroups.Push(plat.group);
 
-			if (plat.group.origin)
+			if (plat.group.origin && (plat.group.origin.bActive || plat.group.origin.vel != (0, 0, 0)))
 			{
 				passengers[i] = plat.group.origin;
 				continue;
 			}
 
-			//No origin, so pick the closest member. (We'll make them the new origin.)
+			//No (active) origin, so pick the closest member. (We'll make them the new origin.)
 			double dist = Distance3D(plat);
 			for (int iPlat = 0; iPlat < plat.group.members.Size(); ++iPlat)
 			{
@@ -1305,13 +1305,15 @@ extend class FCW_Platform
 			if (plat)
 			{
 				mo.bNoDropoff = false;
+				let moOldAngle = mo.angle;
+				let moNewAngle = mo.angle + delta;
+				moved = (plat.PlatMove(moNewPos, moNewAngle, mo.pitch, mo.roll, teleMove) && plat.MoveGroup(teleMove));
 				if (plat.bActive)
 				{
-					//Try to move this active platform, then forget about it;
-					//Don't try to move it back later etc. If we moved it, adjust its
+					//Tried to move an active platform.
+					//If we moved it, adjust its
 					//interpolation coordinates.
-					double moNewAngle = mo.angle + delta;
-					if (plat.PlatMove(moNewPos, moNewAngle, mo.pitch, mo.roll, teleMove) && plat.MoveGroup(teleMove))
+					if (moved)
 					{
 						plat.pPrev += pushForce;
 						plat.pCurr += pushForce;
@@ -1326,17 +1328,18 @@ extend class FCW_Platform
 						mo.bNoDropoff = moOldNoDropoff;
 						mo.A_ChangeLinkFlags(YES_BMAP);
 					}
-					passengers.Delete(i--);
+					passengers.Delete(i--); //Forget this active platform (we won't move it back in case something gets blocked)
 					continue;
 				}
 
-				moved = (plat.PlatMove(moNewPos, mo.angle, mo.pitch, mo.roll, teleMove) && plat.MoveGroup(teleMove)); //In this case, the angle change comes later like with all passengers
 				if (!mo || mo.bDestroyed)
 				{
 					passengers.Delete(i--);
 					continue;
 				}
+
 				mo.bNoDropoff = moOldNoDropoff;
+				mo.angle = moOldAngle; //The angle change is supposed to happen later
 			}
 			else if (teleMove)
 			{
@@ -1542,19 +1545,10 @@ extend class FCW_Platform
 		{
 			let mo = passengers[i];
 			mo.A_ChangeLinkFlags(YES_BMAP);
+
 			if (delta)
-			{
-				let plat = FCW_Platform(mo);
-				if (!plat)
-				{
-					mo.A_SetAngle(Normalize180(mo.angle + delta), SPF_INTERPOLATE);
-				}
-				else
-				{
-					plat.PlatMove(mo.pos, mo.angle + delta, mo.pitch, mo.roll, -1);
-					plat.MoveGroup(-1);
-				}
-			}
+				mo.A_SetAngle(Normalize180(mo.angle + delta), SPF_INTERPOLATE);
+
 			if (mo.bOnMobj) //Standing on platform or on another passenger?
 				mo.vel.xy = (mo.vel.x*c - mo.vel.y*s, mo.vel.x*s + mo.vel.y*c); //Rotate its velocity
 		}
@@ -2479,9 +2473,6 @@ extend class FCW_Platform
 		if (!group)
 			return true;
 
-		Array<bool> oldNoBlockmap;
-		bool result = true;
-
 		double delta = DeltaAngle(groupAngle, angle);
 		double piDelta = DeltaAngle(groupPitch, pitch);
 		double roDelta = DeltaAngle(groupRoll, roll);
@@ -2489,17 +2480,7 @@ extend class FCW_Platform
 		for (int iPlat = 0; iPlat < group.members.Size(); ++iPlat)
 		{
 			let plat = group.GetMember(iPlat);
-			if (!plat)
-				continue;
-
-			if (bNoBlockmap) //Is group mover being moved like a passenger?
-			{
-				oldNoBlockmap.Push(plat.bNoBlockmap);
-				if (!plat.bNoBlockmap)
-					plat.A_ChangeLinkFlags(NO_BMAP);
-			}
-
-			if (plat == self)
+			if (!plat || plat == self)
 				continue;
 
 			bool changeAng = (plat.args[ARG_OPTIONS] & OPTFLAG_ANGLE);
@@ -2550,23 +2531,9 @@ extend class FCW_Platform
 			}
 
 			if (!plat.PlatMove(newPos, newAngle, newPitch, newRoll, moveType) && moveType != -1)
-				result = false;
-
-			//Thing_Remove() check
-			if ((!plat || plat.bDestroyed) && oldNoBlockmap.Size())
-				oldNoBlockmap.Pop();
-
-			if (!result)
-				break;
+				return false;
 		}
-
-		for (int i = 0; i < oldNoBlockmap.Size(); ++i)
-		{
-			let plat = group.GetMember(i);
-			if (plat != self && plat.bNoBlockmap != oldNoBlockmap[i])
-				plat.A_ChangeLinkFlags(oldNoBlockmap[i]);
-		}
-		return result;
+		return true;
 	}
 
 	//============================
@@ -3024,14 +2991,14 @@ extend class FCW_Platform
 				double fric = onGround ? GetFriction() : platAirFric;
 
 				if (group && group.origin)
-				for (int iPlat = 0; fric > 0 && iPlat < group.members.Size(); ++iPlat)
+				for (int iPlat = 0; iPlat < group.members.Size(); ++iPlat)
 				{
 					let plat = group.GetMember(iPlat);
 					if (plat && plat != self)
 					{
-						//Get the lowest friction from the group
+						//Get the highest friction from the group
 						double thisFric = onGround ? plat.GetFriction() : plat.platAirFric;
-						if (thisFric < fric)
+						if (thisFric > fric)
 							fric = thisFric;
 					}
 				}
