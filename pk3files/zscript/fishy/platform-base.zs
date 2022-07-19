@@ -3049,7 +3049,10 @@ extend class FCW_Platform
 
 			if (yesGravity && !onGround)
 			{
+				let oldNoGrav = bNoGravity;
+				bNoGravity = false;
 				double grav = GetGravity();
+				bNoGravity = oldNoGrav;
 
 				if (checkGroup)
 				{
@@ -3064,7 +3067,10 @@ extend class FCW_Platform
 							continue;
 
 						++count;
+						oldNoGrav = plat.bNoGravity;
+						plat.bNoGravity = false;
 						sum += plat.GetGravity();
+						plat.bNoGravity = oldNoGrav;
 					}
 					grav = sum / count;
 				}
