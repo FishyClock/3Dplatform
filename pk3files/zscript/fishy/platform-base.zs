@@ -3002,7 +3002,7 @@ extend class FCW_Platform
 				}
 
 				if (group && group.origin)
-				for (int iPlat = 0; fric < 1 && iPlat < group.members.Size(); ++iPlat)
+				for (int iPlat = 0; iPlat < group.members.Size(); ++iPlat)
 				{
 					let plat = group.GetMember(iPlat);
 					if (plat && plat != self)
