@@ -1337,7 +1337,6 @@ extend class FCW_Platform
 					passengers.Delete(i--);
 					continue;
 				}
-
 				mo.bNoDropoff = moOldNoDropoff;
 				mo.angle = moOldAngle; //The angle change is supposed to happen later
 			}
@@ -2819,9 +2818,17 @@ extend class FCW_Platform
 					}
 				}
 			}
+
+			let startPos = pos;
 			PlatVelMove();
 			if (vel != (0, 0, 0) && !MoveGroup(0))
+			{
 				vel = (0, 0, 0);
+
+				//Move back
+				PlatMove(startPos, angle, pitch, roll, 1);
+				MoveGroup(1);
+			}
 		}
 
 		while (bActive && (!group || group.origin == self))
@@ -2955,6 +2962,7 @@ extend class FCW_Platform
 		//Handle friction and gravity
 		if (!group || !group.origin || group.origin == self)
 		{
+			bool checkGroup = (group && group.origin && group.members.Size() > 1);
 			bool onGround = (bOnMobj || pos.z <= floorZ);
 			bool yesGravity = !bNoGravity;
 
@@ -2966,23 +2974,23 @@ extend class FCW_Platform
 					!TestMobjZ(true) );
 			}
 
-			if (group && group.origin)
+			if (checkGroup)
 			for (int iPlat = 0; (!onGround || !yesGravity) && iPlat < group.members.Size(); ++iPlat)
 			{
 				let plat = group.GetMember(iPlat);
-				if (plat && plat != self)
-				{
-					//Find a member who is gravity bound and/or is "on the ground"
-					onGround |= (plat.bOnMobj || plat.pos.z <= plat.floorZ);
-					yesGravity |= !plat.bNoGravity;
+				if (!plat || plat == self)
+					continue;
 
-					if (yesGravity && !onGround)
-					{
-						Actor mo;
-						onGround = plat.bOnMobj = ((plat.lastGetNPTime == level.mapTime && !plat.lastGetNPResult) ||
-							((mo = plat.blockingMobj) && mo.pos.z <= plat.pos.z && OverlapXY(plat, mo)) ||
-							!plat.TestMobjZ(true) );
-					}
+				//Find a member who is gravity bound and/or is "on the ground"
+				onGround |= (plat.bOnMobj || plat.pos.z <= plat.floorZ);
+				yesGravity |= !plat.bNoGravity;
+
+				if (yesGravity && !onGround)
+				{
+					Actor mo;
+					onGround = plat.bOnMobj = ((plat.lastGetNPTime == level.mapTime && !plat.lastGetNPResult) ||
+						((mo = plat.blockingMobj) && mo.pos.z <= plat.pos.z && OverlapXY(plat, mo)) ||
+						!plat.TestMobjZ(true) );
 				}
 			}
 
@@ -3001,29 +3009,32 @@ extend class FCW_Platform
 					bNoGravity = oldNoGrav;
 				}
 
-				if (group && group.origin)
-				for (int iPlat = 0; iPlat < group.members.Size(); ++iPlat)
+				if (checkGroup)
 				{
-					let plat = group.GetMember(iPlat);
-					if (plat && plat != self)
+					//Get the average friction from the group
+					int count = 1;
+					double sum = fric;
+
+					for (int iPlat = 0; iPlat < group.members.Size(); ++iPlat)
 					{
-						//Get the highest friction from the group
-						double thisFric;
+						let plat = group.GetMember(iPlat);
+						if (!plat || plat == self)
+							continue;
+
+						++count;
 						if (!onGround)
 						{
-							thisFric = plat.platAirFric;
+							sum += plat.platAirFric;
 						}
 						else
 						{
 							let oldNoGrav = plat.bNoGravity;
 							plat.bNoGravity = false; //A little hack to make GetFriction() give us a actual friction value
-							thisFric = plat.GetFriction();
+							sum += plat.GetFriction();
 							plat.bNoGravity = oldNoGrav;
 						}
-
-						if (thisFric > fric)
-							fric = thisFric;
 					}
+					fric = sum / count;
 				}
 
 				if (!onGround)
@@ -3040,17 +3051,22 @@ extend class FCW_Platform
 			{
 				double grav = GetGravity();
 
-				if (group && group.origin)
-				for (int iPlat = 0; iPlat < group.members.Size(); ++iPlat)
+				if (checkGroup)
 				{
-					let plat = group.GetMember(iPlat);
-					if (plat && plat != self)
+					//Get the average gravity from the group
+					int count = 1;
+					double sum = grav;
+
+					for (int iPlat = 0; iPlat < group.members.Size(); ++iPlat)
 					{
-						//Get the highest gravity from the group
-						double thisGrav = plat.GetGravity();
-						if (thisGrav > grav)
-							grav = thisGrav;
+						let plat = group.GetMember(iPlat);
+						if (!plat || plat == self)
+							continue;
+
+						++count;
+						sum += plat.GetGravity();
 					}
+					grav = sum / count;
 				}
 				FallAndSink(grav, oldFloorZ);
 			}
@@ -3096,18 +3112,24 @@ extend class FCW_Platform
 		int wLevel = waterLevel;
 		int m = mass;
 
-		if (group && group.origin)
-		for (int iPlat = 0; iPlat < group.members.Size(); ++iPlat)
+		if (group && group.origin && group.members.Size() > 1)
 		{
-			let plat = group.GetMember(iPlat);
-			if (plat && plat != self)
+			//Get the average water level and average mass from the group
+			int count = 1;
+			int sums[2] = {wLevel, m};
+
+			for (int iPlat = 0; iPlat < group.members.Size(); ++iPlat)
 			{
-				//Get the deepest water level and biggest mass from the group
-				if (plat.waterLevel > wLevel)
-					wLevel = plat.waterLevel;
-				if (plat.mass > m)
-					m = plat.mass;
+				let plat = group.GetMember(iPlat);
+				if (!plat || plat == self)
+					continue;
+
+				++count;
+				sums[0] += plat.waterLevel;
+				sums[1] += plat.mass;
 			}
+			wLevel = sums[0] / count;
+			m = sums[1] / count;
 		}
 
 		if (wLevel == 0)
