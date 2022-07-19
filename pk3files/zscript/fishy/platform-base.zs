@@ -2988,16 +2988,39 @@ extend class FCW_Platform
 
 			if (vel != (0, 0, 0))
 			{
-				double fric = onGround ? GetFriction() : platAirFric;
+				double fric;
+				if (!onGround)
+				{
+					fric = platAirFric;
+				}
+				else
+				{
+					let oldNoGrav = bNoGravity;
+					bNoGravity = false; //A little hack to make GetFriction() give us a actual friction value
+					fric = GetFriction();
+					bNoGravity = oldNoGrav;
+				}
 
 				if (group && group.origin)
-				for (int iPlat = 0; iPlat < group.members.Size(); ++iPlat)
+				for (int iPlat = 0; fric < 1 && iPlat < group.members.Size(); ++iPlat)
 				{
 					let plat = group.GetMember(iPlat);
 					if (plat && plat != self)
 					{
 						//Get the highest friction from the group
-						double thisFric = onGround ? plat.GetFriction() : plat.platAirFric;
+						double thisFric;
+						if (!onGround)
+						{
+							thisFric = plat.platAirFric;
+						}
+						else
+						{
+							let oldNoGrav = plat.bNoGravity;
+							plat.bNoGravity = false; //A little hack to make GetFriction() give us a actual friction value
+							thisFric = plat.GetFriction();
+							plat.bNoGravity = oldNoGrav;
+						}
+
 						if (thisFric > fric)
 							fric = thisFric;
 					}
