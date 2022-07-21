@@ -1796,7 +1796,7 @@ extend class FCW_Platform
 
 		//This is never called by the 'passive' twin,
 		//ie the one that can have NOBLOCKMAP set.
-		if (!portTwin.bNoBlockmap)
+		if (lastUPort)
 		for (int i = 0; i < passengers.Size(); ++i)
 		{
 			//If any of our passengers have passed through a portal,
@@ -1917,7 +1917,7 @@ extend class FCW_Platform
 						CheckPortalTransition(); //Handle sector portals properly
 
 					//Try to adjust our twin
-					if (portTwin && !portTwin.bNoBlockmap)
+					if (portTwin && lastUPort)
 					{
 						vector3 twinPos = TranslatePortalVector(oldPos, (bPortCopy ? portTwin.lastUPort : lastUPort), true, bPortCopy);
 						if (twinPos != oldPos && portTwin.pos.z != twinPos.z && FitsAtPosition(portTwin, twinPos))
@@ -2211,15 +2211,10 @@ extend class FCW_Platform
 				if (blockingMobj)
 				{
 					let mo = blockingMobj;
-					if (portTwin && !portTwin.bNoBlockmap && port &&
-						mo.Distance3D(portTwin) < mo.Distance3D(self))
-					{
+					if (portTwin && port && mo.Distance3D(portTwin) < mo.Distance3D(self))
 						portTwin.PushObstacle(mo, TranslatePortalVector(pushForce, port, false, false));
-					}
 					else
-					{
 						PushObstacle(mo, pushForce);
-					}
 				}
 				return false;
 			}
@@ -2589,7 +2584,7 @@ extend class FCW_Platform
 			if (time <= 1.0) //Not reached destination?
 				Stopped(oldPos, pos);
 
-			if (portTwin && portTwin.bNoBlockmap && portTwin.bPortCopy)
+			if (portTwin && !lastUPort && portTwin.bPortCopy)
 				portTwin.Destroy();
 		}
 		else if (group.origin == self)
@@ -2602,7 +2597,7 @@ extend class FCW_Platform
 					if (time <= 1.0) //Not reached destination?
 						plat.Stopped(plat.oldPos, plat.pos);
 
-					if (plat.portTwin && plat.portTwin.bNoBlockmap && plat.portTwin.bPortCopy)
+					if (plat.portTwin && !plat.lastUPort && plat.portTwin.bPortCopy)
 						plat.portTwin.Destroy();
 				}
 			}
@@ -2690,10 +2685,9 @@ extend class FCW_Platform
 			}
 		}
 
-		if (portTwin && !portTwin.bNoBlockmap && portTwin.passengers.Size())
+		if (portTwin && lastUPort && portTwin.passengers.Size())
 		{
-			if (lastUPort)
-				pushForce = TranslatePortalVector(pushForce, lastUPort, false, false);
+			pushForce = TranslatePortalVector(pushForce, lastUPort, false, false);
 
 			for (int i = 0; i < portTwin.passengers.Size(); ++i)
 			{
