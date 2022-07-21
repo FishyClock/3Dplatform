@@ -2038,16 +2038,21 @@ extend class FCW_Platform
 			return true;
 		}
 
-		Line port = null;
-		if (!teleMove)
+		Line port = GetUnlinkedPortal();
+		if (port)
 		{
-			port = GetUnlinkedPortal();
-			if (port && !portTwin)
+			vector3 twinPos = TranslatePortalVector(pos, port, true, false);
+			if (portTwin)
 			{
-				portTwin = FCW_Platform(Spawn(GetClass(), TranslatePortalVector(pos, port, true, false)));
+				if (portTwin.pos != twinPos)
+					portTwin.SetOrigin(twinPos, true);
+			}
+			else
+			{
+				portTwin = FCW_Platform(Spawn(GetClass(), twinPos));
 				portTwin.portTwin = self;
 				portTwin.bPortCopy = true;
-				portTwin.A_ChangeLinkFlags(FLAG_NO_CHANGE, 1); //Set NOSECTOR flag
+				portTwin.A_ChangeLinkFlags(bNoBlockmap, 1); //Copy our NOBLOCKMAP flag and set NOSECTOR flag
 			}
 		}
 
@@ -2073,15 +2078,10 @@ extend class FCW_Platform
 			portTwin.args[ARG_OPTIONS] = args[ARG_OPTIONS];
 			portTwin.args[ARG_CRUSHDMG] = args[ARG_CRUSHDMG];
 
-			if (portTwin.bNoBlockmap && port)
-			{
+			if (portTwin.bNoBlockmap && port && !bNoBlockmap)
 				portTwin.A_ChangeLinkFlags(YES_BMAP);
-				portTwin.SetOrigin(TranslatePortalVector(pos, port, true, false), true);
-			}
-			else if (!portTwin.bNoBlockmap && !port)
-			{
+			else if (!portTwin.bNoBlockmap && (!port || bNoBlockmap))
 				portTwin.A_ChangeLinkFlags(NO_BMAP); //No collision while not needed (don't destroy it - not here)
-			}
 		}
 
 		double delta, piDelta, roDelta;
@@ -2100,6 +2100,18 @@ extend class FCW_Platform
 			delta = DeltaAngle(oldAngle, newAngle);
 			piDelta = teleMove ? 0 : DeltaAngle(oldPitch, newPitch);
 			roDelta = teleMove ? 0 : DeltaAngle(oldRoll, newRoll);
+
+			if (port)
+			{
+				double angDiff;
+				[portTwin.oldPos, angDiff] = TranslatePortalVector(oldPos, port, true, false);
+				portTwin.angle = newAngle + angDiff;
+
+				if (oldPos != newPos)
+					portTwin.SetOrigin(TranslatePortalVector(newPos, port, true, false), true);
+				else if (portTwin.oldPos != portTwin.pos)
+					portTwin.SetOrigin(portTwin.oldPos, true);
+			}
 		}
 
 		if (quickMove)
@@ -2110,18 +2122,6 @@ extend class FCW_Platform
 				let oldPrev = prev;
 				CheckPortalTransition(); //Handle sector portals properly
 				prev = oldPrev;
-			}
-
-			if (port)
-			{
-				double angDiff;
-				[portTwin.oldPos, angDiff] = TranslatePortalVector(oldPos, port, true, false);
-				portTwin.angle = angle + angDiff;
-
-				if (oldPos != newPos)
-					portTwin.SetOrigin(TranslatePortalVector(pos, port, true, false), true);
-				else if (portTwin.oldPos != portTwin.pos)
-					portTwin.SetOrigin(portTwin.oldPos, true);
 			}
 
 			bPlatInMove = true;
@@ -2137,10 +2137,14 @@ extend class FCW_Platform
 			return true;
 		}
 
-		if (!GetNewPassengers(teleMove) || (port && !portTwin.GetNewPassengers(false)))
+		if (!GetNewPassengers(teleMove) || (port && !portTwin.GetNewPassengers(teleMove)))
 		{
 			if (teleMove || pos == newPos)
+			{
 				GoBack();
+				if (port)
+					portTwin.GoBack();
+			}
 			return false;
 		}
 
@@ -2152,19 +2156,28 @@ extend class FCW_Platform
 				CheckPortalTransition(); //Handle sector portals properly
 			}
 
-			if (teleMove && portTwin && !portTwin.bNoBlockmap)
-				portTwin.A_ChangeLinkFlags(NO_BMAP);
-
+			bool result = true;
 			bPlatInMove = true;
-			bool movedThem = MovePassengers(oldPos, pos, angle, delta, piDelta, roDelta, teleMove);
-			bPlatInMove = false;
+			bool movedMine = MovePassengers(oldPos, pos, angle, delta, piDelta, roDelta, teleMove);
 
-			if (!movedThem)
+			if (!movedMine || (port &&
+				!portTwin.MovePassengers(portTwin.oldPos, portTwin.pos, portTwin.angle, delta, piDelta, roDelta, teleMove) ) )
 			{
+				if (movedMine)
+					MovePassengers(pos, oldPos, angle, -delta, -piDelta, -roDelta, true); //Move them back
+
 				GoBack();
-				return false;
+				if (port)
+					portTwin.GoBack();
+				result = false;
 			}
-			return true;
+			else if (port)
+			{
+				ExchangePassengersWithTwin();
+			}
+
+			bPlatInMove = false;
+			return result;
 		}
 
 		int maxSteps = 1;
