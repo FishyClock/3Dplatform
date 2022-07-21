@@ -32,3 +32,12 @@ map TEST01 "A very crappy test map"
 {
 	UsePlayerStartZ
 }
+
+map TEST02 "Stress test"
+{
+}
+
+clearEpisodes
+episode MAP01 { name = "Demo map" }
+episode TEST01 { name = "A very crappy test map" }
+episode TEST02 { name = "Stress test" }
