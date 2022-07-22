@@ -1315,8 +1315,9 @@ extend class FCW_Platform
 					//interpolation coordinates.
 					if (moved)
 					{
-						plat.pPrev += pushForce;
-						plat.pCurr += pushForce;
+						vector3 diff = level.Vec3Diff(moOldPos, mo.pos);
+						plat.pPrev += diff;
+						plat.pCurr += diff;
 						if (moNewPos != mo.pos)
 							plat.AdjustInterpolationCoordinates(moNewPos, mo.pos, DeltaAngle(moNewAngle, mo.angle));
 					}
@@ -1988,20 +1989,23 @@ extend class FCW_Platform
 				stuckActors.Delete(i--);
 				continue;
 			}
+			let plat = FCW_Platform(mo);
+
+			//Try to have it on top of us and deliberately ignore if it gets stuck in another actor
+			if (top - mo.pos.z <= mo.maxStepHeight &&
+				(!plat || (!plat.PlatIsActive() && IsCarriable(plat))) &&
+				FitsAtPosition(mo, (mo.pos.xy, top), true) )
+			{
+				mo.SetZ(top);
+				mo.CheckPortalTransition(); //Handle sector portals properly
+				stuckActors.Delete(i--);
+				continue;
+			}
 
 			int index = passengers.Find(mo);
 			if (index < passengers.Size())
-			{
-				//Try to have it on top of us and deliberately ignore if it gets stuck in another actor
-				if (FitsAtPosition(mo, (mo.pos.xy, top), true))
-				{
-					mo.SetZ(top);
-					mo.CheckPortalTransition(); //Handle sector portals properly
-					stuckActors.Delete(i--);
-					continue;
-				}
 				passengers.Delete(index); //Stuck actors can't be passengers
-			}
+
 			vector3 pushForce = level.Vec3Diff(pos, mo.pos + (0, 0, mo.height/2)).Unit();
 			PushObstacle(mo, pushForce);
 		}
