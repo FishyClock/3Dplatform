@@ -1795,8 +1795,7 @@ extend class FCW_Platform
 
 		int oldPortTwinSize = portTwin.passengers.Size();
 
-		//This is never called by the 'passive' twin,
-		//ie the one that can have NOBLOCKMAP set.
+		//This is never called by the portal copy
 		if (!portTwin.bNoBlockmap)
 		for (int i = 0; i < passengers.Size(); ++i)
 		{
@@ -1918,7 +1917,7 @@ extend class FCW_Platform
 						CheckPortalTransition(); //Handle sector portals properly
 
 					//Try to adjust our twin
-					if (portTwin && !portTwin.bNoBlockmap)
+					if (portTwin && (!portTwin.bNoBlockmap || !portTwin.bPortCopy))
 					{
 						vector3 twinPos = TranslatePortalVector(oldPos, (bPortCopy ? portTwin.lastUPort : lastUPort), true, bPortCopy);
 						if (twinPos != oldPos && portTwin.pos.z != twinPos.z && FitsAtPosition(portTwin, twinPos))
