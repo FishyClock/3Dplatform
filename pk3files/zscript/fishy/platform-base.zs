@@ -2044,7 +2044,7 @@ extend class FCW_Platform
 			portTwin = FCW_Platform(Spawn(GetClass(), TranslatePortalVector(pos, port, true, false)));
 			portTwin.portTwin = self;
 			portTwin.bPortCopy = true;
-			portTwin.A_ChangeLinkFlags(FLAG_NO_CHANGE, 1); //Set NOSECTOR flag
+			portTwin.bInvisible = true;
 		}
 
 		if (portTwin)
