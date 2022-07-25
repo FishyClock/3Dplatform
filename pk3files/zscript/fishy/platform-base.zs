@@ -1650,11 +1650,6 @@ extend class FCW_Platform
 			if (mo.moveCount < 1)
 				mo.moveCount = 1;
 		}
-
-		oldPos = pos;
-		oldAngle = angle;
-		oldPitch = pitch;
-		oldRoll = roll;
 	}
 
 	//============================
@@ -1855,6 +1850,17 @@ extend class FCW_Platform
 	}
 
 	//============================
+	// UpdateOldInfo
+	//============================
+	private void UpdateOldInfo ()
+	{
+		oldPos = pos;
+		oldAngle = angle;
+		oldPitch = pitch;
+		oldRoll = roll;
+	}
+
+	//============================
 	// GoBack
 	//============================
 	private void GoBack ()
@@ -1894,7 +1900,7 @@ extend class FCW_Platform
 				if (!moved)
 				{
 					mo.SetZ(moOldZ);
-					blockingMobj = mo; //Needed for obstacle pushing; TryMove() might have nulled it
+					blockingMobj = mo; //Needed for later; TryMove() might have nulled it
 				}
 				else
 				{
@@ -2018,7 +2024,7 @@ extend class FCW_Platform
 				}
 				passengers.Delete(index); //Stuck actors can't be passengers
 			}
-			vector3 pushForce = level.Vec3Diff(pos, mo.pos + (0, 0, mo.height/2)).Unit();
+			vector3 pushForce = level.Vec3Diff(pos, mo.pos + (0, 0, mo.height * 0.5)).Unit();
 			PushObstacle(mo, pushForce);
 		}
 
@@ -2099,10 +2105,7 @@ extend class FCW_Platform
 		double delta, piDelta, roDelta;
 		if (quickMove || teleMove || pos == newPos)
 		{
-			oldPos = pos;
-			oldAngle = angle;
-			oldPitch = pitch;
-			oldRoll = roll;
+			UpdateOldInfo();
 
 			angle = newAngle;
 			pitch = newPitch;
@@ -2211,10 +2214,7 @@ extend class FCW_Platform
 		bPlatInMove = true; //Temporarily don't clip against passengers
 		for (int step = 0; step < maxSteps; ++step)
 		{
-			oldPos = pos;
-			oldAngle = angle;
-			oldPitch = pitch;
-			oldRoll = roll;
+			UpdateOldInfo();
 
 			newPos = pos + stepMove;
 			if (!PlatTakeOneStep(newPos))
@@ -2723,6 +2723,8 @@ extend class FCW_Platform
 	//============================
 	private void PlatVelMove ()
 	{
+		//Handles velocity based movement (from being pushed around)
+
 		//Apparently slamming into the floor/ceiling doesn't
 		//count as a cancelled move so take care of that.
 		if ((vel.z < 0 && pos.z <= floorZ) ||
@@ -2735,8 +2737,10 @@ extend class FCW_Platform
 		if (vel == (0, 0, 0))
 			return; //Nothing to do here
 
-		vector3 newPos = pos + vel;
+		vector3 startPos = pos;
 		double startAngle = angle;
+
+		vector3 newPos = pos + vel;
 		if (!PlatMove(newPos, angle, pitch, roll, 0))
 		{
 			//Check if it's a culprit that blocks XY movement
@@ -2754,6 +2758,14 @@ extend class FCW_Platform
 				vel = (0, 0, 0);
 				return;
 			}
+		}
+
+		if (!MoveGroup(0))
+		{
+			PlatMove(startPos, startAngle, pitch, roll, 1); //Move back
+			MoveGroup(1);
+			vel = (0, 0, 0);
+			return;
 		}
 
 		pPrev += vel;
@@ -2817,13 +2829,14 @@ extend class FCW_Platform
 			bOnMobj = false; //Aside from standing on an actor, this can also be "true" later if hitting a lower obstacle while going down or we have stuck actors
 			HandleStuckActors();
 			HandleOldPassengers();
+			UpdateOldInfo();
 			if (portTwin && portTwin.bPortCopy)
 			{
 				portTwin.bOnMobj = bOnMobj;
 				portTwin.HandleStuckActors();
 				portTwin.HandleOldPassengers();
+				portTwin.UpdateOldInfo();
 			}
-			PlatVelMove();
 		}
 		else if (group.origin == self)
 		{
@@ -2835,27 +2848,22 @@ extend class FCW_Platform
 					plat.bOnMobj = false;
 					plat.HandleStuckActors();
 					plat.HandleOldPassengers();
+					plat.UpdateOldInfo();
 					if (plat.portTwin && plat.portTwin.bPortCopy)
 					{
 						plat.portTwin.bOnMobj = plat.bOnMobj;
 						plat.portTwin.HandleStuckActors();
 						plat.portTwin.HandleOldPassengers();
+						plat.portTwin.UpdateOldInfo();
 					}
 				}
 			}
-
-			let startPos = pos;
-			PlatVelMove();
-			if (vel != (0, 0, 0) && !MoveGroup(0))
-			{
-				vel = (0, 0, 0);
-
-				//Move back
-				PlatMove(startPos, angle, pitch, roll, 1);
-				MoveGroup(1);
-			}
 		}
 
+		if (!group || group.origin == self)
+			PlatVelMove();
+
+		//Handle path following
 		while (bActive && (!group || group.origin == self))
 		{
 			if (holdTime > 0)
