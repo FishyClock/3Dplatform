@@ -50,7 +50,11 @@ class FCW_Platform : Actor abstract
 		//$Arg3 Crush Damage
 		//$Arg3Tooltip If an obstacle is pushed against a wall,\nthe damage is applied once per 4 tics.
 
-		FCW_Platform.AirFriction 0.99; //For platforms that have +PUSHABLE and +NOGRAVITY
+		/*New property:*/ FCW_Platform.AirFriction 0.99; //For platforms that have +PUSHABLE and +NOGRAVITY.
+														 //(The pre-existing 'friction' property + sector friction
+														 //are for gravity bound pushables instead.)
+
+		//New flag: +FCW_Platform.CARRIABLE //Let's this platform be carried (like a passenger) by other platforms
 
 		+INTERPOLATEANGLES;
 		+ACTLIKEBRIDGE;
@@ -121,6 +125,8 @@ extend class FCW_PlatformNode
 	}
 }
 
+//A container class for grouped platforms.
+//It has an array pointing to all group members and each member points to this group.
 class FCW_PlatformGroup play
 {
 	Array<FCW_Platform> members;
@@ -208,11 +214,11 @@ extend class FCW_Platform
 		TIMEUNIT_SECS		= 2,
 	};
 
-	const TOP_EPSILON = 1.0;
+	const TOP_EPSILON = 1.0; //For Z checks (if something is on top of something else)
 	const ZS_EQUAL_EPSILON = 1.0 / 65536.0; //Because 'double.epsilon' is too small, we'll use 'EQUAL_EPSILON' from the source code
 	const YES_BMAP = 0; //For A_ChangeLinkFlags()
 	const NO_BMAP = 1;
-	const EXTRA_SIZE = 20; //For line collision checking
+	const EXTRA_SIZE = 20; //For line collision checking (when looking for unlinked line portals)
 
 	vector3 oldPos;
 	double oldAngle;
@@ -244,9 +250,10 @@ extend class FCW_Platform
 
 	//Unlike PathFollower classes, our interpolations are done with
 	//vector3 coordinates instead of checking InterpolationPoint positions.
-	//This is done for 2 reasons:
+	//This is done for 3 reasons:
 	//1) Making it portal aware.
 	//2) Can be arbitrarily set through ACS (See utility functions below).
+	//3) If following a path, can course correct itself after being pushed or carried by another platform.
 	vector3 pCurr, pPrev, pNext, pNextNext; //Positions in the world.
 	vector3 pCurrAngs, pPrevAngs, pNextAngs, pNextNextAngs; //X = angle, Y = pitch, Z = roll.
 
@@ -522,6 +529,9 @@ extend class FCW_Platform
 	//============================
 	static vector3 RotateVector3 (vector3 vec, double yDelta, double pDelta, double rDelta, double baseAngle, bool backward)
 	{
+		//Used by MoveGroup()   where backward == false
+		//and UpdateGroupInfo() where backward == true.
+
 		double cFirst = cos(-baseAngle), sFirst = sin(-baseAngle);
 		double cY = cos(yDelta), sY = sin(yDelta);
 		double cP = cos(pDelta), sP = sin(pDelta);
