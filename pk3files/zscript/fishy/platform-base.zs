@@ -1305,6 +1305,9 @@ extend class FCW_Platform
 			vector3 offset = level.Vec3Diff(startPos, moOldPos);
 			offset.xy = (offset.x*c - offset.y*s, offset.x*s + offset.y*c); //Rotate it
 			offset.xy += piAndRoOffset;
+
+			//No tele move means absolute offset; it needs to be absolute so TryMove() works as expected.
+			//Because TryMove() has its own handling of crossing line portals.
 			vector3 moNewPos = level.Vec3Offset(endPos, offset, !teleMove);
 
 			//Handle z discrepancy
@@ -1461,6 +1464,9 @@ extend class FCW_Platform
 				if (teleMove)
 					continue;
 
+				//Optionally have passengers push away obstacles.
+				//(No need if this passenger is a platform because
+				//being a platform it already pushed an obstacle.)
 				if (!plat && !mo.bCannotPush && (args[ARG_OPTIONS] & OPTFLAG_PASSCANPUSH))
 				{
 					let oldCannotPush = bCannotPush;
