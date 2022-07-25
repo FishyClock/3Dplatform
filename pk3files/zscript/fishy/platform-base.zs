@@ -1079,7 +1079,7 @@ extend class FCW_Platform
 				}
 			}
 
-			if (canCarry && !oldPass && (mo.bNoGravity || mo.bOnMobj))
+			if (canCarry && !oldPass && mo.bOnMobj)
 				miscActors.Push(mo); //We'll compare this later against the passengers
 		}
 
