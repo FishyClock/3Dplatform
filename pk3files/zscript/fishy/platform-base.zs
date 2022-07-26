@@ -971,11 +971,6 @@ extend class FCW_Platform
 	{
 		// In addition to fetching passengers, this is where corpses get crushed, too. Items won't get destroyed.
 		// Returns false if one or more actors are completely stuck inside platform unless 'ignoreObs' is true.
-		//
-		// Note: if we're another platform's passenger and this gets called because we're being moved by that
-		// platform's MovePassengers() function then our carrier's passengers won't be detected during this
-		// blockmap search since they're temporarily excluded from the blockmap.
-		// This is a good thing because it means there's no chance of stealing our carrier's passengers.
 
 		if (lastGetNPTime == level.mapTime)
 			return lastGetNPResult; //Already called in this tic
@@ -1132,7 +1127,7 @@ extend class FCW_Platform
 			for (int iPlat = 0; (newPass.Size() || miscActors.Size()) && iPlat < otherPlats.Size(); ++iPlat)
 			{
 				let plat = otherPlats[iPlat];
-				if (!plat.passengers.Size() || plat.bPlatInMove || (plat.portTwin && plat.portTwin.bPlatInMove))
+				if (!plat.passengers.Size())
 					continue;
 
 				for (int i = 0; i < newPass.Size(); ++i)
@@ -1243,8 +1238,20 @@ extend class FCW_Platform
 	{
 		//Returns false if a blocked passenger would block the platform's movement unless 'teleMove' is true
 
-		if (!passengers.Size())
-			return true; //No passengers? Nothing to do
+		//Get all passengers that are platforms and call their GetNewPassengers() now.
+		//That should allow them to take some of our other passengers.
+		for (int i = 0; i < passengers.Size(); ++i)
+		{
+			let plat = FCW_Platform(passengers[i]);
+			if (!plat || plat.bNoBlockmap) //They shouldn't have NOBLOCKMAP now - this is taken care of below
+				continue;
+			plat.GetNewPassengers(teleMove);
+
+			//If passengers get stolen the array size will shrink
+			//and this one's position in the array might have changed.
+			//So take that into account.
+			i = passengers.Find(plat);
+		}
 
 		// The goal is to move all passengers as if they were one entity.
 		// The only things that should block any of them are
@@ -1259,16 +1266,13 @@ extend class FCW_Platform
 		{
 			let mo = passengers[i];
 			if (mo && !mo.bNoBlockmap)
-			{
 				mo.A_ChangeLinkFlags(NO_BMAP);
-			}
 			else
-			{
 				passengers.Delete(i--);
-				if (!passengers.Size())
-					return true; //No passengers? Nothing to do
-			}
 		}
+
+		if (!passengers.Size())
+			return true; //No passengers? Nothing to do
 
 		//We have to do the same for our portal twin's passengers
 		if (portTwin)
