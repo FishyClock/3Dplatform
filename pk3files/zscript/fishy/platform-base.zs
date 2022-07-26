@@ -2830,7 +2830,7 @@ extend class FCW_Platform
 		// For example if the advancing of actor states was left up
 		// to the thinker list (like with every other actor)
 		// the moving bridge construct in the demo map would play
-		// its lift sounds slightly out of sync.
+		// its lift sounds slightly out of sync. (2 actors play the sounds.)
 
 		if (!group || !group.origin)
 		{
