@@ -2824,6 +2824,7 @@ extend class FCW_Platform
 		// The group origin, if there is one, thinks for the whole group.
 		// That means the order in which they think depends on where
 		// they are in the group array and not where they are in the thinker list.
+		// (In other words, the others think when the origin thinks/ticks.)
 		//
 		// The intent behind this is to keep the whole group in sync.
 		// For example if the advancing of actor states was left up
