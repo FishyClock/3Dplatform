@@ -2821,9 +2821,16 @@ extend class FCW_Platform
 
 		double oldFloorZ = floorZ;
 
-		//The group origin, if there is one, thinks for the whole group.
-		//That means the order in which they think depends on where
-		//they are in the group array and not where they are in the thinker list.
+		// The group origin, if there is one, thinks for the whole group.
+		// That means the order in which they think depends on where
+		// they are in the group array and not where they are in the thinker list.
+		//
+		// The intent behind this is to keep the whole group in sync.
+		// For example if the advancing of actor states was left up
+		// to the thinker list (like with every other actor)
+		// the moving bridge construct in the demo map would play
+		// its lift sounds slightly out of sync.
+
 		if (!group || !group.origin)
 		{
 			bOnMobj = false; //Aside from standing on an actor, this can also be "true" later if hitting a lower obstacle while going down or we have stuck actors
