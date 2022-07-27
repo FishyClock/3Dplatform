@@ -130,14 +130,15 @@ extend class FCW_PlatformNode
 class FCW_PlatformGroup play
 {
 	Array<FCW_Platform> members;
-	FCW_Platform origin;	//Called so because every other member orbits around and follows this one.
-							//Also, the "origin" does most of the thinking for the other members. See Tick().
+	FCW_Platform origin;	//The member that thinks for the other members when it ticks.
+	FCW_Platform carrier;	//A non-member that carries one member of this group. Used for passenger theft checks.
 
 	static FCW_PlatformGroup Create ()
 	{
 		let group = new("FCW_PlatformGroup");
 		group.members.Clear();
 		group.origin = null;
+		group.carrier = null;
 		return group;
 	}
 
@@ -173,6 +174,9 @@ class FCW_PlatformGroup play
 
 		if (!origin && otherGroup.origin)
 			origin = otherGroup.origin;
+
+		if (!carrier && otherGroup.carrier)
+			carrier = otherGroup.carrier;
 	}
 }
 
@@ -965,6 +969,37 @@ extend class FCW_Platform
 	}
 
 	//============================
+	// CanStealFrom
+	//============================
+	bool CanStealFrom (FCW_Platform other, Actor mo)
+	{
+		// Steal other platforms' passengers if
+		// A) We don't share groups and our top is higher than the other platform's top or...
+		// B) We don't share the "mirror" option and the passenger's (mo) center is within our radius
+		// and NOT within the other platform's radius.
+		// (In other words, groupmates with the same "mirror" option never steal each other's passengers.)
+
+		//Scenario A
+		if (!group || group != other.group)
+			return (pos.z + height > other.pos.z + other.height);
+
+		//Scenario B
+		return (mo && ((args[ARG_OPTIONS] ^ other.args[ARG_OPTIONS]) & OPTFLAG_MIRROR) &&
+			OverlapXY(self, mo, radius) && !OverlapXY(other, mo, other.radius) );
+	}
+
+	//============================
+	// ForgetPassenger
+	//============================
+	private void ForgetPassenger (int index)
+	{
+		let plat = FCW_Platform(passengers[index]);
+		if (plat && plat.group && plat.group.carrier == self)
+			plat.group.carrier = null;
+		passengers.Delete(index);
+	}
+
+	//============================
 	// GetNewPassengers
 	//============================
 	private bool GetNewPassengers (bool ignoreObs)
@@ -1124,6 +1159,8 @@ extend class FCW_Platform
 					otherPlats.Push(plat);
 			}
 
+			//Go through the other detected platforms (and our groupmates)
+			//and see if we can steal some of their passengers.
 			for (int iPlat = 0; (newPass.Size() || miscActors.Size()) && iPlat < otherPlats.Size(); ++iPlat)
 			{
 				let plat = otherPlats[iPlat];
@@ -1135,20 +1172,8 @@ extend class FCW_Platform
 					let index = plat.passengers.Find(newPass[i]);
 					if (index < plat.passengers.Size())
 					{
-						//Steal other platforms' passengers if
-						//A) We don't share groups and our 'top' is higher or...
-						//B) We don't share the "mirror" option and the passenger's center is within our radius
-						//and NOT within the other platform's radius.
-						//(In other words, groupmates with the same "mirror" option never steal each other's passengers.)
-						bool stealPassenger;
-						if (!group || group != plat.group)
-							stealPassenger = (top > plat.pos.z + plat.height);
-						else
-							stealPassenger = (((args[ARG_OPTIONS] ^ plat.args[ARG_OPTIONS]) & OPTFLAG_MIRROR) &&
-								OverlapXY(self, newPass[i], radius) && !OverlapXY(plat, newPass[i], plat.radius) );
-
-						if (stealPassenger)
-							plat.passengers.Delete(index);
+						if (CanStealFrom(plat, newPass[i]))
+							plat.ForgetPassenger(index);
 						else
 							newPass.Delete(i--);
 					}
@@ -1168,7 +1193,7 @@ extend class FCW_Platform
 				let mo = passengers[i];
 				if (!mo)
 				{
-					passengers.Delete(i--);
+					ForgetPassenger(i--);
 					continue;
 				}
 				double moTop = mo.pos.z + mo.height;
@@ -1189,7 +1214,7 @@ extend class FCW_Platform
 
 		//If we have passengers that are grouped platforms,
 		//prune 'passengers' array; we only want one member per group.
-		//Preferably the origin.
+		//Preferably the origin if active, else the closest member.
 		Array<FCW_PlatformGroup> otherGroups;
 		for (int i = 0; i < passengers.Size(); ++i)
 		{
@@ -1199,22 +1224,48 @@ extend class FCW_Platform
 
 			if (otherGroups.Find(plat.group) < otherGroups.Size())
 			{
-				passengers.Delete(i--);
+				passengers.Delete(i--); //Already dealt with this group
 				continue;
 			}
 			otherGroups.Push(plat.group);
 
-			if (plat.group.origin && (plat.group.origin.bActive || plat.group.origin.vel != (0, 0, 0)))
+			//Since we are dealing with groups it is likely the 'carrier'
+			//is outside of the blockmap search. That's why it's a pointer
+			//in the group class.
+			if (plat.group.carrier && plat.group.carrier != self)
+			{
+				if (!CanStealFrom(plat.group.carrier, null))
+				{
+					passengers.Delete(i--); //Can't take any of this group's members
+					continue;
+				}
+
+				//Make group cut ties with current carrier before self becomes the new carrier
+				let carrier = plat.group.carrier;
+				for (int iMember = 0; carrier.passengers.Size() && iMember < plat.group.members.Size(); ++iMember)
+				{
+					let member = plat.group.GetMember(iMember);
+					if (!member)
+						continue;
+
+					int index = carrier.passengers.Find(member);
+					if (index < carrier.passengers.Size())
+						carrier.passengers.Delete(index);
+				}
+			}
+			plat.group.carrier = self;
+
+			if (plat.group.origin && plat.group.origin.bActive)
 			{
 				passengers[i] = plat.group.origin;
 				continue;
 			}
 
-			//No (active) origin, so pick the closest member. (We'll make them the new origin.)
+			//No active origin, so pick the closest member.
 			double dist = Distance3D(plat);
-			for (int iPlat = 0; iPlat < plat.group.members.Size(); ++iPlat)
+			for (int iMember = 0; iMember < plat.group.members.Size(); ++iMember)
 			{
-				let member = plat.group.GetMember(iPlat);
+				let member = plat.group.GetMember(iMember);
 				if (member && member != plat)
 				{
 					double thisDist = Distance3D(member);
@@ -1225,7 +1276,6 @@ extend class FCW_Platform
 					}
 				}
 			}
-			plat.group.origin = FCW_Platform(passengers[i]);
 		}
 		lastGetNPResult = result;
 		return result;
@@ -1268,7 +1318,7 @@ extend class FCW_Platform
 			if (mo && !mo.bNoBlockmap)
 				mo.A_ChangeLinkFlags(NO_BMAP);
 			else
-				passengers.Delete(i--);
+				ForgetPassenger(i--);
 		}
 
 		if (!passengers.Size())
@@ -1282,7 +1332,7 @@ extend class FCW_Platform
 			if (mo && !mo.bNoBlockmap)
 				mo.A_ChangeLinkFlags(NO_BMAP);
 			else
-				portTwin.passengers.Delete(i--);
+				portTwin.ForgetPassenger(i--);
 		}
 
 		//Move our passengers (platform rotation is taken into account)
@@ -1346,13 +1396,13 @@ extend class FCW_Platform
 						mo.bNoDropoff = moOldNoDropoff;
 						mo.A_ChangeLinkFlags(YES_BMAP);
 					}
-					passengers.Delete(i--); //Forget this active platform (we won't move it back in case something gets blocked)
+					ForgetPassenger(i--); //Forget this active platform (we won't move it back in case something gets blocked)
 					continue;
 				}
 
 				if (!mo || mo.bDestroyed)
 				{
-					passengers.Delete(i--);
+					ForgetPassenger(i--);
 					continue;
 				}
 				mo.bNoDropoff = moOldNoDropoff;
@@ -1429,7 +1479,7 @@ extend class FCW_Platform
 				//when they activate lines.
 				if (!mo || mo.bDestroyed)
 				{
-					passengers.Delete(i--);
+					ForgetPassenger(i--);
 					continue;
 				}
 				mo.bNoDropoff = moOldNoDropoff;
@@ -1463,7 +1513,7 @@ extend class FCW_Platform
 
 				//This passenger will be 'solid' for the others
 				mo.A_ChangeLinkFlags(YES_BMAP);
-				passengers.Delete(i--);
+				ForgetPassenger(i--);
 
 				if (teleMove)
 					continue;
@@ -1525,7 +1575,7 @@ extend class FCW_Platform
 
 						otherMo.A_ChangeLinkFlags(YES_BMAP);
 						preMovePos.Delete(iOther*3, 3);
-						passengers.Delete(iOther--);
+						ForgetPassenger(iOther--);
 						i--;
 
 						if (!blocked)
@@ -1600,7 +1650,7 @@ extend class FCW_Platform
 			if (!mo || mo.bDestroyed || //Got Thing_Remove()'d?
 				mo.bNoBlockmap || !IsCarriable(mo))
 			{
-				passengers.Delete(i--);
+				ForgetPassenger(i--);
 				continue;
 			}
 
@@ -1617,7 +1667,7 @@ extend class FCW_Platform
 				if (args[ARG_OPTIONS] & OPTFLAG_ADDVELJUMP)
 					mo.vel += level.Vec3Diff(oldPos, pos);
 
-				passengers.Delete(i--);
+				ForgetPassenger(i--);
 				continue;
 			}
 
@@ -1820,13 +1870,17 @@ extend class FCW_Platform
 			let mo = passengers[i];
 			if (!mo || mo.bDestroyed)
 			{
-				passengers.Delete(i--);
+				ForgetPassenger(i--);
 				continue;
 			}
 
 			if (mo.Distance3D(portTwin) < mo.Distance3D(self) &&
 				portTwin.passengers.Find(mo) >= portTwin.passengers.Size())
 			{
+				let plat = FCW_Platform(mo);
+				if (plat && plat.group && plat.group.carrier == self)
+					plat.group.carrier = portTwin;
+
 				passengers.Delete(i--);
 				portTwin.passengers.Push(mo);
 			}
@@ -1838,7 +1892,7 @@ extend class FCW_Platform
 			let mo = portTwin.passengers[i];
 			if (!mo || mo.bDestroyed)
 			{
-				portTwin.passengers.Delete(i--);
+				portTwin.ForgetPassenger(i--);
 				--oldPortTwinSize;
 				continue;
 			}
@@ -1846,6 +1900,10 @@ extend class FCW_Platform
 			if (mo.Distance3D(self) < mo.Distance3D(portTwin) &&
 				passengers.Find(mo) >= passengers.Size())
 			{
+				let plat = FCW_Platform(mo);
+				if (plat && plat.group && plat.group.carrier == portTwin)
+					plat.group.carrier = self;
+
 				portTwin.passengers.Delete(i--);
 				--oldPortTwinSize;
 				passengers.Push(mo);
@@ -2026,7 +2084,7 @@ extend class FCW_Platform
 					stuckActors.Delete(i--);
 					continue;
 				}
-				passengers.Delete(index); //Stuck actors can't be passengers
+				ForgetPassenger(index); //Stuck actors can't be passengers
 			}
 			vector3 pushForce = level.Vec3Diff(pos, mo.pos + (0, 0, mo.height * 0.5)).Unit();
 			PushObstacle(mo, pushForce);
@@ -2700,7 +2758,7 @@ extend class FCW_Platform
 			{
 				let mo = passengers[i];
 				if (!mo || mo.bDestroyed)
-					passengers.Delete(i--);
+					ForgetPassenger(i--);
 				else
 					mo.vel += pushForce;
 			}
@@ -2715,7 +2773,7 @@ extend class FCW_Platform
 			{
 				let mo = portTwin.passengers[i];
 				if (!mo || mo.bDestroyed)
-					portTwin.passengers.Delete(i--);
+					portTwin.ForgetPassenger(i--);
 				else
 					mo.vel += pushForce;
 			}
@@ -2820,6 +2878,26 @@ extend class FCW_Platform
 			{
 				group.origin.vel += vel; //Any member's received velocity is passed on to the origin
 				vel = (0, 0, 0);
+			}
+
+			//We need to check if the 'carrier' is actually carrying anyone in this group
+			if (group.carrier && !(level.mapTime & 127) && //Do this roughly every 3.6 seconds
+				group.GetMember(0) == self)
+			{
+				let carrier = group.carrier;
+				if (!carrier.passengers.Size())
+				{
+					group.carrier = null;
+				}
+				else for (int iPlat = 0; iPlat < group.members.Size();)
+				{
+					let plat = group.GetMember(iPlat);
+					if (plat && carrier.passengers.Find(plat) < carrier.passengers.Size())
+						break; //It does carry one of us
+
+					if (++iPlat >= group.members.Size())
+						group.carrier = null; //It doesn't carry any of us
+				}
 			}
 		}
 
