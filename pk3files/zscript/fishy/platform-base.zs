@@ -3469,6 +3469,16 @@ extend class FCW_Platform
 	}
 
 	//============================
+	// GetOptions (ACS utility)
+	//============================
+	static int GetOptions (Actor act, int platTid)
+	{
+		ActorIterator it = platTid ? level.CreateActorIterator(platTid, "FCW_Platform") : null;
+		let plat = FCW_Platform(it ? it.Next() : act);
+		return plat ? plat.args[ARG_OPTIONS] : 0;
+	}
+
+	//============================
 	// SetCrushDamage (ACS utility)
 	//============================
 	static void SetCrushDamage (Actor act, int platTid, int damage)
@@ -3476,6 +3486,16 @@ extend class FCW_Platform
 		ActorIterator it = platTid ? level.CreateActorIterator(platTid, "FCW_Platform") : null;
 		for (let plat = FCW_Platform(it ? it.Next() : act); plat; plat = it ? FCW_Platform(it.Next()) : null)
 			plat.args[ARG_CRUSHDMG] = damage;
+	}
+
+	//============================
+	// GetCrushDamage (ACS utility)
+	//============================
+	static int GetCrushDamage (Actor act, int platTid)
+	{
+		ActorIterator it = platTid ? level.CreateActorIterator(platTid, "FCW_Platform") : null;
+		let plat = FCW_Platform(it ? it.Next() : act);
+		return plat ? plat.args[ARG_CRUSHDMG] : 0;
 	}
 
 	//============================
@@ -3537,5 +3557,25 @@ extend class FCW_Platform
 			}
 			plat.group = null;
 		}
+	}
+
+	//============================
+	// SetAirFriction (ACS utility)
+	//============================
+	static void SetAirFriction (Actor act, int platTid, double fric)
+	{
+		ActorIterator it = platTid ? level.CreateActorIterator(platTid, "FCW_Platform") : null;
+		for (let plat = FCW_Platform(it ? it.Next() : act); plat; plat = it ? FCW_Platform(it.Next()) : null)
+			plat.platAirFric = fric;
+	}
+
+	//============================
+	// GetAirFriction (ACS utility)
+	//============================
+	static double GetAirFriction (Actor act, int platTid)
+	{
+		ActorIterator it = platTid ? level.CreateActorIterator(platTid, "FCW_Platform") : null;
+		let plat = FCW_Platform(it ? it.Next() : act);
+		return plat ? plat.platAirFric : 0;
 	}
 }
