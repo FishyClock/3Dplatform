@@ -1300,6 +1300,7 @@ extend class FCW_Platform
 					}
 				}
 			}
+			plat.group.origin = FCW_Platform(passengers[i]);
 		}
 		lastGetNPResult = result;
 		return result;
@@ -2091,7 +2092,9 @@ extend class FCW_Platform
 		{
 			let mo = stuckActors[i];
 			if (!mo || mo.bDestroyed || //Thing_Remove()'d?
-				!OverlapZ(self, mo) || !OverlapXY(self, mo)) //No overlap?
+				!CollisionFlagChecks(self, mo) || //Non-solid?
+				!OverlapZ(self, mo) || !OverlapXY(self, mo) || //No overlap?
+				!self.CanCollideWith(mo, false) || !mo.CanCollideWith(self, true) ) //No collision?
 			{
 				stuckActors.Delete(i--);
 				continue;
