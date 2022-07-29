@@ -1113,6 +1113,30 @@ extend class FCW_Platform
 				miscActors.Push(mo); //We'll compare this later against the passengers
 		}
 
+		//Try to stand on the highest stuck actor if our 'maxStepHeight' allows it
+		Actor highestMo = null;
+		if (!ignoreObs)
+		for (int i = 0; i < stuckActors.Size(); ++i)
+		{
+			let mo = stuckActors[i];
+			if (!mo)
+				continue;
+
+			if (!highestMo || highestMo.pos.z + highestMo.height < mo.pos.z + mo.height)
+				highestMo = mo;
+		}
+
+		double moTop;
+		if (highestMo && (moTop = highestMo.pos.z + highestMo.height) - pos.z <= maxStepHeight &&
+			FitsAtPosition(self, (pos.xy, moTop), true))
+		{
+			SetZ(moTop);
+			CheckPortalTransition(); //Handle sector portals properly
+			top = pos.z + height;
+			stuckActors.Delete(stuckActors.Find(highestMo));
+			result = true;
+		}
+
 		for (int i = 0; i < tryZFix.Size(); ++i)
 		{
 			let mo = tryZFix[i];
@@ -1196,7 +1220,7 @@ extend class FCW_Platform
 					ForgetPassenger(i--);
 					continue;
 				}
-				double moTop = mo.pos.z + mo.height;
+				moTop = mo.pos.z + mo.height;
 
 				for (int iOther = 0; iOther < miscActors.Size(); ++iOther)
 				{
@@ -1953,7 +1977,7 @@ extend class FCW_Platform
 			//If we could carry it, try to set the obstacle on top of us
 			//if its 'maxStepHeight' allows it.
 			if (moNewZ > moOldZ && moNewZ - moOldZ <= mo.maxStepHeight &&
-				IsCarriable(mo) && FitsAtPosition(mo, (mo.pos.xy, moNewZ), mo is "FCW_Platform")) //If it's a platform then ignore possible actor collision
+				IsCarriable(mo) && FitsAtPosition(mo, (mo.pos.xy, moNewZ), true))
 			{
 				mo.SetZ(moNewZ);
 
