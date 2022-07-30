@@ -1646,6 +1646,13 @@ extend class FCW_Platform
 
 			if (mo.bOnMobj) //Standing on platform or on another passenger?
 				mo.vel.xy = (mo.vel.x*c - mo.vel.y*s, mo.vel.x*s + mo.vel.y*c); //Rotate its velocity
+
+			//Hack: force UpdateWaterLevel() to make a splash if platform movement isn't too slow and going down
+			let oldVelZ = mo.vel.z;
+			if (mo.vel.z >= -6)
+				mo.vel.z = endPos.z - startPos.z;
+			mo.UpdateWaterLevel();
+			mo.vel.z = oldVelZ;
 		}
 
 		if (portTwin)
@@ -3112,7 +3119,7 @@ extend class FCW_Platform
 		//Handle friction and gravity
 		if (!group || !group.origin || group.origin == self)
 		{
-			bool checkGroup = (group && group.origin && group.members.Size() > 1);
+			bool getAverage = (group && group.origin && group.members.Size() > 1);
 			bool onGround = (bOnMobj || pos.z <= floorZ);
 			bool yesGravity = !bNoGravity;
 			bool yesFriction = !bNoFriction;
@@ -3124,13 +3131,16 @@ extend class FCW_Platform
 					((mo = blockingMobj) && mo.pos.z <= pos.z && OverlapXY(self, mo)) ||
 					!TestMobjZ(true) );
 			}
+			UpdateWaterLevel();
 
-			if (checkGroup)
-			for (int iPlat = 0; (!onGround || !yesGravity || !yesFriction) && iPlat < group.members.Size(); ++iPlat)
+			if (group && group.origin)
+			for (int iPlat = 0; iPlat < group.members.Size(); ++iPlat)
 			{
 				let plat = group.GetMember(iPlat);
 				if (!plat || plat == self)
 					continue;
+
+				plat.UpdateWaterLevel();
 
 				//Find a member who is gravity bound and/or is "on the ground" and/or doesn't ignore friction
 				onGround |= (plat.bOnMobj || plat.pos.z <= plat.floorZ);
@@ -3161,7 +3171,7 @@ extend class FCW_Platform
 					bNoGravity = oldNoGrav;
 				}
 
-				if (checkGroup)
+				if (getAverage)
 				{
 					//Get the average friction from the group
 					int count = 1;
@@ -3206,7 +3216,7 @@ extend class FCW_Platform
 				double grav = GetGravity();
 				bNoGravity = oldNoGrav;
 
-				if (checkGroup)
+				if (getAverage)
 				{
 					//Get the average gravity from the group
 					int count = 1;

@@ -1,0 +1,11 @@
+splash testsplash
+{
+	sound "pain/pain"
+	chunkclass "TestSplash"
+	noalert
+}
+
+terrain testsplash
+{
+	splash "testsplash"
+}
