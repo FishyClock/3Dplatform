@@ -3115,6 +3115,7 @@ extend class FCW_Platform
 			bool checkGroup = (group && group.origin && group.members.Size() > 1);
 			bool onGround = (bOnMobj || pos.z <= floorZ);
 			bool yesGravity = !bNoGravity;
+			bool yesFriction = !bNoFriction;
 
 			if (yesGravity && !onGround)
 			{
@@ -3125,15 +3126,16 @@ extend class FCW_Platform
 			}
 
 			if (checkGroup)
-			for (int iPlat = 0; (!onGround || !yesGravity) && iPlat < group.members.Size(); ++iPlat)
+			for (int iPlat = 0; (!onGround || !yesGravity || !yesFriction) && iPlat < group.members.Size(); ++iPlat)
 			{
 				let plat = group.GetMember(iPlat);
 				if (!plat || plat == self)
 					continue;
 
-				//Find a member who is gravity bound and/or is "on the ground"
+				//Find a member who is gravity bound and/or is "on the ground" and/or doesn't ignore friction
 				onGround |= (plat.bOnMobj || plat.pos.z <= plat.floorZ);
 				yesGravity |= !plat.bNoGravity;
+				yesFriction |= !plat.bNoFriction;
 
 				if (yesGravity && !onGround)
 				{
@@ -3144,7 +3146,7 @@ extend class FCW_Platform
 				}
 			}
 
-			if (vel != (0, 0, 0))
+			if (yesFriction && vel != (0, 0, 0))
 			{
 				double fric;
 				if (!onGround)
