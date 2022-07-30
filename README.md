@@ -8,6 +8,7 @@
  - Floors and ceilings opening up.
  - Any scenario at all where you can imagine a horizontally moving piece of "geometry"
  that you can stand on and be carried by.
+ - Pushable crates that can carry other crates (since v1.1.0)
  
  Movement is based on GZDoom's PathFollower. That is, it moves by using map placed
  interpolation points. But it can also be moved/rotated via ACS since it has dedicated
