@@ -3099,7 +3099,7 @@ extend class FCW_Platform
 		{
 			if (!(args[ARG_OPTIONS] & OPTFLAG_IGNOREGEO))
 			{
-				if (pos.z < floorZ)
+				if (pos.z < floorZ || ceilingZ - floorZ < height)
 					SetZ(floorZ);
 				else if (pos.z + height > ceilingZ)
 					SetZ(ceilingZ - height);
@@ -3112,7 +3112,7 @@ extend class FCW_Platform
 				let plat = group.GetMember(iPlat);
 				if (plat && !(plat.args[ARG_OPTIONS] & OPTFLAG_IGNOREGEO))
 				{
-					if (plat.pos.z < plat.floorZ)
+					if (plat.pos.z < plat.floorZ || plat.ceilingZ - plat.floorZ < plat.height)
 						plat.SetZ(plat.floorZ);
 					else if (plat.pos.z + plat.height > plat.ceilingZ)
 						plat.SetZ(plat.ceilingZ - plat.height);
