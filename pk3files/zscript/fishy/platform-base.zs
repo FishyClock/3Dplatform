@@ -964,6 +964,10 @@ extend class FCW_Platform
 			//If this is somebody's portal copy, ignore it
 			if (plat.bPortCopy)
 				return false;
+
+			//A platform in move is the platform that's likely carrying us, ignore it
+			if (plat.bPlatInMove || (plat.portTwin && plat.portTwin.bPlatInMove) )
+				return false;
 		}
 		return true;
 	}
