@@ -3095,34 +3095,12 @@ extend class FCW_Platform
 			break;
 		}
 
-		if (!group || !group.origin)
-		{
-			if (!(args[ARG_OPTIONS] & OPTFLAG_IGNOREGEO))
-			{
-				if (pos.z < floorZ || ceilingZ - floorZ < height)
-					SetZ(floorZ);
-				else if (pos.z + height > ceilingZ)
-					SetZ(ceilingZ - height);
-			}
-		}
-		else if (group.origin == self)
-		{
-			for (int iPlat = 0; iPlat < group.members.Size(); ++iPlat)
-			{
-				let plat = group.GetMember(iPlat);
-				if (plat && !(plat.args[ARG_OPTIONS] & OPTFLAG_IGNOREGEO))
-				{
-					if (plat.pos.z < plat.floorZ || plat.ceilingZ - plat.floorZ < plat.height)
-						plat.SetZ(plat.floorZ);
-					else if (plat.pos.z + plat.height > plat.ceilingZ)
-						plat.SetZ(plat.ceilingZ - plat.height);
-				}
-			}
-		}
-
-		//Handle friction and gravity
+		//Handle friction, gravity, and other misc things
 		if (!group || !group.origin || group.origin == self)
 		{
+			CheckFloorCeiling();
+			UpdateWaterLevel();
+
 			bool getAverage = (group && group.origin && group.members.Size() > 1);
 			bool onGround = (bOnMobj || pos.z <= floorZ);
 			bool yesGravity = !bNoGravity;
@@ -3135,7 +3113,6 @@ extend class FCW_Platform
 					((mo = blockingMobj) && mo.pos.z <= pos.z && OverlapXY(self, mo)) ||
 					!TestMobjZ(true) );
 			}
-			UpdateWaterLevel();
 
 			if (group && group.origin)
 			for (int iPlat = 0; iPlat < group.members.Size(); ++iPlat)
@@ -3144,6 +3121,7 @@ extend class FCW_Platform
 				if (!plat || plat == self)
 					continue;
 
+				plat.CheckFloorCeiling();
 				plat.UpdateWaterLevel();
 
 				//Find a member who is gravity bound and/or is "on the ground" and/or doesn't ignore friction
@@ -3272,6 +3250,28 @@ extend class FCW_Platform
 	}
 
 	//============================
+	// CheckFloorCeiling
+	//============================
+	private void CheckFloorCeiling ()
+	{
+		if (args[ARG_OPTIONS] & OPTFLAG_IGNOREGEO)
+			return;
+
+		if (PlatIsActive() && !PlatHasMoved(true)) //Possibly blocked?
+			FindFloorCeiling(); //If there's a 3D floor, sets 'floorZ' and 'ceilingZ' accordingly.
+
+		let oldZ = pos.z;
+
+		if (pos.z < floorZ || ceilingZ - floorZ < height)
+			SetZ(floorZ);
+		else if (pos.z + height > ceilingZ)
+			SetZ(ceilingZ - height);
+
+		pPrev.z += pos.z - oldZ;
+		pCurr.z += pos.z - oldZ;
+	}
+
+	//============================
 	// FallAndSink (override)
 	//============================
 	override void FallAndSink (double grav, double oldFloorZ)
@@ -3337,6 +3337,38 @@ extend class FCW_Platform
 	}
 
 	//============================
+	// PlatIsActive
+	//============================
+	bool PlatIsActive ()
+	{
+		//When checking group members we only care about the origin.
+		//Either "every member is active" or "every member is not active."
+		let plat = self;
+		if (group && group.origin)
+			plat = group.origin;
+
+		return (plat.bActive || plat.vel != (0, 0, 0));
+	}
+
+	//============================
+	// PlatHasMoved
+	//============================
+	bool PlatHasMoved (bool posOnly = false)
+	{
+		//When checking group members we only care about the origin.
+		//Either "every member has moved" or "every member has not moved."
+		let plat = self;
+		if (group && group.origin)
+			plat = group.origin;
+
+		return ((plat.bActive || plat.vel != (0, 0, 0)) && (
+				plat.pos != plat.oldPos ||
+				(!posOnly && plat.angle != plat.oldAngle) ||
+				(!posOnly && plat.pitch != plat.oldPitch) ||
+				(!posOnly && plat.roll != plat.oldRoll) ) );
+	}
+
+	//============================
 	// CommonACSSetup
 	//============================
 	private void CommonACSSetup (int travelTime)
@@ -3361,8 +3393,7 @@ extend class FCW_Platform
 
 	//
 	//
-	// Everything below this point is either for
-	// scripting convenience with subclasses or
+	// Everything below this point are
 	// ACS centric utility functions.
 	//
 	//
@@ -3414,20 +3445,6 @@ extend class FCW_Platform
 	}
 
 	//============================
-	// PlatIsActive
-	//============================
-	bool PlatIsActive ()
-	{
-		//When checking group members we only care about the origin.
-		//Either "every member is active" or "every member is not active."
-		let plat = self;
-		if (group && group.origin)
-			plat = group.origin;
-
-		return plat.bActive;
-	}
-
-	//============================
 	// IsActive (ACS utility)
 	//============================
 	static bool IsActive (Actor act, int platTid)
@@ -3442,32 +3459,14 @@ extend class FCW_Platform
 	}
 
 	//============================
-	// PlatHasMoved
-	//============================
-	bool PlatHasMoved ()
-	{
-		//When checking group members we only care about the origin.
-		//Either "every member has moved" or "every member has not moved."
-		let plat = self;
-		if (group && group.origin)
-			plat = group.origin;
-
-		return ((plat.bActive || plat.vel != (0, 0, 0)) && (
-				plat.pos != plat.oldPos ||
-				plat.angle != plat.oldAngle ||
-				plat.pitch != plat.oldPitch ||
-				plat.roll != plat.oldRoll) );
-	}
-
-	//============================
 	// HasMoved (ACS utility)
 	//============================
-	static bool HasMoved (Actor act, int platTid)
+	static bool HasMoved (Actor act, int platTid, bool posOnly = false)
 	{
 		ActorIterator it = platTid ? level.CreateActorIterator(platTid, "FCW_Platform") : null;
 		for (let plat = FCW_Platform(it ? it.Next() : act); plat; plat = it ? FCW_Platform(it.Next()) : null)
 		{
-			if (plat.PlatHasMoved())
+			if (plat.PlatHasMoved(posOnly))
 				return true;
 		}
 		return false;
