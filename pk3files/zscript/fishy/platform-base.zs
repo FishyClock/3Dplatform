@@ -273,6 +273,25 @@ extend class FCW_Platform
 	{
 		Super.BeginPlay();
 
+		// Change the statnum so that platforms tick
+		// after every door/crusher/lift etc has ticked.
+		// Please note that this has the subtle side effect of
+		// also ticking after every non-platform actor
+		// has ticked.
+		//
+		// Changing the statnum along with calling FindFloorCeiling()
+		// in the CheckFloorCeiling() function is a workaround to
+		// make a platform move with a ceiling/3D floor that's pushing it down
+		// and not clip through it as the ceiling/3D floor moves.
+		// If we don't change the statnum then a platform being pushed down
+		// would appear to be partially stuck inside the ceiling/3D floor
+		// as it moves.
+		//
+		// Feel free to comment-out or remove this if it's causing
+		// problems for you and you don't have platforms that get
+		// in the way of moving ceilings or 3D floors.
+		ChangeStatNum(STAT_SECTOREFFECT + 1);
+
 		oldPos = pos;
 		oldAngle = angle;
 		oldPitch = pitch;
