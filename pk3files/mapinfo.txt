@@ -37,7 +37,12 @@ map TEST02 "Stress test"
 {
 }
 
+map VMABORT "Don't do that! test"
+{
+}
+
 clearEpisodes
 episode MAP01 { name = "Demo map" }
 episode TEST01 { name = "Crappy test map" }
 episode TEST02 { name = "Stress test" }
+episode VMABORT { name = "Don't do that! test" }

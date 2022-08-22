@@ -271,8 +271,6 @@ extend class FCW_Platform
 	//============================
 	override void BeginPlay ()
 	{
-		Super.BeginPlay();
-
 		// Change the statnum so that platforms tick
 		// after every door/crusher/lift etc has ticked.
 		// Please note that this has the subtle side effect of
@@ -382,9 +380,14 @@ extend class FCW_Platform
 
 		//Verify the path has enough nodes
 		if (firstNode is "FCW_PlatformNode")
+		{
 			FCW_PlatformNode(firstNode).PNodeFormChain();
+		}
 		else
+		{
 			firstNode.FormChain();
+			FCW_OldStuff_Common.CheckNodeTypes(firstNode); //The old nodes shouldn't point to platform nodes
+		}
 
 		bool optGoToNode = (args[ARG_OPTIONS] & OPTFLAG_GOTONODE);
 
