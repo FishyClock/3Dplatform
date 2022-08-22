@@ -79,6 +79,7 @@ class FCW_PlatformNode : InterpolationPoint
 
 		//$Arg0 Next Point
 		//$Arg0Type 14
+		//$Arg0Tooltip Next point must be another platform interpolation point.\n(It can't be the old interpolation point class.)
 
 		//$Arg1 Travel Time
 
@@ -106,21 +107,30 @@ extend class FCW_PlatformNode
 		// 2) The tid to look for is on a different argument.
 		// 3) The pitch isn't clamped.
 
-		for (FCW_PlatformNode node = self; node; node = FCW_PlatformNode(node.next))
+		for (InterpolationPoint node = self; node; node = node.next)
 		{
 			if (node.bVisited)
 				return;
 			node.bVisited = true;
 
-			let it = level.CreateActorIterator(node.args[0], "FCW_PlatformNode");
+			let it = level.CreateActorIterator(node.args[0], "InterpolationPoint");
 			do
 			{
-				node.next = FCW_PlatformNode(it.Next());
+				node.next = InterpolationPoint(it.Next());
 			} while (node.next == node); //Don't link to self
 
 			if (!node.next && node.args[0])
+			{
 				Console.Printf("\n\ckPlatform interpolation point with tid " .. node.tid .. " at position " ..node.pos ..
 				":\n\ckcannot find next platform interpolation point with tid " .. node.args[0] .. ".");
+			}
+			else if (node.next && !(node.next is "FCW_PlatformNode"))
+			{
+				Console.Printf("\ckPlatform interpolation point with tid " .. node.tid .. " at position " ..node.pos ..
+				":\n\ckis pointing at a non-platform interpolation point with tid " .. node.args[0] .. " at position " .. node.next.pos .. "\n.");
+				new("FCW_OldStuff_DelayedAbort");
+				return;
+			}
 		}
 	}
 }
@@ -279,9 +289,9 @@ extend class FCW_Platform
 		//
 		// Changing the statnum along with calling FindFloorCeiling()
 		// in the CheckFloorCeiling() function is a workaround to
-		// make a platform move with a ceiling/3D floor that's pushing it down
+		// make a platform move with a ceiling/3D floor that's pushing it up/down
 		// and not clip through it as the ceiling/3D floor moves.
-		// If we don't change the statnum then a platform being pushed down
+		// If we don't change the statnum then a platform being pushed up/down
 		// would appear to be partially stuck inside the ceiling/3D floor
 		// as it moves.
 		//
@@ -2465,7 +2475,7 @@ extend class FCW_Platform
 	//============================
 	// Lerp
 	//============================
-	private double Lerp (double p1, double p2)
+	double Lerp (double p1, double p2)
 	{
 		return (p1 ~== p2) ? p1 : (p1 + time * (p2 - p1));
 	}
@@ -2473,7 +2483,7 @@ extend class FCW_Platform
 	//============================
 	// Splerp
 	//============================
-	private double Splerp (double p1, double p2, double p3, double p4)
+	double Splerp (double p1, double p2, double p3, double p4)
 	{
 		if (p2 ~== p3)
 			return p2;

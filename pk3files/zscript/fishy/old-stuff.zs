@@ -24,8 +24,8 @@ struct FCW_OldStuff_Common play
 			{
 				String cls = pointer.GetClassName();
 				cls.Replace("FCW_OldStuff_", "");
-				Console.Printf("\ck'" .. cls .. "' with tid " .. pointer.tid .. " at " .. pointer.pos ..
-							":\nis pointing at a 'Platform Interpolation Point' with tid ".. node.tid .. " at " .. node.pos .. "\n.");
+				Console.Printf("\ck'" .. cls .. "' with tid " .. pointer.tid .. " at position " .. pointer.pos ..
+							":\nis pointing at a 'Platform Interpolation Point' with tid ".. node.tid .. " at position " .. node.pos .. "\n.");
 				new("FCW_OldStuff_DelayedAbort");
 			}
 
@@ -60,6 +60,6 @@ class FCW_OldStuff_DelayedAbort : Thinker
 	override void Tick ()
 	{
 		if (level.mapTime - startTime >= TICRATE)
-			ThrowAbortException("Path followers, moving cameras, and actor movers are not meant to use 'Platform Interpolation Points'. Please use the old 'Interpolation Point' instead. \n\nLikewise, the old 'Interpolation Point' should not point to a 'Platform Interpolation Point'.\n.");
+			ThrowAbortException("Path followers, moving cameras, and actor movers are not meant to use 'Platform Interpolation Points'. Please use the old 'Interpolation Point' instead. \n\nLikewise, the old 'Interpolation Point' should not point to a 'Platform Interpolation Point' nor vice-versa.\n.");
 	}
 }
