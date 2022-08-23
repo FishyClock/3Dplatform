@@ -1418,8 +1418,27 @@ extend class FCW_Platform
 			let plat = FCW_Platform(mo);
 
 			vector3 offset = level.Vec3Diff(startPos, moOldPos);
-			offset.xy = (offset.x*c - offset.y*s, offset.x*s + offset.y*c); //Rotate it
-			offset.xy += piAndRoOffset;
+			if (delta) //Will 'offset' get rotated?
+			{
+				double oldOffX = abs(offset.x);
+				double oldOffY = abs(offset.y);
+				double maxDist = radius + mo.radius;
+
+				offset.xy = (offset.x*c - offset.y*s, offset.x*s + offset.y*c); //Rotate it
+
+				//If this passenger is currently within XY range then clamp the rotated offset
+				//so that the passenger doesn't end up outside the XY range at its new position
+				//and potentially fall off the platform.
+				//This is a workaround to the fact that GZDoom (at this moment in time)
+				//does not rotate an actor's bounding box when said actor's angle/yaw changes.
+				if (oldOffX < maxDist && oldOffY < maxDist)
+				{
+					maxDist -= 1.0;
+					offset.x = clamp(offset.x, -maxDist, maxDist);
+					offset.y = clamp(offset.y, -maxDist, maxDist);
+				}
+			}
+			offset.xy += piAndRoOffset; //Platform pitch/roll changes may still make passengers fall off; that's intentional
 
 			//No tele move means absolute offset; it needs to be absolute so TryMove() works as expected.
 			//Because TryMove() has its own handling of crossing line portals.
