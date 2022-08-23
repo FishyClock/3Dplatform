@@ -1009,19 +1009,19 @@ extend class FCW_Platform
 	//============================
 	bool CanStealFrom (FCW_Platform other, Actor mo)
 	{
-		// Steal other platforms' passengers if
-		// A) We don't share groups and our top is higher than the other platform's top or...
-		// B) We don't share the "mirror" option and the passenger's (mo) center is within our radius
-		// and NOT within the other platform's radius.
-		// (In other words, groupmates with the same "mirror" option never steal each other's passengers.)
+		double myTop = pos.z + height;
+		double otherTop = other.pos.z + other.height;
 
-		//Scenario A
-		if (!group || group != other.group)
-			return (pos.z + height > other.pos.z + other.height);
+		if (myTop > otherTop)
+			return true;
 
-		//Scenario B
-		return (mo && ((args[ARG_OPTIONS] ^ other.args[ARG_OPTIONS]) & OPTFLAG_MIRROR) &&
-			OverlapXY(self, mo, radius) && !OverlapXY(other, mo, other.radius) );
+		if (!group || group != other.group || myTop < otherTop)
+			return false;
+
+		//'other' is a groupmate with the same top
+		return (mo &&
+			((args[ARG_OPTIONS] ^ other.args[ARG_OPTIONS]) & OPTFLAG_MIRROR) &&   //Only steal if we have different "mirror" flag settings and
+			OverlapXY(self, mo, radius) && !OverlapXY(other, mo, other.radius) ); //'mo' is within our radius and NOT within other's radius.
 	}
 
 	//============================
