@@ -269,6 +269,7 @@ extend class FCW_Platform
 	double groupPitch;
 	double groupRoll;
 	double time;
+	double reachedTime;
 	double timeFrac;
 	int holdTime;
 	bool bActive;
@@ -335,6 +336,7 @@ extend class FCW_Platform
 		groupPitch = pitch;
 		groupRoll = roll;
 		time = 1.1;
+		reachedTime = 0;
 		timeFrac = 0;
 		holdTime = 0;
 		bActive = false;
@@ -2852,6 +2854,7 @@ extend class FCW_Platform
 				SetTimeFraction();
 				SetHoldTime();
 				time = 0;
+				reachedTime = 0;
 			}
 		}
 	}
@@ -3075,9 +3078,28 @@ extend class FCW_Platform
 				--holdTime;
 				break;
 			}
-			if (!Interpolate())
-				break;
 
+			if (stuckActors.Size() || (portTwin && !portTwin.bNoBlockmap && portTwin.stuckActors.Size()))
+				break; //Don't bother
+
+			if (!Interpolate())
+			{
+				if (!lastGetNPResult || (portTwin && !portTwin.bNoBlockmap && !portTwin.lastGetNPResult))
+					break; //We got new stuck actors
+
+				//Something's blocking us so try to move a little closer
+				if (reachedTime < time)
+				{
+					let oldTime = time;
+					time = reachedTime + timeFrac * 0.125;
+					if (Interpolate())
+						reachedTime = time;
+					time = oldTime;
+				}
+				break;
+			}
+
+			reachedTime = time;
 			time += timeFrac;
 			if (time > 1.0) //Reached destination?
 			{
@@ -3165,6 +3187,7 @@ extend class FCW_Platform
 				{
 					SetInterpolationCoordinates();
 					time -= 1.0;
+					reachedTime = time;
 					vel = (0, 0, 0);
 				}
 			}
@@ -3452,6 +3475,7 @@ extend class FCW_Platform
 		currNode = null; //Deactivate when done moving
 		prevNode = null;
 		time = 0;
+		reachedTime = 0;
 		holdTime = 0;
 		timeFrac = 1.0 / max(1, travelTime); //Time unit is always in tics from the ACS side
 		bActive = true;
