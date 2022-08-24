@@ -1,7 +1,11 @@
 version "4.8.2"
 
+//Core file
 #include "zscript/fishy/platform-base.zs"
+
+//Examples of platform subclasses
 #include "zscript/fishy/test-platforms.zs"
 #include "zscript/fishy/demo-platforms.zs"
+
+//Throwaway test material
 #include "zscript/fishy/misc-test.zs"
-#include "zscript/fishy/old-stuff.zs"

@@ -22,6 +22,31 @@
  OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
  SOFTWARE.
 
+*******************************************************************************
+
+ This is a script library containing a full-fledged, reasonably stable
+ 3D platform actor, a temporary answer to GZDoom's lack of "3D polyobjects".
+ The platform can either be a sprite or a model.
+ Though using models is the main point so it can masquerade as
+ horizontally moving geometry that you can stand on and be carried by.
+
+ In a nutshell this file contains:
+ FCW_Platform - The main platform class;
+
+ FCW_PlatformNode - a platform-centric interpolation point class
+ (though GZDoom's "InterpolationPoint" is still perfectly usable);
+
+ FCW_PlatformGroup - a class to help with the "group" logic;
+
+ And lastly
+ FCW_OldStuff_* - a measure that takes into account old
+ "PathFollower" classes trying to use FCW_PlatformNode
+ as well as having a interpolation path made up of
+ both InterpolationPoints and FCW_PlatformNodes.
+
+ It is recommended you replace the "FCW_" prefix to avoid conflicts with
+ other people's projects.
+
 ******************************************************************************/
 
 class FCW_Platform : Actor abstract
@@ -128,7 +153,7 @@ extend class FCW_PlatformNode
 			{
 				Console.Printf("\ckPlatform interpolation point with tid " .. node.tid .. " at position " ..node.pos ..
 				":\n\ckis pointing at a non-platform interpolation point with tid " .. node.args[0] .. " at position " .. node.next.pos .. "\n.");
-				new("FCW_OldStuff_DelayedAbort");
+				new("FCW_OldStuff_DelayedAbort"); //For what this does, see bottom of this file
 				return;
 			}
 		}
@@ -3670,5 +3695,77 @@ extend class FCW_Platform
 		ActorIterator it = platTid ? level.CreateActorIterator(platTid, "FCW_Platform") : null;
 		let plat = FCW_Platform(it ? it.Next() : act);
 		return plat ? plat.platAirFric : 0;
+	}
+} //End of FCW_Platform class definition
+
+/******************************************************************************
+
+ The following concerns old classes that make use of the old
+ InterpolationPoint class. They should not use FCW_PlatformNode
+ since it wasn't made for them.
+
+******************************************************************************/
+
+struct FCW_OldStuff_Common play
+{
+	static void CheckNodeTypes (Actor pointer)
+	{
+		InterpolationPoint node;
+		Array<InterpolationPoint> foundNodes; //To avoid infinite loops
+
+		if (pointer is "PathFollower")
+			node = InterpolationPoint(pointer.lastEnemy ? pointer.lastEnemy : pointer.target);
+		else
+			node = InterpolationPoint(pointer).next;
+
+		//Go through the detected nodes. If any of them are the new type
+		//then bluntly and forcefully inform the mapper that's a no-no.
+		while (node)
+		{
+			if (foundNodes.Find(node) < foundNodes.Size())
+				return;
+			foundNodes.Push(node);
+
+			if (node is "FCW_PlatformNode")
+			{
+				String cls = pointer.GetClassName();
+				cls.Replace("FCW_OldStuff_", "");
+				Console.Printf("\ck'" .. cls .. "' with tid " .. pointer.tid .. " at position " .. pointer.pos ..
+							":\nis pointing at a 'Platform Interpolation Point' with tid ".. node.tid .. " at position " .. node.pos .. "\n.");
+				new("FCW_OldStuff_DelayedAbort");
+			}
+
+			pointer = node;
+			node = node.next;
+		}
+	}
+}
+
+mixin class FCW_OldStuff
+{
+	override void PostBeginPlay ()
+	{
+		Super.PostBeginPlay();
+		FCW_OldStuff_Common.CheckNodeTypes(self);
+	}
+}
+
+class FCW_OldStuff_PathFollower : PathFollower replaces PathFollower { mixin FCW_OldStuff; }
+class FCW_OldStuff_MovingCamera : MovingCamera replaces MovingCamera { mixin FCW_OldStuff; }
+class FCW_OldStuff_ActorMover : ActorMover replaces ActorMover { mixin FCW_OldStuff; }
+
+class FCW_OldStuff_DelayedAbort : Thinker
+{
+	int startTime;
+
+	override void PostBeginPlay ()
+	{
+		startTime = level.mapTime;
+	}
+
+	override void Tick ()
+	{
+		if (level.mapTime - startTime >= TICRATE)
+			ThrowAbortException("Path followers, moving cameras, and actor movers are not meant to use 'Platform Interpolation Points'. Please use the old 'Interpolation Point' instead. \n\nLikewise, the old 'Interpolation Point' should not point to a 'Platform Interpolation Point' nor vice-versa.\n.");
 	}
 }
