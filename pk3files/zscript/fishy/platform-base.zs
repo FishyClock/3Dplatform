@@ -3079,13 +3079,10 @@ extend class FCW_Platform
 				break;
 			}
 
-			if (stuckActors.Size() || (portTwin && !portTwin.bNoBlockmap && portTwin.stuckActors.Size()))
-				break; //Don't bother
-
 			if (!Interpolate())
 			{
-				if (!lastGetNPResult || (portTwin && !portTwin.bNoBlockmap && !portTwin.lastGetNPResult))
-					break; //We got new stuck actors
+				if (stuckActors.Size() || (portTwin && !portTwin.bNoBlockmap && portTwin.stuckActors.Size()))
+					break; //Don't bother
 
 				//Something's blocking us so try to move a little closer
 				if (reachedTime < time)
