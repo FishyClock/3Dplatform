@@ -47,6 +47,17 @@
  It is recommended you replace the "FCW_" prefix to avoid conflicts with
  other people's projects.
 
+ Regarding custom actors. Platforms can generally handle moving
+ ordinary actors just fine, but if you have complex enemies/players/etc
+ that are made up of multiple actors or otherwise need special treatment
+ then please make use of the empty virtual functions
+ PassengerPreMove(Actor mo) and PassengerPostMove(Actor mo).
+
+ PreMove is always called just before the platform attempts to move the
+ actor "mo" usually by calling TryMove() and PostMove is called after
+ the actor was moved successfully. Meaning PostMove won't be called
+ if the actor gets blocked.
+
 ******************************************************************************/
 
 class FCW_Platform : Actor abstract
@@ -1063,6 +1074,24 @@ extend class FCW_Platform
 	}
 
 	//============================
+	// PassengerPreMove
+	//============================
+	virtual void PassengerPreMove (Actor mo)
+	{
+		//This is called every time a (potential) passenger (called 'mo')
+		//is about to be moved, even if the move fails.
+	}
+
+	//============================
+	// PassengerPostMove
+	//============================
+	virtual void PassengerPostMove (Actor mo)
+	{
+		//This is called every time a (potential) passenger (called 'mo')
+		//was moved successfully.
+	}
+
+	//============================
 	// GetNewPassengers
 	//============================
 	private bool GetNewPassengers (bool ignoreObs)
@@ -1193,8 +1222,10 @@ extend class FCW_Platform
 		if (highestMo && (moTop = highestMo.pos.z + highestMo.height) - pos.z <= maxStepHeight &&
 			FitsAtPosition(self, (pos.xy, moTop), true))
 		{
+			let startPos = pos;
 			SetZ(moTop);
 			CheckPortalTransition(); //Handle sector portals properly
+			MovePassengers(startPos, pos, angle, 0, 0, 0, false); //Try to move our old passengers too
 			top = pos.z + height;
 			stuckActors.Delete(stuckActors.Find(highestMo));
 			result = true;
@@ -1203,10 +1234,12 @@ extend class FCW_Platform
 		for (int i = 0; i < tryZFix.Size(); ++i)
 		{
 			let mo = tryZFix[i];
+			PassengerPreMove(mo);
 			if (FitsAtPosition(mo, (mo.pos.xy, top), true))
 			{
 				mo.SetZ(top);
 				mo.CheckPortalTransition(); //Handle sector portals properly
+				PassengerPostMove(mo);
 				if (passengers.Find(mo) >= passengers.Size())
 					newPass.Push(mo);
 			}
@@ -1222,10 +1255,12 @@ extend class FCW_Platform
 		for (int i = 0; i < tryZFixItems.Size(); ++i)
 		{
 			let mo = tryZFixItems[i];
+			PassengerPreMove(mo);
 			if (FitsAtPosition(mo, (mo.pos.xy, top), true))
 			{
 				mo.SetZ(top);
 				mo.CheckPortalTransition(); //Handle sector portals properly
+				PassengerPostMove(mo);
 				if (passengers.Find(mo) >= passengers.Size())
 					newPass.Push(mo);
 			}
@@ -1404,9 +1439,14 @@ extend class FCW_Platform
 		{
 			let mo = passengers[i];
 			if (mo && !mo.bNoBlockmap)
+			{
+				PassengerPreMove(mo);
 				mo.A_ChangeLinkFlags(NO_BMAP);
+			}
 			else
+			{
 				ForgetPassenger(i--);
+			}
 		}
 
 		if (!passengers.Size())
@@ -1735,6 +1775,8 @@ extend class FCW_Platform
 				mo.vel.z = endPos.z - startPos.z;
 			mo.UpdateWaterLevel();
 			mo.vel.z = oldVelZ;
+
+			PassengerPostMove(mo);
 		}
 
 		if (portTwin)
@@ -2066,21 +2108,25 @@ extend class FCW_Platform
 
 			//If we could carry it, try to set the obstacle on top of us
 			//if its 'maxStepHeight' allows it.
-			if (moNewZ > moOldZ && moNewZ - moOldZ <= mo.maxStepHeight &&
-				IsCarriable(mo) && FitsAtPosition(mo, (mo.pos.xy, moNewZ), true))
+			if (moNewZ > moOldZ && moNewZ - moOldZ <= mo.maxStepHeight && IsCarriable(mo))
 			{
-				mo.SetZ(moNewZ);
+				PassengerPreMove(mo);
+				if (FitsAtPosition(mo, (mo.pos.xy, moNewZ), true))
+				{
+					mo.SetZ(moNewZ);
 
-				//Try one more time
-				moved = bPortCopy ? FitsAtPosition(self, newPos) : TryMove(newPos.xy, 1);
-				if (!moved)
-				{
-					mo.SetZ(moOldZ);
-					blockingMobj = mo; //Needed for later; TryMove() might have nulled it
-				}
-				else
-				{
-					mo.CheckPortalTransition(); //Handle sector portals properly
+					//Try one more time
+					moved = bPortCopy ? FitsAtPosition(self, newPos) : TryMove(newPos.xy, 1);
+					if (!moved)
+					{
+						mo.SetZ(moOldZ);
+						blockingMobj = mo; //Needed for later; TryMove() might have nulled it
+					}
+					else
+					{
+						mo.CheckPortalTransition(); //Handle sector portals properly
+						PassengerPostMove(mo);
+					}
 				}
 			}
 		}
@@ -2193,10 +2239,12 @@ extend class FCW_Platform
 			if (index < passengers.Size())
 			{
 				//Try to have it on top of us and deliberately ignore if it gets stuck in another actor
+				PassengerPreMove(mo);
 				if (FitsAtPosition(mo, (mo.pos.xy, top), true))
 				{
 					mo.SetZ(top);
 					mo.CheckPortalTransition(); //Handle sector portals properly
+					PassengerPostMove(mo);
 					stuckActors.Delete(i--);
 					continue;
 				}

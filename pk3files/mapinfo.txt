@@ -21,6 +21,7 @@ DoomEdNums
 	15503 = TESTSprite
 	15504 = TESTBlueishPlatform
 	15505 = TESTPushCrate
+	15506 = TESTTorchZombo //This is not a platform
 }
 
 map MAP01 "Fishy's 3D Platforms: Demo"

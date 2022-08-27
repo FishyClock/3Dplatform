@@ -1,52 +1,45 @@
-class TESTMooPlatform : FCW_Platform
+class TESTPlat : FCW_Platform abstract
+{
+	States
+	{
+	Spawn:
+		MODL A -1;
+		Stop;
+	}
+}
+
+//
+//
+//
+
+class TESTMooPlatform : TESTPlat
 {
 	Default
 	{
 		Radius 64;
 		Height 32;
 	}
-
-	States
-	{
-	Spawn:
-		MODL A -1;
-		Stop;
-	}
 }
 
-class TESTFloaty : FCW_Platform
+class TESTFloaty : TESTPlat
 {
 	Default
 	{
 		Radius 32;
 		Height 80;
 	}
-
-	States
-	{
-	Spawn:
-		MODL A -1;
-		Stop;
-	}
 }
 
-class TESTFlyingDoor : FCW_Platform
+class TESTFlyingDoor : TESTPlat
 {
 	Default
 	{
 		Radius 64;
 		Height 8;
 	}
-
-	States
-	{
-	Spawn:
-		MODL A -1;
-		Stop;
-	}
 }
 
-class TESTSprite : FCW_Platform
+class TESTSprite : TESTPlat
 {
 	Default
 	{
@@ -91,23 +84,16 @@ class TESTSPritePitchIndicator : Actor
 	}
 }
 
-class TESTBlueishPlatform : FCW_Platform
+class TESTBlueishPlatform : TESTPlat
 {
 	Default
 	{
 		Radius 64;
 		Height 16;
 	}
-
-	States
-	{
-	Spawn:
-		MODL A -1;
-		Stop;
-	}
 }
 
-class TESTPushCrate : FCW_Platform
+class TESTPushCrate : TESTPlat
 {
 	Default
 	{
@@ -117,11 +103,60 @@ class TESTPushCrate : FCW_Platform
 		-NOGRAVITY;
 		+FCW_Platform.CARRIABLE;
 	}
+}
 
-	States
+class TESTTorchZombo : ZombieMan
+{
+	Default
 	{
-	Spawn:
-		MODL A -1;
-		Stop;
+		//$Title Torch zombo!
+	}
+
+	override void PostBeginPlay ()
+	{
+		Super.PostBeginPlay();
+		tracer = Spawn("ShortRedTorch", pos + (0, 0, height));
+		tracer.bNoGravity = true;
+		tracer.bSolid = false;
+	}
+
+	override void Tick ()
+	{
+		Super.Tick();
+
+		if (InStateSequence(curState, seeState))
+			TorchZomboRoutine();
+	}
+
+	void TorchZomboRoutine ()
+	{
+		if (tracer)
+		{
+			tracer.SetOrigin(pos + (0, 0, height), true);
+			tracer.vel = (0, 0, 0);
+		}
+
+		if (!random[TorchZombo](0, 32))
+		{
+			Actor puff = Spawn("BulletPuff", pos + (0, 0, height));
+			puff.vel.z = 8;
+		}
+	}
+
+	override void Die (Actor source, Actor inflictor, int dmgflags, Name MeansOfDeath)
+	{
+		if (tracer && tracer is "ShortRedTorch")
+			tracer.Destroy();
+
+		Super.Die(source, inflictor, dmgflags, MeansOfDeath);
+	}
+}
+
+extend class TESTPlat
+{
+	override void PassengerPostMove (Actor mo)
+	{
+		if (mo is "TESTTorchZombo")
+			TESTTorchZombo(mo).TorchZomboRoutine();
 	}
 }
