@@ -50,13 +50,19 @@
  Regarding custom actors. Platforms can generally handle moving
  ordinary actors just fine, but if you have complex enemies/players/etc
  that are made up of multiple actors or otherwise need special treatment
- then please make use of the empty virtual functions
- PassengerPreMove(Actor mo) and PassengerPostMove(Actor mo, bool moved).
+ then please make use of the empty virtual functions:
+
+ PassengerPreMove(Actor mo)
+ PassengerPostMove(Actor mo, bool moved)
+ SpecialBTIActor(Actor mo)
 
  PreMove is always called before the platform attempts to move the
  actor "mo" usually by calling TryMove().
  And PostMove is always called after "mo" was/wasn't moved.
  "moved" is set to "true" if "mo" was moved and "false" if it wasn't.
+
+ SpecialBTIActor() is useful for actors detected during a BlockThingsIterator
+ search. For cases where PassengerPre/PostMove() aren't good enough.
 
 ******************************************************************************/
 
@@ -1098,6 +1104,30 @@ extend class FCW_Platform
 	}
 
 	//============================
+	// SpecialBTIActor
+	//============================
+	virtual bool SpecialBTIActor (Actor mo)
+	{
+		// Use this to handle special actors that aren't being pointed by passengers
+		// (and thus can't be handled in the PassengerPre/PostMove() functions)
+		// but can still be detected in a BlockThingsIterator (BTI) search.
+		//
+		// Return 'true' if the actor shouldn't be processed
+		// and skip to the next blockmap result.
+		//
+		// Or return 'false' to run the usual checks in
+		// GetNewPassengers() and GetStuckActors().
+		// The "usual checks" being:
+		// Is it within XY and Z range, is it a corpse,
+		// is it solid, is it carriable, is it a stuck actor, etc, etc.
+		//
+		// Important note: because this is called during a BTI search
+		// please don't spawn/destroy actors here because that tends to
+		// mess up the iterator.
+		return false;
+	}
+
+	//============================
 	// GetNewPassengers
 	//============================
 	private bool GetNewPassengers (bool ignoreObs)
@@ -1129,6 +1159,10 @@ extend class FCW_Platform
 		while (it.Next())
 		{
 			let mo = it.thing;
+
+			if (SpecialBTIActor(mo))
+				continue; //Already handled
+
 			if (mo == self || mo == portTwin)
 				continue;
 
@@ -2208,6 +2242,10 @@ extend class FCW_Platform
 		while (it.Next())
 		{
 			let mo = it.thing;
+
+			if (SpecialBTIActor(mo))
+				continue; //Already handled
+
 			if (mo == self)
 				continue;
 
