@@ -117,7 +117,6 @@ class TESTTorchZombo : ZombieMan
 		Super.PostBeginPlay();
 		tracer = Spawn("ShortRedTorch", pos + (0, 0, height));
 		tracer.bNoGravity = true;
-		tracer.bSolid = false;
 	}
 
 	override void Tick ()
@@ -150,13 +149,30 @@ class TESTTorchZombo : ZombieMan
 
 		Super.Die(source, inflictor, dmgflags, MeansOfDeath);
 	}
+
+	override bool CanCollideWith (Actor other, bool passive)
+	{
+		return (!tracer || tracer != other);
+	}
 }
 
+//Example of how to deal with a unique class
 extend class TESTPlat
 {
-	override void PassengerPostMove (Actor mo)
+	override void PassengerPreMove (Actor mo)
+	{
+		if (mo is "TESTTorchZombo" && mo.tracer)
+			mo.tracer.bSolid = false;
+	}
+
+	override void PassengerPostMove (Actor mo, bool moved)
 	{
 		if (mo is "TESTTorchZombo")
-			TESTTorchZombo(mo).TorchZomboRoutine();
+		{
+			if (moved)
+				TESTTorchZombo(mo).TorchZomboRoutine();
+			if (mo.tracer)
+				mo.tracer.bSolid = true;
+		}
 	}
 }

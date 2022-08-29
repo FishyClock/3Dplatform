@@ -51,12 +51,12 @@
  ordinary actors just fine, but if you have complex enemies/players/etc
  that are made up of multiple actors or otherwise need special treatment
  then please make use of the empty virtual functions
- PassengerPreMove(Actor mo) and PassengerPostMove(Actor mo).
+ PassengerPreMove(Actor mo) and PassengerPostMove(Actor mo, bool moved).
 
- PreMove is always called just before the platform attempts to move the
- actor "mo" usually by calling TryMove() and PostMove is called after
- the actor was moved successfully. Meaning PostMove won't be called
- if the actor gets blocked.
+ PreMove is always called before the platform attempts to move the
+ actor "mo" usually by calling TryMove().
+ And PostMove is always called after "mo" was/wasn't moved.
+ "moved" is set to "true" if "mo" was moved and "false" if it wasn't.
 
 ******************************************************************************/
 
@@ -1078,17 +1078,23 @@ extend class FCW_Platform
 	//============================
 	virtual void PassengerPreMove (Actor mo)
 	{
-		//This is called every time a (potential) passenger (called 'mo')
-		//is about to be moved, even if the move fails.
+		// This is called every time before a (potential) passenger (called 'mo')
+		// is moved.
 	}
 
 	//============================
 	// PassengerPostMove
 	//============================
-	virtual void PassengerPostMove (Actor mo)
+	virtual void PassengerPostMove (Actor mo, bool moved)
 	{
-		//This is called every time a (potential) passenger (called 'mo')
-		//was moved successfully.
+		// This is called every time after a (potential) passenger (called 'mo')
+		// was tried to be moved.
+		//
+		// 'moved' will be true if 'mo' was moved successfully,
+		// otherwise it will be false.
+		//
+		// The distinction is useful if you want to run code only if the
+		// passenger (mo) was moved or not moved.
 	}
 
 	//============================
@@ -1235,11 +1241,11 @@ extend class FCW_Platform
 		{
 			let mo = tryZFix[i];
 			PassengerPreMove(mo);
-			if (FitsAtPosition(mo, (mo.pos.xy, top), true))
+			bool fits = FitsAtPosition(mo, (mo.pos.xy, top), true);
+			if (fits)
 			{
 				mo.SetZ(top);
 				mo.CheckPortalTransition(); //Handle sector portals properly
-				PassengerPostMove(mo);
 				if (passengers.Find(mo) >= passengers.Size())
 					newPass.Push(mo);
 			}
@@ -1250,20 +1256,22 @@ extend class FCW_Platform
 				if (stuckActors.Find(mo) >= stuckActors.Size())
 					stuckActors.Push(mo);
 			}
+			PassengerPostMove(mo, fits);
 		}
 
 		for (int i = 0; i < tryZFixItems.Size(); ++i)
 		{
 			let mo = tryZFixItems[i];
 			PassengerPreMove(mo);
-			if (FitsAtPosition(mo, (mo.pos.xy, top), true))
+			bool fits = FitsAtPosition(mo, (mo.pos.xy, top), true);
+			if (fits)
 			{
 				mo.SetZ(top);
 				mo.CheckPortalTransition(); //Handle sector portals properly
-				PassengerPostMove(mo);
 				if (passengers.Find(mo) >= passengers.Size())
 					newPass.Push(mo);
 			}
+			PassengerPostMove(mo, fits);
 		}
 
 		for (int i = 0; i < corpses.Size(); ++i)
@@ -1521,7 +1529,8 @@ extend class FCW_Platform
 				mo.bNoDropoff = false;
 				let moOldAngle = mo.angle;
 				let moNewAngle = mo.angle + delta;
-				moved = (plat.PlatMove(moNewPos, moNewAngle, mo.pitch, mo.roll, teleMove) && plat.MoveGroup(teleMove));
+				bool movedThisOne = plat.PlatMove(moNewPos, moNewAngle, mo.pitch, mo.roll, teleMove);
+				moved = (movedThisOne && plat.MoveGroup(teleMove));
 				if (plat.bActive)
 				{
 					//Tried to move an active platform.
@@ -1542,6 +1551,7 @@ extend class FCW_Platform
 					{
 						mo.bNoDropoff = moOldNoDropoff;
 						mo.A_ChangeLinkFlags(YES_BMAP);
+						PassengerPostMove(mo, movedThisOne);
 					}
 					ForgetPassenger(i--); //Forget this active platform (we won't move it back in case something gets blocked)
 					continue;
@@ -1660,6 +1670,7 @@ extend class FCW_Platform
 
 				//This passenger will be 'solid' for the others
 				mo.A_ChangeLinkFlags(YES_BMAP);
+				PassengerPostMove(mo, false);
 				ForgetPassenger(i--);
 
 				if (teleMove)
@@ -1721,6 +1732,7 @@ extend class FCW_Platform
 						}
 
 						otherMo.A_ChangeLinkFlags(YES_BMAP);
+						PassengerPostMove(otherMo, false);
 						preMovePos.Delete(iOther*3, 3);
 						ForgetPassenger(iOther--);
 						i--;
@@ -1735,7 +1747,10 @@ extend class FCW_Platform
 					if (blocked)
 					{
 						for (i = 0; i < passengers.Size(); ++i)
+						{
 							passengers[i].A_ChangeLinkFlags(YES_BMAP); //Handle those that didn't get the chance to move
+							PassengerPostMove(passengers[i], false);
+						}
 
 						if (portTwin)
 						for (i = 0; i < portTwin.passengers.Size(); ++i)
@@ -1776,7 +1791,7 @@ extend class FCW_Platform
 			mo.UpdateWaterLevel();
 			mo.vel.z = oldVelZ;
 
-			PassengerPostMove(mo);
+			PassengerPostMove(mo, true);
 		}
 
 		if (portTwin)
@@ -2111,7 +2126,8 @@ extend class FCW_Platform
 			if (moNewZ > moOldZ && moNewZ - moOldZ <= mo.maxStepHeight && IsCarriable(mo))
 			{
 				PassengerPreMove(mo);
-				if (FitsAtPosition(mo, (mo.pos.xy, moNewZ), true))
+				bool fits = FitsAtPosition(mo, (mo.pos.xy, moNewZ), true);
+				if (fits)
 				{
 					mo.SetZ(moNewZ);
 
@@ -2120,14 +2136,15 @@ extend class FCW_Platform
 					if (!moved)
 					{
 						mo.SetZ(moOldZ);
+						fits = false;
 						blockingMobj = mo; //Needed for later; TryMove() might have nulled it
 					}
 					else
 					{
 						mo.CheckPortalTransition(); //Handle sector portals properly
-						PassengerPostMove(mo);
 					}
 				}
+				PassengerPostMove(mo, fits);
 			}
 		}
 		else if (!moved) //Blocked by geometry or another platform?
@@ -2240,15 +2257,19 @@ extend class FCW_Platform
 			{
 				//Try to have it on top of us and deliberately ignore if it gets stuck in another actor
 				PassengerPreMove(mo);
-				if (FitsAtPosition(mo, (mo.pos.xy, top), true))
+				bool fits = FitsAtPosition(mo, (mo.pos.xy, top), true);
+				if (fits)
 				{
 					mo.SetZ(top);
 					mo.CheckPortalTransition(); //Handle sector portals properly
-					PassengerPostMove(mo);
 					stuckActors.Delete(i--);
-					continue;
 				}
-				ForgetPassenger(index); //Stuck actors can't be passengers
+				PassengerPostMove(mo, fits);
+
+				if (fits)
+					continue;
+				else
+					ForgetPassenger(index); //Stuck actors can't be passengers
 			}
 			vector3 pushForce = level.Vec3Diff(pos, mo.pos + (0, 0, mo.height * 0.5)).Unit();
 			PushObstacle(mo, pushForce);
