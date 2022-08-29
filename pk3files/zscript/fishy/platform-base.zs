@@ -1086,6 +1086,16 @@ extend class FCW_Platform
 	{
 		// This is called every time before a (potential) passenger (called 'mo')
 		// is moved.
+		//
+		//
+		// Note: This function along with *PostMove() aren't called for a
+		// passenger platform's groupmates for the same reason
+		// those groupmates aren't temporarily excluded from the blockmap
+		// when they're moved via MoveGroup().
+		// In other words, it's deliberate.
+		//
+		// So while that one platform may be considered a passenger,
+		// its groupmates may be considered outside entities.
 	}
 
 	//============================
@@ -1265,7 +1275,7 @@ extend class FCW_Platform
 			let startPos = pos;
 			SetZ(moTop);
 			CheckPortalTransition(); //Handle sector portals properly
-			MovePassengers(startPos, pos, angle, 0, 0, 0, false); //Try to move our old passengers too
+			MovePassengers(startPos, pos, 0, 0, 0, 0, false); //Try to move our old passengers too
 			top = pos.z + height;
 			stuckActors.Delete(stuckActors.Find(highestMo));
 			result = true;
@@ -1274,12 +1284,15 @@ extend class FCW_Platform
 		for (int i = 0; i < tryZFix.Size(); ++i)
 		{
 			let mo = tryZFix[i];
+			let startPos = mo.pos;
 			PassengerPreMove(mo);
 			bool fits = FitsAtPosition(mo, (mo.pos.xy, top), true);
 			if (fits)
 			{
 				mo.SetZ(top);
 				mo.CheckPortalTransition(); //Handle sector portals properly
+				if (mo is "FCW_Platform")
+					FCW_Platform(mo).MovePassengers(startPos, mo.pos, 0, 0, 0, 0, false); //Try to move its passengers too
 				if (passengers.Find(mo) >= passengers.Size())
 					newPass.Push(mo);
 			}
@@ -2159,6 +2172,7 @@ extend class FCW_Platform
 			//if its 'maxStepHeight' allows it.
 			if (moNewZ > moOldZ && moNewZ - moOldZ <= mo.maxStepHeight && IsCarriable(mo))
 			{
+				let startPos = mo.pos;
 				PassengerPreMove(mo);
 				bool fits = FitsAtPosition(mo, (mo.pos.xy, moNewZ), true);
 				if (fits)
@@ -2176,6 +2190,8 @@ extend class FCW_Platform
 					else
 					{
 						mo.CheckPortalTransition(); //Handle sector portals properly
+						if (mo is "FCW_Platform")
+							FCW_Platform(mo).MovePassengers(startPos, mo.pos, 0, 0, 0, 0, false); //Try to move its passengers too
 					}
 				}
 				PassengerPostMove(mo, fits);
@@ -2210,6 +2226,11 @@ extend class FCW_Platform
 					oldPos.z = moTop;
 					if (!bPortCopy)
 						CheckPortalTransition(); //Handle sector portals properly
+
+					//Self-note: No, we don't call MovePassengers() here.
+					//With a straight-forward downward movement it's not needed.
+					//It's not an issue if our passengers are floaters
+					//or there's no gravity to move them downward.
 
 					//Try to adjust our twin
 					if (portTwin && (!portTwin.bNoBlockmap || !portTwin.bPortCopy))
@@ -2294,12 +2315,15 @@ extend class FCW_Platform
 			if (index < passengers.Size())
 			{
 				//Try to have it on top of us and deliberately ignore if it gets stuck in another actor
+				let startPos = mo.pos;
 				PassengerPreMove(mo);
 				bool fits = FitsAtPosition(mo, (mo.pos.xy, top), true);
 				if (fits)
 				{
 					mo.SetZ(top);
 					mo.CheckPortalTransition(); //Handle sector portals properly
+					if (mo is "FCW_Platform")
+						FCW_Platform(mo).MovePassengers(startPos, mo.pos, 0, 0, 0, 0, false); //Try to move its passengers too
 					stuckActors.Delete(i--);
 				}
 				PassengerPostMove(mo, fits);
