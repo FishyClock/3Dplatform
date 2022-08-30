@@ -1542,8 +1542,8 @@ extend class FCW_Platform
 			vector3 offset = level.Vec3Diff(startPos, moOldPos);
 			if (delta) //Will 'offset' get rotated?
 			{
-				double oldOffX = abs(offset.x);
-				double oldOffY = abs(offset.y);
+				double oldOffX = offset.x;
+				double oldOffY = offset.y;
 				double maxDist = radius + mo.radius;
 
 				offset.xy = (offset.x*c - offset.y*s, offset.x*s + offset.y*c); //Rotate it
@@ -1553,7 +1553,7 @@ extend class FCW_Platform
 				//and potentially fall off the platform.
 				//This is a workaround to the fact that GZDoom (at this moment in time)
 				//does not rotate an actor's bounding box when said actor's angle/yaw changes.
-				if (oldOffX < maxDist && oldOffY < maxDist)
+				if (abs(oldOffX) < maxDist && abs(oldOffY) < maxDist)
 				{
 					maxDist -= 1.0;
 					offset.x = clamp(offset.x, -maxDist, maxDist);
