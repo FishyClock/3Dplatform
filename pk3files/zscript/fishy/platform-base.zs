@@ -92,12 +92,6 @@ class FCW_Platform : Actor abstract
 		//$Arg3 Crush Damage
 		//$Arg3Tooltip If an obstacle is pushed against a wall,\nthe damage is applied once per 4 tics.
 
-		/*New property:*/ FCW_Platform.AirFriction 0.99; //For platforms that have +PUSHABLE and +NOGRAVITY.
-														 //(The pre-existing 'friction' property + sector friction
-														 //are for gravity bound pushables instead.)
-
-		//New flag: +FCW_Platform.CARRIABLE //Let's this platform be carried (like a passenger) by other platforms
-
 		+INTERPOLATEANGLES;
 		+ACTLIKEBRIDGE;
 		+NOGRAVITY;
@@ -110,6 +104,41 @@ class FCW_Platform : Actor abstract
 		+NOBLOOD;
 		+DONTTHRUST;
 		+NOTAUTOAIMED;
+
+		FCW_Platform.AirFriction 0.99; 
+		FCW_Platform.TPPass 1;
+		FCW_Platform.TPPort 1;
+	}
+
+	//===New flags===//
+	int platFlags;
+	flagdef Carriable: platFlags, 0; //Let's this platform be carried (like a passenger) by other platforms
+
+	//===New properties===//
+	double platAirFric; //For platforms that have +PUSHABLE and +NOGRAVITY. (The pre-existing 'friction' property + sector friction are for gravity bound pushables instead.)
+	property AirFriction: platAirFric;
+
+	//===New properties that are also user variables (can be set from UDB)===//
+	int user_ticsPer_passengerSearch; //The amount of tics between searching for passengers (via BlockThingsIterator) - Set to 0 (or a negative value) to never look for passengers.
+	property TPPass: user_ticsPer_passengerSearch;
+
+	int user_ticsPer_portalSearch; //The amount of tics between searching for non-static line portals (via BlockLinesIterator) - Set to 0 (or a negative value) to never look for portals.
+	property TPPort: user_ticsPer_portalSearch;
+
+	private void HandleUserVars ()
+	{
+		if (bPortCopy)
+		{
+			user_ticsPer_passengerSearch = portTwin.user_ticsPer_passengerSearch;
+			return;
+		}
+
+		//If these are set to 0 in UDB then use the property version.
+		//To disable searches in UDB, set it to a negative value (eg -1).
+		if (!user_ticsPer_passengerSearch)
+			user_ticsPer_passengerSearch = default.user_ticsPer_passengerSearch;
+		if (!user_ticsPer_portalSearch)
+			user_ticsPer_portalSearch = default.user_ticsPer_portalSearch;
 	}
 }
 
@@ -314,11 +343,6 @@ extend class FCW_Platform
 	vector3 pCurr, pPrev, pNext, pNextNext; //Positions in the world.
 	vector3 pCurrAngs, pPrevAngs, pNextAngs, pNextNextAngs; //X = angle, Y = pitch, Z = roll.
 
-	double platAirFric;
-	property AirFriction: platAirFric;
-	int platFlags; //Not to be confused with the above "option flags"
-	flagdef Carriable: platFlags, 0;
-
 	//============================
 	// BeginPlay (override)
 	//============================
@@ -382,6 +406,7 @@ extend class FCW_Platform
 	override void PostBeginPlay ()
 	{
 		Super.PostBeginPlay();
+		HandleUserVars();
 		if (bPortCopy)
 			return;
 
@@ -1140,7 +1165,7 @@ extend class FCW_Platform
 	//============================
 	// GetNewPassengers
 	//============================
-	private bool GetNewPassengers (bool ignoreObs)
+	private bool GetNewPassengers (bool ignoreObs, bool ignoreTicRate = false)
 	{
 		// In addition to fetching passengers, this is where corpses get crushed, too. Items won't get destroyed.
 		// Returns false if one or more actors are completely stuck inside platform unless 'ignoreObs' is true.
@@ -1148,6 +1173,13 @@ extend class FCW_Platform
 		if (lastGetNPTime == level.mapTime)
 			return lastGetNPResult; //Already called in this tic
 		lastGetNPTime = level.mapTime;
+
+		if (user_ticsPer_passengerSearch <= 0 || //Passenger, stuck actor, and corpse blockmap searching is disabled?
+			(!ignoreObs && !ignoreTicRate && (level.mapTime % user_ticsPer_passengerSearch) ) ) //'ignoreObs' is used in "tele moves"; those shouldn't skip searching.
+		{
+			lastGetNPResult = true;
+			return true;
+		}
 
 		double top = pos.z + height;
 		Array<Actor> miscActors; //The actors on top of or stuck inside confirmed passengers (We'll move those, too)
@@ -1457,6 +1489,30 @@ extend class FCW_Platform
 		}
 		lastGetNPResult = result;
 		return result;
+	}
+
+	//============================
+	// MustGetNewPassengers
+	//============================
+	private void MustGetNewPassengers ()
+	{
+		//For cases where the search tic rate must be ignored.
+		//(Handle portal twin and groupmates, too.)
+		GetNewPassengers(false, true);
+		if (portTwin)
+			portTwin.GetNewPassengers(false, true);
+
+		if (group)
+		for (int iPlat = 0; iPlat < group.members.Size(); ++iPlat)
+		{
+			let plat = group.GetMember(iPlat);
+			if (plat && plat != self)
+			{
+				plat.GetNewPassengers(false, true);
+				if (plat.portTwin)
+					plat.portTwin.GetNewPassengers(false, true);
+			}
+		}
 	}
 
 	//============================
@@ -1933,6 +1989,9 @@ extend class FCW_Platform
 			return lastUPort; //Already called in this tic
 		lastGetUPTime = level.mapTime;
 
+		bool noIterator = (user_ticsPer_portalSearch <= 0 || //Line portal blockmap searching is disabled?
+			(level.mapTime % user_ticsPer_portalSearch) );
+
 		//Our bounding box
 		double size = radius + EXTRA_SIZE; //Pretend we're a bit bigger
 		double minX1 = pos.x - size;
@@ -1940,8 +1999,8 @@ extend class FCW_Platform
 		double minY1 = pos.y - size;
 		double maxY1 = pos.y + size;
 
-		BlockLinesIterator it = lastUPort ? null : BlockLinesIterator.Create(self, size);
-		while (lastUPort || it.Next())
+		BlockLinesIterator it = (lastUPort || noIterator) ? null : BlockLinesIterator.Create(self, size);
+		while (lastUPort || (it && it.Next()))
 		{
 			Line port = lastUPort ? lastUPort : it.curLine;
 			Line dest;
@@ -1950,7 +2009,8 @@ extend class FCW_Platform
 				if (lastUPort)
 				{
 					lastUPort = null;
-					it = BlockLinesIterator.Create(self, size);
+					if (!noIterator)
+						it = BlockLinesIterator.Create(self, size);
 				}
 				continue;
 			}
@@ -1970,7 +2030,8 @@ extend class FCW_Platform
 					if (lastUPort)
 					{
 						lastUPort = null;
-						it = BlockLinesIterator.Create(self, size);
+						if (!noIterator)
+							it = BlockLinesIterator.Create(self, size);
 					}
 					continue; //We don't want linked/static line portals
 				}
@@ -1989,7 +2050,8 @@ extend class FCW_Platform
 				if (lastUPort)
 				{
 					lastUPort = null;
-					it = BlockLinesIterator.Create(self, size);
+					if (!noIterator)
+						it = BlockLinesIterator.Create(self, size);
 				}
 				continue; //BBoxes not intersecting
 			}
@@ -1999,7 +2061,8 @@ extend class FCW_Platform
 				if (lastUPort)
 				{
 					lastUPort = null;
-					it = BlockLinesIterator.Create(self, size);
+					if (!noIterator)
+						it = BlockLinesIterator.Create(self, size);
 				}
 				continue; //Center point not in front of line
 			}
@@ -2012,7 +2075,8 @@ extend class FCW_Platform
 				if (lastUPort)
 				{
 					lastUPort = null;
-					it = BlockLinesIterator.Create(self, size);
+					if (!noIterator)
+						it = BlockLinesIterator.Create(self, size);
 				}
 				continue; //All corners on one side; there's no intersection with line
 			}
@@ -2951,6 +3015,7 @@ extend class FCW_Platform
 				bActive = true;
 				if (group)
 					group.origin = self;
+				MustGetNewPassengers(); //Ignore search tic rate; do a search now
 				return;
 			}
 
@@ -2980,6 +3045,10 @@ extend class FCW_Platform
 					double newRoll = (args[ARG_OPTIONS] & OPTFLAG_ROLL) ? currNode.roll : roll;
 					PlatMove(currNode.pos, newAngle, newPitch, newRoll, 1);
 					MoveGroup(1);
+				}
+				else
+				{
+					MustGetNewPassengers(); //Ignore search tic rate; do a search now
 				}
 				SetInterpolationCoordinates();
 				SetTimeFraction();
@@ -3206,7 +3275,8 @@ extend class FCW_Platform
 		{
 			if (holdTime > 0)
 			{
-				--holdTime;
+				if (!--holdTime) //Finished waiting?
+					MustGetNewPassengers(); //Ignore search tic rate; do a search now
 				break;
 			}
 
@@ -3617,6 +3687,7 @@ extend class FCW_Platform
 			Normalize180(pitch),
 			Normalize180(roll));
 		vel = (0, 0, 0);
+		MustGetNewPassengers(); //Ignore search tic rate; do a search now
 	}
 
 	//

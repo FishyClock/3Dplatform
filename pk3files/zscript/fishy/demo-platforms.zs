@@ -1,5 +1,12 @@
 class DemoGenericPlat : FCW_Platform abstract
 {
+	Default
+	{
+		//For testing 
+		FCW_Platform.TPPass 8;
+		FCW_Platform.TPPort 0; //(There are no non-static line portals on MAP01)
+	}
+
 	States
 	{
 	Spawn:
