@@ -105,9 +105,9 @@ class FCW_Platform : Actor abstract
 		+DONTTHRUST;
 		+NOTAUTOAIMED;
 
-		FCW_Platform.AirFriction 0.99; 
-		FCW_Platform.TPPass 1;
-		FCW_Platform.TPPort 1;
+		FCW_Platform.AirFriction 0.99;
+		FCW_Platform.PassengerLookTics 1;
+		FCW_Platform.PortalLookTics 1;
 	}
 
 	//===New flags===//
@@ -118,27 +118,27 @@ class FCW_Platform : Actor abstract
 	double platAirFric; //For platforms that have +PUSHABLE and +NOGRAVITY. (The pre-existing 'friction' property + sector friction are for gravity bound pushables instead.)
 	property AirFriction: platAirFric;
 
-	//===New properties that are also user variables (can be set from UDB)===//
-	int user_ticsPer_passengerSearch; //The amount of tics between searching for passengers (via BlockThingsIterator) - Set to 0 (or a negative value) to never look for passengers.
-	property TPPass: user_ticsPer_passengerSearch;
+	//===New properties that are also user variables (can be set from UDB in the "Custom" tab when editing Thing)===//
+	int user_passengerLookTics; //The amount of tics between searching for passengers (via BlockThingsIterator) - Set to 0 (or a negative value) to never look for passengers.
+	property PassengerLookTics: user_passengerLookTics;
 
-	int user_ticsPer_portalSearch; //The amount of tics between searching for non-static line portals (via BlockLinesIterator) - Set to 0 (or a negative value) to never look for portals.
-	property TPPort: user_ticsPer_portalSearch;
+	int user_portalLookTics; //The amount of tics between searching for non-static line portals (via BlockLinesIterator) - Set to 0 (or a negative value) to never look for portals.
+	property PortalLookTics: user_portalLookTics;
 
 	private void HandleUserVars ()
 	{
 		if (bPortCopy)
 		{
-			user_ticsPer_passengerSearch = portTwin.user_ticsPer_passengerSearch;
+			user_passengerLookTics = portTwin.user_passengerLookTics;
 			return;
 		}
 
-		//If these are set to 0 in UDB then use the property version.
+		//If these are set to 0 in UDB then use the property version. (Else use the user var version.)
 		//To disable searches in UDB, set it to a negative value (eg -1).
-		if (!user_ticsPer_passengerSearch)
-			user_ticsPer_passengerSearch = default.user_ticsPer_passengerSearch;
-		if (!user_ticsPer_portalSearch)
-			user_ticsPer_portalSearch = default.user_ticsPer_portalSearch;
+		if (!user_passengerLookTics)
+			user_passengerLookTics = default.user_passengerLookTics;
+		if (!user_portalLookTics)
+			user_portalLookTics = default.user_portalLookTics;
 	}
 }
 
@@ -1174,8 +1174,8 @@ extend class FCW_Platform
 			return lastGetNPResult; //Already called in this tic
 		lastGetNPTime = level.mapTime;
 
-		if (user_ticsPer_passengerSearch <= 0 || //Passenger, stuck actor, and corpse blockmap searching is disabled?
-			(!ignoreObs && !ignoreTicRate && (level.mapTime % user_ticsPer_passengerSearch) ) ) //'ignoreObs' is used in "tele moves"; those shouldn't skip searching.
+		if (user_passengerLookTics <= 0 || //Passenger, stuck actor, and corpse blockmap searching is disabled?
+			(!ignoreObs && !ignoreTicRate && (level.mapTime % user_passengerLookTics) ) ) //'ignoreObs' is used in "tele moves"; those shouldn't skip searching.
 		{
 			lastGetNPResult = true;
 			return true;
@@ -1989,8 +1989,8 @@ extend class FCW_Platform
 			return lastUPort; //Already called in this tic
 		lastGetUPTime = level.mapTime;
 
-		bool noIterator = (user_ticsPer_portalSearch <= 0 || //Line portal blockmap searching is disabled?
-			(level.mapTime % user_ticsPer_portalSearch) );
+		bool noIterator = (user_portalLookTics <= 0 || //Line portal blockmap searching is disabled?
+			(level.mapTime % user_portalLookTics) );
 
 		//Our bounding box
 		double size = radius + EXTRA_SIZE; //Pretend we're a bit bigger
