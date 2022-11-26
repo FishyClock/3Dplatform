@@ -327,10 +327,11 @@ extend class FCW_Platform
 	double timeFrac;
 	int holdTime;
 	bool bActive;
-	transient bool bPlatInMove; //No collision between a platform and its passengers during said platform's move.
+	transient bool bInMove; //No collision between a platform and its passengers during said platform's move.
+	transient bool bMoved; //Used for PassengerPostMove() when everyone has finished (or tried) moving in this tic.
 	InterpolationPoint currNode, firstNode;
 	InterpolationPoint prevNode, firstPrevNode;
-	bool goToNode;
+	bool bGoToNode;
 	Array<Actor> passengers;
 	Array<Actor> stuckActors;
 	Line lastUPort;
@@ -341,7 +342,6 @@ extend class FCW_Platform
 	transient int lastGetNPTime; //Make sure there's only one GetNewPassengers() blockmap search per tic
 	transient bool lastGetNPResult;
 	transient int lastGetUPTime; //Same deal for GetUnlinkedPortal()
-	transient bool wasMoved;
 
 	//Unlike PathFollower classes, our interpolations are done with
 	//vector3 coordinates instead of checking InterpolationPoint positions.
@@ -390,10 +390,11 @@ extend class FCW_Platform
 		timeFrac = 0;
 		holdTime = 0;
 		bActive = false;
-		bPlatInMove = false;
+		bInMove = false;
+		bMoved = false;
 		currNode = firstNode = null;
 		prevNode = firstPrevNode = null;
-		goToNode = false;
+		bGoToNode = false;
 		passengers.Clear();
 		stuckActors.Clear();
 		lastUPort = null;
@@ -404,7 +405,6 @@ extend class FCW_Platform
 		lastGetNPTime = -1;
 		lastGetNPResult = false;
 		lastGetUPTime = -1;
-		wasMoved = false;
 
 		pCurr = pPrev = pNext = pNextNext = (0, 0, 0);
 		pCurrAngs = pPrevAngs = pNextAngs = pNextNextAngs = (0, 0, 0);
@@ -695,7 +695,7 @@ extend class FCW_Platform
 		if (passive && stuckActors.Find(other) < stuckActors.Size())
 			return false; //Let stuck things move out/move through us - also makes pushing them away easier
 
-		if (bPlatInMove || (portTwin && portTwin.bPlatInMove))
+		if (bInMove || (portTwin && portTwin.bInMove))
 		{
 			//If me or my twin is moving, don't
 			//collide with either one's passengers.
@@ -936,7 +936,7 @@ extend class FCW_Platform
 		//Take into account angle changes when
 		//passing through non-static line portals.
 		//All checked angles have to be adjusted.
-		if (prevNode && !goToNode)
+		if (prevNode && !bGoToNode)
 		{
 			//'pPrev' has to be adjusted if 'currNode' position is different from platform's.
 			//Which can happen because of non-static line portals or because of velocity movement.
@@ -949,7 +949,7 @@ extend class FCW_Platform
 		}
 
 		pCurr = pos;
-		if (!prevNode || goToNode)
+		if (!prevNode || bGoToNode)
 		{
 			pCurrAngs = (
 			Normalize180(angle),
@@ -964,9 +964,9 @@ extend class FCW_Platform
 			DeltaAngle(pPrevAngs.z, roll));
 		}
 
-		if (currNode && (currNode.next || goToNode))
+		if (currNode && (currNode.next || bGoToNode))
 		{
-			InterpolationPoint nextNode = goToNode ? currNode : currNode.next;
+			InterpolationPoint nextNode = bGoToNode ? currNode : currNode.next;
 
 			pNext = pos + Vec3To(nextNode); //Make it portal aware in a way so TryMove() can handle it
 			pNextAngs = pCurrAngs + (
@@ -989,13 +989,13 @@ extend class FCW_Platform
 			}
 		}
 
-		if (!currNode || (!currNode.next && !goToNode))
+		if (!currNode || (!currNode.next && !bGoToNode))
 		{
 			pNextNext = pNext = pCurr;
 			pNextNextAngs = pNextAngs = pCurrAngs;
 		}
 
-		if (!prevNode || goToNode)
+		if (!prevNode || bGoToNode)
 		{
 			pPrev = pCurr;
 			pPrevAngs = pCurrAngs;
@@ -1077,7 +1077,7 @@ extend class FCW_Platform
 				return false;
 
 			//A platform in move is the platform that's likely carrying us, ignore it
-			if (plat.bPlatInMove || (plat.portTwin && plat.portTwin.bPlatInMove) )
+			if (plat.bInMove || (plat.portTwin && plat.portTwin.bInMove) )
 				return false;
 		}
 		return true;
@@ -1121,16 +1121,6 @@ extend class FCW_Platform
 	{
 		// This is called every time before a (potential) passenger (called 'mo')
 		// is moved.
-		//
-		//
-		// Note: This function along with *PostMove() aren't called for a
-		// passenger platform's groupmates for the same reason
-		// those groupmates aren't temporarily excluded from the blockmap
-		// when they're moved via MoveGroup().
-		// In other words, it's deliberate.
-		//
-		// So while that one platform may be considered a passenger,
-		// its groupmates may be considered outside entities.
 	}
 
 	//============================
@@ -1230,7 +1220,7 @@ extend class FCW_Platform
 			double blockDist = radius + mo.radius;
 			if (abs(it.position.x - mo.pos.x) < blockDist && abs(it.position.y - mo.pos.y) < blockDist)
 			{
-				if (plat && (plat.bPlatInMove || (plat.portTwin && plat.portTwin.bPlatInMove) ) ) //This is probably the platform that's carrying/moving us
+				if (plat && (plat.bInMove || (plat.portTwin && plat.portTwin.bInMove) ) ) //This is probably the platform that's carrying/moving us
 				{
 					if (!ignoreObs && !bOnMobj &&
 						(abs(pos.z - (mo.pos.z + mo.height)) <= TOP_EPSILON || //Are we standing on 'mo'?
@@ -1813,16 +1803,6 @@ extend class FCW_Platform
 
 					if (blocked)
 					{
-						for (i = 0; i < passengers.Size(); ++i)
-						{
-							passengers[i].A_ChangeLinkFlags(YES_BMAP); //Handle those that didn't get the chance to move
-							PassengerPostMove(passengers[i], false);
-						}
-
-						if (portTwin)
-						for (i = 0; i < portTwin.passengers.Size(); ++i)
-							portTwin.passengers[i].A_ChangeLinkFlags(YES_BMAP);
-
 						PushObstacle(mo, pushForce);
 						if (!(mo is "FCW_Platform") && mo != movedBack[0]) //We (potentially) already pushed/crushed the first one's blocker
 						{
@@ -2303,7 +2283,7 @@ extend class FCW_Platform
 				continue; //Already in the array
 
 			let plat = FCW_Platform(mo);
-			if (plat && (plat.bPlatInMove || (plat.portTwin && plat.portTwin.bPlatInMove) ) )
+			if (plat && (plat.bInMove || (plat.portTwin && plat.portTwin.bInMove) ) )
 				continue; //This is likely the platform that carries us; ignore it
 
 			double blockDist = radius + mo.radius;
@@ -2487,8 +2467,8 @@ extend class FCW_Platform
 			if (i > -1 && (!plat || plat == self)) //Already handled self
 				continue;
 
-			plat.wasMoved = false;
-			plat.bPlatInMove = true;
+			plat.bMoved = false;
+			plat.bInMove = true;
 
 			// The goal is to move all passengers as if they were one entity.
 			// The only things that should block any of them are
@@ -2540,7 +2520,7 @@ extend class FCW_Platform
 			if (i > -1 && (!plat || plat == self)) //Already handled self
 				continue;
 
-			plat.bPlatInMove = false;
+			plat.bInMove = false;
 
 			//Handle anyone left in the 'passengers' array
 			for (int iPass = 0; iPass < plat.passengers.Size(); ++iPass)
@@ -2549,7 +2529,7 @@ extend class FCW_Platform
 				if (mo && mo.bNoBlockmap)
 					mo.A_ChangeLinkFlags(YES_BMAP);
 				if (mo)
-					plat.PassengerPostMove(mo, plat.wasMoved);
+					plat.PassengerPostMove(mo, plat.bMoved);
 			}
 
 			if (plat.portTwin)
@@ -2559,7 +2539,7 @@ extend class FCW_Platform
 				if (mo && mo.bNoBlockmap)
 					mo.A_ChangeLinkFlags(YES_BMAP);
 				if (mo)
-					plat.portTwin.PassengerPostMove(mo, plat.wasMoved);
+					plat.portTwin.PassengerPostMove(mo, plat.bMoved);
 			}
 		}
 		return result;
@@ -2620,7 +2600,7 @@ extend class FCW_Platform
 			GetStuckActors();
 			if (portTwin)
 				portTwin.GetStuckActors();
-			wasMoved = true;
+			bMoved = true;
 			return true;
 		}
 
@@ -2651,7 +2631,7 @@ extend class FCW_Platform
 				ExchangePassengersWithTwin();
 			}
 
-			wasMoved = result;
+			bMoved = result;
 			return result;
 		}
 
@@ -2791,7 +2771,7 @@ extend class FCW_Platform
 				port = GetUnlinkedPortal();
 			}
 		}
-		wasMoved = true;
+		bMoved = true;
 		return true;
 	}
 
@@ -3107,8 +3087,8 @@ extend class FCW_Platform
 				portDelta = 0;
 				acsFlags = 0;
 
-				goToNode = (args[ARG_OPTIONS] & OPTFLAG_GOTONODE);
-				if (!goToNode) //Don't call specials if going to 'currNode'
+				bGoToNode = (args[ARG_OPTIONS] & OPTFLAG_GOTONODE);
+				if (!bGoToNode) //Don't call specials if going to 'currNode'
 				{
 					CallNodeSpecials();
 					if (bDestroyed || !currNode || currNode.bDestroyed)
@@ -3118,7 +3098,7 @@ extend class FCW_Platform
 				if (group)
 					group.origin = self;
 
-				if (!goToNode)
+				if (!bGoToNode)
 				{
 					double newAngle = (args[ARG_OPTIONS] & OPTFLAG_ANGLE) ? currNode.angle : angle;
 					double newPitch = (args[ARG_OPTIONS] & OPTFLAG_PITCH) ? currNode.pitch : pitch;
@@ -3377,10 +3357,10 @@ extend class FCW_Platform
 			time += timeFrac;
 			if (time > 1.0) //Reached destination?
 			{
-				bool goneToNode = goToNode;
-				if (goToNode)
+				bool goneToNode = bGoToNode;
+				if (bGoToNode)
 				{
-					goToNode = false; //Reached 'currNode'
+					bGoToNode = false; //Reached 'currNode'
 				}
 				else
 				{
