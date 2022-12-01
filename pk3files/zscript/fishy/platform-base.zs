@@ -699,11 +699,21 @@ extend class FCW_Platform
 		{
 			//If me or my twin is moving, don't
 			//collide with either one's passengers.
-			if (passengers.Find(other) < passengers.Size())
-				return false;
+			//And don't collide with any groupmate's passengers either.
+			FCW_PlatformGroup grp = bPortCopy ? portTwin.group : self.group;
+			for (int i = -1; i == -1 || (grp && i < grp.members.Size()); ++i)
+			{
+				plat = (i == -1) ? self : grp.members[i]; //Not calling GetMember() here because that deletes null entries and nothing is supposed to change here
 
-			if (portTwin && portTwin.passengers.Find(other) < portTwin.passengers.Size())
-				return false;
+				if (i > -1 && (!plat || plat == self)) //Already handled self
+					continue;
+
+				if (plat.passengers.Find(other) < plat.passengers.Size())
+					return false;
+
+				if (plat.portTwin && plat.portTwin.passengers.Find(other) < plat.portTwin.passengers.Size())
+					return false;
+			}
 		}
 		return true;
 	}
@@ -1629,6 +1639,10 @@ extend class FCW_Platform
 					ForgetPassenger(i--);
 					continue;
 				}
+
+				if (!mo.bNoBlockmap)
+					mo.A_ChangeLinkFlags(NO_BMAP); //Undo SetActorFlag() shenanigans
+
 				mo.bNoDropoff = moOldNoDropoff;
 				mo.angle = moOldAngle; //The angle change is supposed to happen later
 			}
@@ -1680,6 +1694,9 @@ extend class FCW_Platform
 					//when they activate lines.
 					if (!mo || mo.bDestroyed)
 						break;
+
+					if (!mo.bNoBlockmap)
+						mo.A_ChangeLinkFlags(NO_BMAP); //Undo SetActorFlag() shenanigans
 
 					if (tryPos != mo.pos.xy)
 					{
@@ -2477,11 +2494,21 @@ extend class FCW_Platform
 			//
 			// To accomplish this each of them will temporarily
 			// be removed from the blockmap.
+			//
+			// It's a gross hack for sure, but most of the time these
+			// are generic actors that have no way to be aware of the platform
+			// or each other for the purpose of non-collision.
+			// Another idea might be to use the ThruBits property but
+			// that's limited to 32 groups max while this way guarantees
+			// they'll be non-solid to each other during this move only.
+			//
+			// In a custom game/mod it would be cleaner to do the non-collision
+			// in a CanCollideWith() override for the passenger.
 
 			for (int iPass = 0; iPass < plat.passengers.Size(); ++iPass)
 			{
 				let mo = plat.passengers[iPass];
-				if (mo && !mo.bNoBlockmap)
+				if (mo && !mo.bNoBlockmap) //If it has NOBLOCKMAP now, assume it's an inventory item that got picked up
 				{
 					plat.PassengerPreMove(mo);
 					mo.A_ChangeLinkFlags(NO_BMAP);
