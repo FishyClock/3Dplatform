@@ -2500,10 +2500,13 @@ extend class FCW_Platform
 			// or each other for the purpose of non-collision.
 			// Another idea might be to use the ThruBits property but
 			// that's limited to 32 groups max while this way guarantees
-			// they'll be non-solid to each other during this move only.
+			// they'll be non-solid to each other during this move only
+			// while maintaining their usual collision rules with non-passengers.
 			//
 			// In a custom game/mod it would be cleaner to do the non-collision
 			// in a CanCollideWith() override for the passenger.
+			// At this moment there're no way to inject code or override
+			// CanCollideWith() with pre-existing or unknown actor classes.
 
 			for (int iPass = 0; iPass < plat.passengers.Size(); ++iPass)
 			{
