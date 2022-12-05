@@ -700,7 +700,6 @@ extend class FCW_Platform
 		{
 			//If me or my twin is moving, don't
 			//collide with either one's passengers.
-			//And don't collide with any groupmate's passengers either.
 			FCW_PlatformGroup grp = bPortCopy ? portTwin.group : self.group;
 			for (int i = -1; i == -1 || (grp && i < grp.members.Size()); ++i)
 			{
@@ -708,6 +707,9 @@ extend class FCW_Platform
 
 				if (i > -1 && (!plat || plat == self)) //Already handled self
 					continue;
+
+				if (plat != self && (!grp.origin || !(grp.origin.args[ARG_OPTIONS] & OPTFLAG_DIFFPASSCOLL))) //If desired, don't collide with any groupmate's passengers either
+					break;
 
 				if (plat.passengers.Find(other) < plat.passengers.Size())
 					return false;
@@ -1529,9 +1531,9 @@ extend class FCW_Platform
 	}
 
 	//============================
-	// UnlinkAllPassengers
+	// UnlinkPassengers
 	//============================
-	private void UnlinkAllPassengers ()
+	private void UnlinkPassengers ()
 	{
 		// The goal is to move all passengers as if they were one entity.
 		// The only things that should block any of them are
@@ -1587,9 +1589,9 @@ extend class FCW_Platform
 	}
 
 	//============================
-	// LinkAllPassengers
+	// LinkPassengers
 	//============================
-	private void LinkAllPassengers (bool moved)
+	private void LinkPassengers (bool moved)
 	{
 		//Link them back into the blockmap after they have been moved
 		for (int iPass = 0; iPass < passengers.Size(); ++iPass)
@@ -1620,11 +1622,12 @@ extend class FCW_Platform
 	{
 		// Returns false if a blocked passenger would block the platform's movement unless 'teleMove' is true.
 
-		if (!group || !group.origin || !(group.origin.args[ARG_OPTIONS] & OPTFLAG_DIFFPASSCOLL))
-			UnlinkAllPassengers();
-
 		if (!passengers.Size())
 			return true; //No passengers? Nothing to do
+
+		FCW_PlatformGroup grp = bPortCopy ? portTwin.group : self.group;
+		if (!grp || !grp.origin || !(grp.origin.args[ARG_OPTIONS] & OPTFLAG_DIFFPASSCOLL))
+			UnlinkPassengers();
 
 		//Move our passengers (platform rotation is taken into account)
 		double top = endPos.z + height;
@@ -1907,6 +1910,10 @@ extend class FCW_Platform
 							if (mo.blockingMobj)
 								PushObstacle(mo.blockingMobj, pushForce);
 						}
+
+						if (!grp || !grp.origin || !(grp.origin.args[ARG_OPTIONS] & OPTFLAG_DIFFPASSCOLL))
+							LinkPassengers(false);
+
 						return false;
 					}
 				}
@@ -1933,8 +1940,8 @@ extend class FCW_Platform
 			mo.vel.z = oldVelZ;
 		}
 
-		if (!group || !group.origin || !(group.origin.args[ARG_OPTIONS] & OPTFLAG_DIFFPASSCOLL))
-			LinkAllPassengers(true);
+		if (!grp || !grp.origin || !(grp.origin.args[ARG_OPTIONS] & OPTFLAG_DIFFPASSCOLL))
+			LinkPassengers(true);
 
 		return true;
 	}
@@ -2458,6 +2465,8 @@ extend class FCW_Platform
 		// the current position/angles.
 
 		FCW_Platform plat;
+		if (group)
+			group.origin = self;
 
 		if (moveType != MOVE_QUICK)
 		for (int i = -1; i == -1 || (group && i < group.members.Size()); ++i)
@@ -2567,8 +2576,8 @@ extend class FCW_Platform
 			plat.bMoved = false;
 			plat.bInMove = true;
 
-			if (args[ARG_OPTIONS] & OPTFLAG_DIFFPASSCOLL)
-				plat.UnlinkAllPassengers();
+			if (group && group.origin && (group.origin.args[ARG_OPTIONS] & OPTFLAG_DIFFPASSCOLL))
+				plat.UnlinkPassengers();
 		}
 
 		int result = DoMove(newPos, newAngle, newPitch, newRoll, moveType) ? 1 : 0;
@@ -2583,8 +2592,8 @@ extend class FCW_Platform
 
 			plat.bInMove = false;
 
-			if (args[ARG_OPTIONS] & OPTFLAG_DIFFPASSCOLL)
-				plat.LinkAllPassengers(plat.bMoved);
+			if (group && group.origin && (group.origin.args[ARG_OPTIONS] & OPTFLAG_DIFFPASSCOLL))
+				plat.LinkPassengers(plat.bMoved);
 		}
 		return result;
 	}
