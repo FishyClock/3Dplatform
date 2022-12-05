@@ -83,8 +83,8 @@ class FCW_Platform : Actor abstract
 
 		//$Arg1 Options
 		//$Arg1Type 12
-		//$Arg1Enum {1 = "Linear path / (Does nothing for non-origin group members)"; 2 = "Use point angle / Group move: Rotate angle / (ACS commands don't need this)"; 4 = "Use point pitch / Group move: Rotate pitch / (ACS commands don't need this)"; 8 = "Use point roll / Group move: Rotate roll / (ACS commands don't need this)"; 16 = "Face movement direction / (Does nothing for non-origin group members)"; 32 = "Don't clip against geometry and other platforms"; 64 = "Start active"; 128 = "Group move: Mirror group origin's movement"; 256 = "Add velocity to passengers when they jump away"; 512 = "Add velocity to passengers when stopping (and not blocked)"; 1024 = "Interpolation point is destination"; 2048 = "Resume path when activated again"; 4096 = "Always do 'crush damage' when pushing obstacles"; 8192 = "Pitch/roll changes don't affect passengers"; 16384 = "Passengers can push obstacles";}
-		//$Arg1Tooltip 'Group move' affects movement imposed by the group origin.\nThe 'group origin' is the platform that other members move with and orbit around.\nActivating any group member will turn it into the group origin.
+		//$Arg1Enum {1 = "Linear path / (Does nothing for non-origin group members)"; 2 = "Use point angle / Group move: Rotate angle / (ACS commands don't need this)"; 4 = "Use point pitch / Group move: Rotate pitch / (ACS commands don't need this)"; 8 = "Use point roll / Group move: Rotate roll / (ACS commands don't need this)"; 16 = "Face movement direction / (Does nothing for non-origin group members)"; 32 = "Don't clip against geometry and other platforms"; 64 = "Start active"; 128 = "Group move: Mirror group origin's movement"; 256 = "Add velocity to passengers when they jump away"; 512 = "Add velocity to passengers when stopping (and not blocked)"; 1024 = "Interpolation point is destination"; 2048 = "Resume path when activated again"; 4096 = "Always do 'crush damage' when pushing obstacles"; 8192 = "Pitch/roll changes don't affect passengers"; 16384 = "Passengers can push obstacles"; 32768 = "All passengers get temp NOBLOCKMAP'd before moving platform group (Set on group origin)";}
+		//$Arg1Tooltip 'Group move' affects movement imposed by the group origin.\nThe 'group origin' is the platform that other members move with and orbit around.\nActivating any group member will turn it into the group origin.\nFlag 32768 is for cases where you want all passengers from the entire group to not collide with each other and to not collide with other platforms in the group (when moving everyone).
 
 		//$Arg2 Platform(s) To Group With
 		//$Arg2Type 14
@@ -286,6 +286,7 @@ extend class FCW_Platform
 		OPTFLAG_HURTFULPUSH		= 4096,
 		OPTFLAG_NOPITCHROLL		= 8192,
 		OPTFLAG_PASSCANPUSH		= 16384,
+		OPTFLAG_DIFFPASSCOLL	= 32768,
 
 		//FCW_PlatformNode args that we check
 		NODEARG_TRAVELTIME		= 1, //Also applies to InterpolationPoint
@@ -1528,22 +1529,99 @@ extend class FCW_Platform
 	}
 
 	//============================
+	// UnlinkAllPassengers
+	//============================
+	private void UnlinkAllPassengers ()
+	{
+		// The goal is to move all passengers as if they were one entity.
+		// The only things that should block any of them are
+		// non-passengers and geometry.
+		// The exception is if a passenger can't fit at its new position
+		// in which case it will be "solid" for the others.
+		//
+		// To accomplish this each of them will temporarily
+		// be removed from the blockmap.
+		//
+		// It's a gross hack for sure, but most of the time these
+		// are generic actors that have no way to be aware of the platform
+		// or each other for the purpose of non-collision.
+		// Another idea might be to use the ThruBits property but
+		// that's limited to 32 groups max while this way guarantees
+		// they'll be non-solid to each other during this move only
+		// while maintaining their usual collision rules with non-passengers.
+		//
+		// In a custom game/mod it would be cleaner to do the non-collision
+		// in a CanCollideWith() override for the passenger.
+		// At this moment there're no way to inject code or override
+		// CanCollideWith() with pre-existing or unknown actor classes.
+
+		for (int iPass = 0; iPass < passengers.Size(); ++iPass)
+		{
+			let mo = passengers[iPass];
+			if (mo && !mo.bNoBlockmap) //If it has NOBLOCKMAP now, assume it's an inventory item that got picked up
+			{
+				PassengerPreMove(mo);
+				mo.A_ChangeLinkFlags(NO_BMAP);
+			}
+			else
+			{
+				ForgetPassenger(iPass--);
+			}
+		}
+
+		//We have to do the same for our portal twin's passengers
+		if (portTwin)
+		for (int iPass = 0; iPass < portTwin.passengers.Size(); ++iPass)
+		{
+			let mo = portTwin.passengers[iPass];
+			if (mo && !mo.bNoBlockmap)
+			{
+				portTwin.PassengerPreMove(mo);
+				mo.A_ChangeLinkFlags(NO_BMAP);
+			}
+			else
+			{
+				portTwin.ForgetPassenger(iPass--);
+			}
+		}
+	}
+
+	//============================
+	// LinkAllPassengers
+	//============================
+	private void LinkAllPassengers (bool moved)
+	{
+		//Link them back into the blockmap after they have been moved
+		for (int iPass = 0; iPass < passengers.Size(); ++iPass)
+		{
+			let mo = passengers[iPass];
+			if (mo && mo.bNoBlockmap)
+				mo.A_ChangeLinkFlags(YES_BMAP);
+			if (mo)
+				PassengerPostMove(mo, moved);
+		}
+
+		//We have to do the same for our portal twin's passengers
+		if (portTwin)
+		for (int iPass = 0; iPass < portTwin.passengers.Size(); ++iPass)
+		{
+			let mo = portTwin.passengers[iPass];
+			if (mo && mo.bNoBlockmap)
+				mo.A_ChangeLinkFlags(YES_BMAP);
+			if (mo)
+				portTwin.PassengerPostMove(mo, moved);
+		}
+	}
+
+	//============================
 	// MovePassengers
 	//============================
 	private bool MovePassengers (vector3 startPos, vector3 endPos, double forward, double delta, double piDelta, double roDelta, bool teleMove)
 	{
 		// Returns false if a blocked passenger would block the platform's movement unless 'teleMove' is true.
-		//
-		// By the time this is called, all passengers will
-		// have been excluded from the blockmap in PlatMove().
-		// That is done so they can all move at once
-		// without colliding with each other.
-		//
-		// If a passenger can't fit at its new position
-		// it will be linked back into the blockmap in this function,
-		// PassengerPostMove() will be called with 'moved' set to false,
-		// and the passenger will get removed from the 'passengers' array.
-		// Else they'll be linked back in PlatMove().
+
+		if (!group || !group.origin || !(group.origin.args[ARG_OPTIONS] & OPTFLAG_DIFFPASSCOLL))
+			UnlinkAllPassengers();
 
 		if (!passengers.Size())
 			return true; //No passengers? Nothing to do
@@ -1840,7 +1918,6 @@ extend class FCW_Platform
 		for (int i = 0; i < passengers.Size(); ++i)
 		{
 			let mo = passengers[i];
-			//They'll be linked back into the blockmap in PlatMove()
 
 			if (delta)
 				mo.A_SetAngle(Normalize180(mo.angle + delta), SPF_INTERPOLATE);
@@ -1855,6 +1932,10 @@ extend class FCW_Platform
 			mo.UpdateWaterLevel();
 			mo.vel.z = oldVelZ;
 		}
+
+		if (!group || !group.origin || !(group.origin.args[ARG_OPTIONS] & OPTFLAG_DIFFPASSCOLL))
+			LinkAllPassengers(true);
+
 		return true;
 	}
 
@@ -2486,57 +2567,8 @@ extend class FCW_Platform
 			plat.bMoved = false;
 			plat.bInMove = true;
 
-			// The goal is to move all passengers as if they were one entity.
-			// The only things that should block any of them are
-			// non-passengers and geometry.
-			// The exception is if a passenger can't fit at its new position
-			// in which case it will be "solid" for the others.
-			//
-			// To accomplish this each of them will temporarily
-			// be removed from the blockmap.
-			//
-			// It's a gross hack for sure, but most of the time these
-			// are generic actors that have no way to be aware of the platform
-			// or each other for the purpose of non-collision.
-			// Another idea might be to use the ThruBits property but
-			// that's limited to 32 groups max while this way guarantees
-			// they'll be non-solid to each other during this move only
-			// while maintaining their usual collision rules with non-passengers.
-			//
-			// In a custom game/mod it would be cleaner to do the non-collision
-			// in a CanCollideWith() override for the passenger.
-			// At this moment there're no way to inject code or override
-			// CanCollideWith() with pre-existing or unknown actor classes.
-
-			for (int iPass = 0; iPass < plat.passengers.Size(); ++iPass)
-			{
-				let mo = plat.passengers[iPass];
-				if (mo && !mo.bNoBlockmap) //If it has NOBLOCKMAP now, assume it's an inventory item that got picked up
-				{
-					plat.PassengerPreMove(mo);
-					mo.A_ChangeLinkFlags(NO_BMAP);
-				}
-				else
-				{
-					plat.ForgetPassenger(iPass--);
-				}
-			}
-
-			//We have to do the same for our portal twin's passengers
-			if (plat.portTwin)
-			for (int iPass = 0; iPass < plat.portTwin.passengers.Size(); ++iPass)
-			{
-				let mo = plat.portTwin.passengers[iPass];
-				if (mo && !mo.bNoBlockmap)
-				{
-					plat.portTwin.PassengerPreMove(mo);
-					mo.A_ChangeLinkFlags(NO_BMAP);
-				}
-				else
-				{
-					plat.portTwin.ForgetPassenger(iPass--);
-				}
-			}
+			if (args[ARG_OPTIONS] & OPTFLAG_DIFFPASSCOLL)
+				plat.UnlinkAllPassengers();
 		}
 
 		int result = DoMove(newPos, newAngle, newPitch, newRoll, moveType) ? 1 : 0;
@@ -2551,25 +2583,8 @@ extend class FCW_Platform
 
 			plat.bInMove = false;
 
-			//Handle anyone left in the 'passengers' array
-			for (int iPass = 0; iPass < plat.passengers.Size(); ++iPass)
-			{
-				let mo = plat.passengers[iPass];
-				if (mo && mo.bNoBlockmap)
-					mo.A_ChangeLinkFlags(YES_BMAP);
-				if (mo)
-					plat.PassengerPostMove(mo, plat.bMoved);
-			}
-
-			if (plat.portTwin)
-			for (int iPass = 0; iPass < plat.portTwin.passengers.Size(); ++iPass)
-			{
-				let mo = plat.portTwin.passengers[iPass];
-				if (mo && mo.bNoBlockmap)
-					mo.A_ChangeLinkFlags(YES_BMAP);
-				if (mo)
-					plat.portTwin.PassengerPostMove(mo, plat.bMoved);
-			}
+			if (args[ARG_OPTIONS] & OPTFLAG_DIFFPASSCOLL)
+				plat.LinkAllPassengers(plat.bMoved);
 		}
 		return result;
 	}
