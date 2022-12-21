@@ -863,16 +863,32 @@ extend class FCW_Platform
 					return; //Actor 'pushed' was destroyed
 				deliveredOuchies = true;
 
-				pushAng = VectorAngle(pushForce.x, pushForce.y);
+				if (abs(pushForce.x) < minVel && abs(pushForce.y) < minVel)
+				{
+					pushForce.xy = (max(0.2, abs(pushForce.z)), 0); //Need some meaningful velocity
+					pushAng = 0;
+				}
+				else
+				{
+					pushAng = VectorAngle(pushForce.x, pushForce.y);
+				}
 				angToPushed = AngleTo(pushed);
 
-				if (abs(pushForce.x) < minVel && abs(pushForce.y) < minVel)
-					pushForce.x = 0.2; //Need some meaningful velocity
+				//Try to push away obstacle from platform's center in a cardinal direction
+				int carDir;
+				if (abs(angToPushed) <= 45)
+					carDir = 0;
+				else if (abs(angToPushed) <= 135)
+					carDir = (angToPushed < 0) ? -90 : 90;
+				else
+					carDir = 180;
 
-				double delta = DeltaAngle(pushAng, angToPushed);
+				double delta = DeltaAngle(pushAng, carDir);
 				if (delta)
-					pushForce.xy = RotateVector(pushForce.xy, delta); //Push away from platform's center
-
+				{
+					pushAng += delta;
+					pushForce.xy = RotateVector(pushForce.xy, delta);
+				}
 				pushForce.z = 0;
 			}
 		}
@@ -883,7 +899,7 @@ extend class FCW_Platform
 
 		if (!fits && (abs(pushForce.x) >= minVel || abs(pushForce.y) >= minVel))
 		{
-			//Handle horizontal obstacle pushing - (what happens if it can't be pushed because a wall or solid actor is in the way)
+			//Handle horizontal obstacle pushing - (what happens if it can't be pushed because a wall or a solid actor is in the way)
 			fits = FitsAtPosition(pushed, level.Vec3Offset(pushed.pos, pushForce));
 			if (!fits && !deliveredOuchies)
 			{
@@ -894,16 +910,12 @@ extend class FCW_Platform
 				pushAng = VectorAngle(pushForce.x, pushForce.y);
 				angToPushed = AngleTo(pushed);
 			}
-			else if (deliveredOuchies)
-			{
-				//Special case where there is both Z and XY blockage, 'pushAng' needs adjustment
-				//FIX ME!!!
-			}
 
 			if (!fits)
 			{
+				//Can't push obstacle in the direction we're going, so try to move it aside instead
 				double delta = DeltaAngle(pushAng, angToPushed);
-				pushForce.xy = RotateVector(pushForce.xy, (delta >= 0) ? 90 : -90); //Push aside from where platform is going (or rather, push aside from 'pushForce' horizontal direction)
+				pushForce.xy = RotateVector(pushForce.xy, (delta >= 0) ? 90 : -90);
 			}
 		}
 
