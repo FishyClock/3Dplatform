@@ -797,52 +797,16 @@ extend class FCW_Platform
 	}
 
 	//============================
-	// PushObstacle
+	// CrushObstacle
 	//============================
-	private void PushObstacle (Actor pushed, vector3 pushForce)
+	private bool CrushObstacle (Actor pushed, bool noPush, bool fits)
 	{
-		if ((bCannotPush && stuckActors.Find(pushed) >= stuckActors.Size() ) || //Can't push it if we have CANNOTPUSH and this isn't an actor that's stuck in us.
-			(!pushed.bPushable && //Always push actors that have PUSHABLE.
-			(pushed.bDontThrust || pushed is "FCW_Platform") ) ) //Otherwise, only push it if it's a non-platform and doesn't have DONTTHRUST.
-		{
-			pushForce = (0, 0, 0);
-		}
-		else if (!OverlapXY(self, pushed)) //Out of XY range?
-		{
-			pushForce.z = 0;
-		}
-		else
-		{
-			bool minForce = false;
-			if (pushForce.xy ~== (0, 0))
-			{
-				pushForce.x = 0.2;
-				minForce = true;
-			}
-
-			double delta = DeltaAngle(VectorAngle(pushForce.x, pushForce.y), AngleTo(pushed));
-			if (minForce || delta > 90 || delta < -90)
-				pushForce.xy = RotateVector(pushForce.xy, delta); //Push away from platform's center
-		}
-
-		//Don't accept close-to-zero velocity.
-		//And don't apply 'pushForce' if the obstacle's velocity speed is equal to or exceeds the 'pushForce' in a particular direction.
-		if (pushForce.x ~== 0 || (pushForce.x < 0 && pushed.vel.x <= pushForce.x) || (pushForce.x > 0 && pushed.vel.x >= pushForce.x)) pushForce.x = 0;
-		if (pushForce.y ~== 0 || (pushForce.y < 0 && pushed.vel.y <= pushForce.y) || (pushForce.y > 0 && pushed.vel.y >= pushForce.y)) pushForce.y = 0;
-		if (pushForce.z ~== 0 || (pushForce.z < 0 && pushed.vel.z <= pushForce.z) || (pushForce.z > 0 && pushed.vel.z >= pushForce.z)) pushForce.z = 0;
-
-		let oldZ = pushForce.z;
-		if (pushed.bCantLeaveFloorPic || //No Z pushing for CANTLEAVEFLOORPIC actors.
-			pushed.bFloorHugger || pushed.bCeilingHugger) //No Z pushing for floor/ceiling huggers.
-		{
-			pushForce.z = 0;
-		}
-		pushed.vel += pushForce;
-		pushForce.z = oldZ; //Still use it for FitsAtPosition()
+		//Helper function for PushObstacle().
+		//Retuns false if 'pushed' was destroyed.
 
 		int crushDamage = args[ARG_CRUSHDMG];
 		if (crushDamage <= 0)
-			return;
+			return true;
 
 		//Normally, if the obstacle is pushed against a wall or solid actor etc
 		//then apply damage every 4th tic so its pain sound can be heard.
@@ -851,23 +815,113 @@ extend class FCW_Platform
 		//However, if there was no 'pushForce' whatsoever and 'hurtfulPush' is
 		//desired then the "damage every 4th tic" rule always applies.
 		bool hurtfulPush = (args[ARG_OPTIONS] & OPTFLAG_HURTFULPUSH);
-		if (pushForce == (0, 0, 0))
+		if (noPush)
 		{
 			if (hurtfulPush && !(level.mapTime & 3))
 			{
 				int doneDamage = pushed.DamageMobj(null, null, crushDamage, 'Crush');
 				pushed.TraceBleed(doneDamage > 0 ? doneDamage : crushDamage, self);
 			}
+		}
+		else
+		{
+			//If it 'fits' then it's not being pushed against anything
+			if ((!fits && !(level.mapTime & 3)) || (fits && hurtfulPush))
+			{
+				int doneDamage = pushed.DamageMobj(null, null, crushDamage, 'Crush');
+				pushed.TraceBleed(doneDamage > 0 ? doneDamage : crushDamage, self);
+			}
+		}
+		return (pushed && !pushed.bDestroyed);
+	}
+
+	//============================
+	// PushObstacle
+	//============================
+	private void PushObstacle (Actor pushed, vector3 pushForce)
+	{
+		if ((bCannotPush && stuckActors.Find(pushed) >= stuckActors.Size() ) || //Can't push it if we have CANNOTPUSH and this isn't an actor that's stuck in us.
+			(!pushed.bPushable && //Always push actors that have PUSHABLE.
+			(pushed.bDontThrust || pushed is "FCW_Platform") ) ) //Otherwise, only push it if it's a non-platform and doesn't have DONTTHRUST.
+		{
+			//Handle OPTFLAG_HURTFULPUSH but otherwise there's no velocity modification
+			CrushObstacle(pushed, true, true);
 			return;
 		}
 
-		//If it 'fits' then it's not being pushed against anything
-		bool fits = FitsAtPosition(pushed, level.Vec3Offset(pushed.pos, pushForce));
-		if ((!fits && !(level.mapTime & 3)) || (fits && hurtfulPush))
+		bool deliveredOuchies = false;
+		bool fits = false;
+		double pushAng, angToPushed;
+
+		if (abs(pushForce.z) >= minVel && OverlapXY(self, pushed))
 		{
-			int doneDamage = pushed.DamageMobj(null, null, crushDamage, 'Crush');
-			pushed.TraceBleed(doneDamage > 0 ? doneDamage : crushDamage, self);
+			//Handle vertical obstacle pushing first - (what happens if it can't be pushed up or down)
+			fits = FitsAtPosition(pushed, level.Vec3Offset(pushed.pos, pushForce));
+			if (!fits)
+			{
+				if (!CrushObstacle(pushed, false, false))
+					return; //Actor 'pushed' was destroyed
+				deliveredOuchies = true;
+
+				pushAng = VectorAngle(pushForce.x, pushForce.y);
+				angToPushed = AngleTo(pushed);
+
+				if (abs(pushForce.x) < minVel && abs(pushForce.y) < minVel)
+					pushForce.x = 0.2; //Need some meaningful velocity
+
+				double delta = DeltaAngle(pushAng, angToPushed);
+				if (delta)
+					pushForce.xy = RotateVector(pushForce.xy, delta); //Push away from platform's center
+
+				pushForce.z = 0;
+			}
 		}
+		else
+		{
+			pushForce.z = 0;
+		}
+
+		if (!fits && (abs(pushForce.x) >= minVel || abs(pushForce.y) >= minVel))
+		{
+			//Handle horizontal obstacle pushing - (what happens if it can't be pushed because a wall or solid actor is in the way)
+			fits = FitsAtPosition(pushed, level.Vec3Offset(pushed.pos, pushForce));
+			if (!fits && !deliveredOuchies)
+			{
+				if (!CrushObstacle(pushed, false, false))
+					return; //Actor 'pushed' was destroyed
+				deliveredOuchies = true;
+
+				pushAng = VectorAngle(pushForce.x, pushForce.y);
+				angToPushed = AngleTo(pushed);
+			}
+			else if (deliveredOuchies)
+			{
+				//Special case where there is both Z and XY blockage, 'pushAng' needs adjustment
+				//FIX ME!!!
+			}
+
+			if (!fits)
+			{
+				double delta = DeltaAngle(pushAng, angToPushed);
+				pushForce.xy = RotateVector(pushForce.xy, (delta >= 0) ? 90 : -90); //Push aside from where platform is going (or rather, push aside from 'pushForce' horizontal direction)
+			}
+		}
+
+		//Don't accept close-to-zero velocity.
+		//And don't apply 'pushForce' if the obstacle's velocity speed is equal to or exceeds the 'pushForce' in a particular direction.
+		if (abs(pushForce.x) < minVel || (pushForce.x < 0 && pushed.vel.x <= pushForce.x) || (pushForce.x > 0 && pushed.vel.x >= pushForce.x)) pushForce.x = 0;
+		if (abs(pushForce.y) < minVel || (pushForce.y < 0 && pushed.vel.y <= pushForce.y) || (pushForce.y > 0 && pushed.vel.y >= pushForce.y)) pushForce.y = 0;
+		if (abs(pushForce.z) < minVel || (pushForce.z < 0 && pushed.vel.z <= pushForce.z) || (pushForce.z > 0 && pushed.vel.z >= pushForce.z)) pushForce.z = 0;
+
+		if (pushed.bCantLeaveFloorPic || //No Z pushing for CANTLEAVEFLOORPIC actors.
+			pushed.bFloorHugger || pushed.bCeilingHugger) //No Z pushing for floor/ceiling huggers.
+		{
+			pushForce.z = 0;
+		}
+		pushed.vel += pushForce; //Apply the actual push (unrelated to damage)
+
+		if (!deliveredOuchies)
+			CrushObstacle(pushed, (pushForce == (0, 0, 0)), true); //Handle OPTFLAG_HURTFULPUSH
 	}
 
 	//============================
