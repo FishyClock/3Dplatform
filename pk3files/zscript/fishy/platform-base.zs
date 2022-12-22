@@ -853,7 +853,12 @@ extend class FCW_Platform
 		bool fits = false;
 		double pushAng, angToPushed;
 
-		if (abs(pushForce.z) >= minVel && OverlapXY(self, pushed))
+		//Don't accept close-to-zero velocity
+		if (abs(pushForce.x) < minVel) pushForce.x = 0;
+		if (abs(pushForce.y) < minVel) pushForce.y = 0;
+		if (abs(pushForce.z) < minVel) pushForce.z = 0;
+
+		if (pushForce.z && OverlapXY(self, pushed))
 		{
 			//Handle vertical obstacle pushing first - (what happens if it can't be pushed up or down)
 			fits = FitsAtPosition(pushed, level.Vec3Offset(pushed.pos, pushForce));
@@ -863,9 +868,9 @@ extend class FCW_Platform
 					return; //Actor 'pushed' was destroyed
 				deliveredOuchies = true;
 
-				if (abs(pushForce.x) < minVel && abs(pushForce.y) < minVel)
+				if (pushForce.xy == (0, 0))
 				{
-					pushForce.xy = (max(0.2, abs(pushForce.z)), 0); //Need some meaningful velocity
+					pushForce.x = max(0.2, abs(pushForce.z)); //Need some meaningful velocity
 					pushAng = 0;
 				}
 				else
@@ -874,7 +879,7 @@ extend class FCW_Platform
 				}
 				angToPushed = AngleTo(pushed);
 
-				//Try to push away obstacle from platform's center in a cardinal direction
+				//Try to push away obstacle from platform's center point in a cardinal direction
 				int carDir;
 				if (abs(angToPushed) <= 45)
 					carDir = 0;
@@ -897,7 +902,7 @@ extend class FCW_Platform
 			pushForce.z = 0;
 		}
 
-		if (!fits && (abs(pushForce.x) >= minVel || abs(pushForce.y) >= minVel))
+		if (!fits && pushForce.xy != (0, 0))
 		{
 			//Handle horizontal obstacle pushing - (what happens if it can't be pushed because a wall or a solid actor is in the way)
 			fits = FitsAtPosition(pushed, level.Vec3Offset(pushed.pos, pushForce));
@@ -919,17 +924,17 @@ extend class FCW_Platform
 			}
 		}
 
-		//Don't accept close-to-zero velocity.
-		//And don't apply 'pushForce' if the obstacle's velocity speed is equal to or exceeds the 'pushForce' in a particular direction.
-		if (abs(pushForce.x) < minVel || (pushForce.x < 0 && pushed.vel.x <= pushForce.x) || (pushForce.x > 0 && pushed.vel.x >= pushForce.x)) pushForce.x = 0;
-		if (abs(pushForce.y) < minVel || (pushForce.y < 0 && pushed.vel.y <= pushForce.y) || (pushForce.y > 0 && pushed.vel.y >= pushForce.y)) pushForce.y = 0;
-		if (abs(pushForce.z) < minVel || (pushForce.z < 0 && pushed.vel.z <= pushForce.z) || (pushForce.z > 0 && pushed.vel.z >= pushForce.z)) pushForce.z = 0;
-
 		if (pushed.bCantLeaveFloorPic || //No Z pushing for CANTLEAVEFLOORPIC actors.
 			pushed.bFloorHugger || pushed.bCeilingHugger) //No Z pushing for floor/ceiling huggers.
 		{
 			pushForce.z = 0;
 		}
+
+		//Don't apply 'pushForce' if the obstacle's velocity speed is equal to or exceeds the 'pushForce' in a particular direction
+		if ((pushForce.x < 0 && pushed.vel.x <= pushForce.x) || (pushForce.x > 0 && pushed.vel.x >= pushForce.x)) pushForce.x = 0;
+		if ((pushForce.y < 0 && pushed.vel.y <= pushForce.y) || (pushForce.y > 0 && pushed.vel.y >= pushForce.y)) pushForce.y = 0;
+		if ((pushForce.z < 0 && pushed.vel.z <= pushForce.z) || (pushForce.z > 0 && pushed.vel.z >= pushForce.z)) pushForce.z = 0;
+
 		pushed.vel += pushForce; //Apply the actual push (unrelated to damage)
 
 		if (!deliveredOuchies)
