@@ -799,7 +799,7 @@ extend class FCW_Platform
 	//============================
 	// CrushObstacle
 	//============================
-	private bool CrushObstacle (Actor pushed, bool noPush, bool fits)
+	private bool CrushObstacle (Actor pushed, bool noPush, bool fits, Actor pusher)
 	{
 		//Helper function for PushObstacle().
 		//Retuns false if 'pushed' was destroyed.
@@ -820,7 +820,7 @@ extend class FCW_Platform
 			if (hurtfulPush && !(level.mapTime & 3))
 			{
 				int doneDamage = pushed.DamageMobj(null, null, crushDamage, 'Crush');
-				pushed.TraceBleed(doneDamage > 0 ? doneDamage : crushDamage, self);
+				pushed.TraceBleed(doneDamage > 0 ? doneDamage : crushDamage, pusher);
 			}
 		}
 		else
@@ -829,7 +829,7 @@ extend class FCW_Platform
 			if ((!fits && !(level.mapTime & 3)) || (fits && hurtfulPush))
 			{
 				int doneDamage = pushed.DamageMobj(null, null, crushDamage, 'Crush');
-				pushed.TraceBleed(doneDamage > 0 ? doneDamage : crushDamage, self);
+				pushed.TraceBleed(doneDamage > 0 ? doneDamage : crushDamage, pusher);
 			}
 		}
 		return (pushed && !pushed.bDestroyed);
@@ -849,7 +849,7 @@ extend class FCW_Platform
 			(pushed.bDontThrust || pushed is "FCW_Platform") ) ) //Otherwise, only push it if it's a non-platform and doesn't have DONTTHRUST.
 		{
 			//Handle OPTFLAG_HURTFULPUSH but otherwise there's no velocity modification
-			CrushObstacle(pushed, true, true);
+			CrushObstacle(pushed, true, true, pusher);
 			return;
 		}
 
@@ -881,7 +881,7 @@ extend class FCW_Platform
 			fits = FitsAtPosition(pushed, level.Vec3Offset(pushed.pos, pushForce));
 			if (!fits)
 			{
-				if (!CrushObstacle(pushed, false, false))
+				if (!CrushObstacle(pushed, false, false, pusher))
 					return; //Actor 'pushed' was destroyed
 				deliveredOuchies = true;
 
@@ -926,7 +926,7 @@ extend class FCW_Platform
 			fits = FitsAtPosition(pushed, level.Vec3Offset(pushed.pos, pushForce));
 			if (!fits && !deliveredOuchies)
 			{
-				if (!CrushObstacle(pushed, false, false))
+				if (!CrushObstacle(pushed, false, false, pusher))
 					return; //Actor 'pushed' was destroyed
 				deliveredOuchies = true;
 
@@ -957,7 +957,7 @@ extend class FCW_Platform
 		pushed.vel += pushForce; //Apply the actual push (unrelated to damage)
 
 		if (!deliveredOuchies)
-			CrushObstacle(pushed, (pushForce == (0, 0, 0)), true); //Handle OPTFLAG_HURTFULPUSH
+			CrushObstacle(pushed, (pushForce == (0, 0, 0)), true, pusher); //Handle OPTFLAG_HURTFULPUSH
 	}
 
 	//============================
