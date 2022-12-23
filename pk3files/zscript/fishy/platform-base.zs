@@ -838,9 +838,13 @@ extend class FCW_Platform
 	//============================
 	// PushObstacle
 	//============================
-	private void PushObstacle (Actor pushed, vector3 pushForce)
+	private void PushObstacle (Actor pushed, vector3 pushForce, Actor pusher = null, vector2 pushPoint = (double.nan, double.nan))
 	{
-		if ((bCannotPush && stuckActors.Find(pushed) >= stuckActors.Size() ) || //Can't push it if we have CANNOTPUSH and this isn't an actor that's stuck in us.
+		//Under certain cases, 'pusher' can be a generic non-platform actor
+		if (!pusher)
+			pusher = self;
+
+		if ((pusher.bCannotPush && (pusher != self || stuckActors.Find(pushed) >= stuckActors.Size() ) ) || //Can't push it if we have CANNOTPUSH and this isn't an actor that's stuck in us.
 			(!pushed.bPushable && //Always push actors that have PUSHABLE.
 			(pushed.bDontThrust || pushed is "FCW_Platform") ) ) //Otherwise, only push it if it's a non-platform and doesn't have DONTTHRUST.
 		{
@@ -848,6 +852,10 @@ extend class FCW_Platform
 			CrushObstacle(pushed, true, true);
 			return;
 		}
+
+		//The 'pushPoint' may not be where 'pusher' is right now
+		if (pushPoint != pushPoint) //NaN check
+			pushPoint = pusher.pos.xy;
 
 		bool deliveredOuchies = false;
 		bool fits = false;
@@ -858,7 +866,16 @@ extend class FCW_Platform
 		if (abs(pushForce.y) < minVel) pushForce.y = 0;
 		if (abs(pushForce.z) < minVel) pushForce.z = 0;
 
-		if (pushForce.z && OverlapXY(self, pushed))
+		bool doZPushTest = false;
+		if (pushForce.z)
+		{
+			let pusherPos = pusher.pos;
+			pusher.SetXYZ((pushPoint, pusher.pos.z)); //Needed for OverlapXY()
+			doZPushTest = OverlapXY(pusher, pushed);
+			pusher.SetXYZ(pusherPos);
+		}
+
+		if (doZPushTest)
 		{
 			//Handle vertical obstacle pushing first - (what happens if it can't be pushed up or down)
 			fits = FitsAtPosition(pushed, level.Vec3Offset(pushed.pos, pushForce));
@@ -877,9 +894,10 @@ extend class FCW_Platform
 				{
 					pushAng = VectorAngle(pushForce.x, pushForce.y);
 				}
-				angToPushed = AngleTo(pushed);
+				vector2 diff = level.Vec2Diff(pushPoint, pushed.pos.xy);
+				angToPushed = VectorAngle(diff.x, diff.y);
 
-				//Try to push away obstacle from platform's center point in a cardinal direction
+				//Try to push away obstacle from 'pushPoint' in a cardinal direction
 				int carDir;
 				if (abs(angToPushed) <= 45)
 					carDir = 0;
@@ -913,7 +931,8 @@ extend class FCW_Platform
 				deliveredOuchies = true;
 
 				pushAng = VectorAngle(pushForce.x, pushForce.y);
-				angToPushed = AngleTo(pushed);
+				vector2 diff = level.Vec2Diff(pushPoint, pushed.pos.xy);
+				angToPushed = VectorAngle(diff.x, diff.y);
 			}
 
 			if (!fits)
@@ -1910,16 +1929,8 @@ extend class FCW_Platform
 				//Optionally have passengers push away obstacles.
 				//(No need if this passenger is a platform because
 				//being a platform it already pushed an obstacle.)
-				if (!plat && !mo.bCannotPush && (args[ARG_OPTIONS] & OPTFLAG_PASSCANPUSH))
-				{
-					let oldCannotPush = bCannotPush;
-					bCannotPush = false;
-
-					if (mo.blockingMobj)
-						PushObstacle(mo.blockingMobj, pushForce);
-
-					bCannotPush = oldCannotPush;
-				}
+				if (!plat && (args[ARG_OPTIONS] & OPTFLAG_PASSCANPUSH) && mo.blockingMobj)
+					PushObstacle(mo.blockingMobj, pushForce, mo);
 
 				Array<Actor> movedBack = { mo };
 				for (int iMovedBack = 0; iMovedBack < movedBack.Size(); ++iMovedBack)
@@ -1972,14 +1983,12 @@ extend class FCW_Platform
 
 					if (blocked)
 					{
-						PushObstacle(mo, pushForce);
-						if (!(mo is "FCW_Platform") && mo != movedBack[0]) //We (potentially) already pushed/crushed the first one's blocker
+						PushObstacle(mo, pushForce, self, startPos.xy);
+						if (mo && !mo.bDestroyed && !(mo is "FCW_Platform") && mo != movedBack[0]) //We (potentially) already pushed/crushed the first one's blocker
 						{
-							//'OPTFLAG_PASSCANPUSH' doesn't matter here since it's considered
-							//the platform doing the pushing/crushing.
 							//The blocker in this case can only be a former passenger.
 							if (mo.blockingMobj)
-								PushObstacle(mo.blockingMobj, pushForce);
+								PushObstacle(mo.blockingMobj, pushForce, mo);
 						}
 
 						if (!grp || !grp.origin || !(grp.origin.args[ARG_OPTIONS] & OPTFLAG_DIFFPASSCOLL))
