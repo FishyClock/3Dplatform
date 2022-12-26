@@ -648,6 +648,14 @@ extend class FCW_Platform
 		//Used by MoveGroup()   where backward == false
 		//and UpdateGroupInfo() where backward == true.
 
+		if (!pDelta && !rDelta)
+		{
+			if (yDelta)
+				vec.xy = RotateVector(vec.xy, yDelta);
+
+			return vec;
+		}
+
 		if (baseAngle)
 			vec.xy = RotateVector(vec.xy, -baseAngle); //Rotate to 0 angle
 
