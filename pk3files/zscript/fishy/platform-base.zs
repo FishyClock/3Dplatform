@@ -628,7 +628,7 @@ extend class FCW_Platform
 		else //Set up for proper orbiting
 		{
 			vector3 offset = level.Vec3Diff(ori.pos, pos);
-			offset = RotateVector3(offset, delta, piDelta, roDelta, ori.groupAngle, true);
+			offset = PlatRotateVector(offset, delta, piDelta, roDelta, ori.groupAngle, true);
 			groupPos = level.Vec3Offset(ori.groupPos, offset);
 
 			groupAngle = angle + delta;
@@ -641,33 +641,25 @@ extend class FCW_Platform
 	}
 
 	//============================
-	// RotateVector3
+	// PlatRotateVector
 	//============================
-	static vector3 RotateVector3 (vector3 vec, double yDelta, double pDelta, double rDelta, double baseAngle, bool backward)
+	static vector3 PlatRotateVector (vector3 vec, double yDelta, double pDelta, double rDelta, double baseAngle, bool backward)
 	{
 		//Used by MoveGroup()   where backward == false
 		//and UpdateGroupInfo() where backward == true.
 
-		double cFirst = cos(-baseAngle), sFirst = sin(-baseAngle);
-		double cY = cos(yDelta), sY = sin(yDelta);
-		double cP = cos(pDelta), sP = sin(pDelta);
-		double cR = cos(rDelta), sR = sin(rDelta);
-		double cLast = cos(baseAngle), sLast = sin(baseAngle);
+		if (baseAngle)
+			vec.xy = RotateVector(vec.xy, -baseAngle); //Rotate to 0 angle
 
-		vec.xy = (vec.x*cFirst - vec.y*sFirst, vec.x*sFirst + vec.y*cFirst); //Rotate to 0 angle
-		if (backward)
-		{
-			vec = (vec.x*cY - vec.y*sY, vec.x*sY + vec.y*cY, vec.z);  //Z axis (yaw/angle)
-			vec = (vec.x*cP + vec.z*sP, vec.y, -vec.x*sP + vec.z*cP); //Y axis (pitch)
-			vec = (vec.x, vec.y*cR - vec.z*sR, vec.y*sR + vec.z*cR);  //X axis (roll)
-		}
-		else
-		{
-			vec = (vec.x, vec.y*cR - vec.z*sR, vec.y*sR + vec.z*cR);  //X axis (roll)
-			vec = (vec.x*cP + vec.z*sP, vec.y, -vec.x*sP + vec.z*cP); //Y axis (pitch)
-			vec = (vec.x*cY - vec.y*sY, vec.x*sY + vec.y*cY, vec.z);  //Z axis (yaw/angle)
-		}
-		vec.xy = (vec.x*cLast - vec.y*sLast, vec.x*sLast + vec.y*cLast); //Rotate back to 'baseAngle'
+		//'backward' determines rotation order so a simple quat.FromAngles() won't do
+		quat qY = quat.AxisAngle((0, 0, 1), yDelta);
+		quat qP = quat.AxisAngle((0, 1, 0), pDelta);
+		quat qR = quat.AxisAngle((1, 0, 0), rDelta);
+		quat qRot = backward ? (qR * qP * qY) : (qY * qP * qR);
+		vec = qRot * vec;
+
+		if (baseAngle)
+			vec.xy = RotateVector(vec.xy, baseAngle); //Rotate back to 'baseAngle'
 
 		return vec;
 	}
@@ -3101,7 +3093,7 @@ extend class FCW_Platform
 			else //Non-mirror movement. Orbiting happens here.
 			{
 				vector3 offset = level.Vec3Diff(groupPos, plat.groupPos);
-				offset = RotateVector3(offset, delta, piDelta, roDelta, groupAngle, false);
+				offset = PlatRotateVector(offset, delta, piDelta, roDelta, groupAngle, false);
 				newPos = level.Vec3Offset(pos, offset);
 
 				if (changeAng)
