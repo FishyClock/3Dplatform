@@ -32,3 +32,19 @@ class TESTPushable2 : BurningBarrel
 		PushSound "*usefail";
 	}
 }
+
+class TESTNoDeathSeq : ZombieMan
+{
+	Default
+	{
+		//$Title TESTNoDeathSeq
+		+NOICEDEATH;
+	}
+
+	States
+	{
+	Death:
+	XDeath:
+		Stop;
+	}
+}

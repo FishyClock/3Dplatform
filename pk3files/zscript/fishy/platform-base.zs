@@ -848,12 +848,12 @@ extend class FCW_Platform
 			(!pushed.bPushable && //Always push actors that have PUSHABLE.
 			(pushed.bDontThrust || pushed is "FCW_Platform") ) ) //Otherwise, only push it if it's a non-platform and doesn't have DONTTHRUST.
 		{
-			pushForce = (0, 0, 0);
+			CrushObstacle(pushed, true, true, pusher); //Handle OPTFLAG_HURTFULPUSH
+			return; //No velocity modification
 		}
-		else if (pushForce != pushForce) //NaN check
-		{
+
+		if (pushForce != pushForce) //NaN check
 			pushForce = level.Vec3Diff(pusher.pos, pushed.pos).Unit();
-		}
 
 		if (pushed.bPushable)
 		{
