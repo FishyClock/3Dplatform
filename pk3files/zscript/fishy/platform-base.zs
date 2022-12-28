@@ -2362,11 +2362,6 @@ extend class FCW_Platform
 	//============================
 	private bool PlatTakeOneStep (vector3 newPos)
 	{
-		//Don't trigger the native actor-pushes-pushable-actor logic,
-		//let PushObstacle() handle that.
-		let oldCannotPush = bCannotPush;
-		bCannotPush = true;
-
 		//The "invisible" portal twin (copy) isn't meant to go through portals.
 		//Don't call TryMove() nor Vec3Offset() for it.
 		SetZ(newPos.z);
@@ -2463,7 +2458,6 @@ extend class FCW_Platform
 				}
 			}
 		}
-		bCannotPush = oldCannotPush;
 		return moved;
 	}
 
