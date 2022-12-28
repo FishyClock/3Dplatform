@@ -838,7 +838,7 @@ extend class FCW_Platform
 	//============================
 	// PushObstacle
 	//============================
-	private void PushObstacle (Actor pushed, vector3 pushForce, Actor pusher = null, vector2 pushPoint = (double.nan, double.nan))
+	private void PushObstacle (Actor pushed, vector3 pushForce = (double.nan, double.nan, double.nan), Actor pusher = null, vector2 pushPoint = (double.nan, double.nan))
 	{
 		//Under certain cases, 'pusher' can be a generic non-platform actor
 		if (!pusher)
@@ -848,9 +848,25 @@ extend class FCW_Platform
 			(!pushed.bPushable && //Always push actors that have PUSHABLE.
 			(pushed.bDontThrust || pushed is "FCW_Platform") ) ) //Otherwise, only push it if it's a non-platform and doesn't have DONTTHRUST.
 		{
-			//Handle OPTFLAG_HURTFULPUSH but otherwise there's no velocity modification
-			CrushObstacle(pushed, true, true, pusher);
-			return;
+			pushForce = (0, 0, 0);
+		}
+		else if (pushForce != pushForce) //NaN check
+		{
+			pushForce = level.Vec3Diff(pusher.pos, pushed.pos).Unit();
+		}
+
+		if (pushed.bPushable)
+		{
+			pushForce *= pushed.pushFactor; //Scale by its 'pushFactor' if it has +PUSHABLE
+		}
+		else
+		{
+			//For actors without +PUSHABLE the 'pushForce' will be scaled down,
+			//but only if it's slightly larger than a unit vector.
+			//The scaled down force will still be slightly larger than a unit vector.
+			double len = pushForce.Length();
+			if (len > 1.1 && (len /= 8) > 1.1)
+				pushForce = pushForce.Unit() * len;
 		}
 
 		//The 'pushPoint' may not be where 'pusher' is right now
@@ -865,6 +881,10 @@ extend class FCW_Platform
 		if (abs(pushForce.x) < minVel) pushForce.x = 0;
 		if (abs(pushForce.y) < minVel) pushForce.y = 0;
 		if (abs(pushForce.z) < minVel) pushForce.z = 0;
+
+		//If there's gonna be a push attempt and this is a +PUSHABLE thing, play its push sound
+		if (pushForce != (0, 0, 0) && pushed.bPushable)
+			pushed.PlayPushSound();
 
 		bool doZPushTest = false;
 		if (pushForce.z)
@@ -2342,6 +2362,11 @@ extend class FCW_Platform
 	//============================
 	private bool PlatTakeOneStep (vector3 newPos)
 	{
+		//Don't trigger the native actor-pushes-pushable-actor logic,
+		//let PushObstacle() handle that.
+		let oldCannotPush = bCannotPush;
+		bCannotPush = true;
+
 		//The "invisible" portal twin (copy) isn't meant to go through portals.
 		//Don't call TryMove() nor Vec3Offset() for it.
 		SetZ(newPos.z);
@@ -2387,7 +2412,7 @@ extend class FCW_Platform
 				PassengerPostMove(mo, fits);
 			}
 		}
-		else if (!moved) //Blocked by geometry or another platform?
+		else if (!moved) //Blocked by geometry?
 		{
 			if (args[ARG_OPTIONS] & OPTFLAG_IGNOREGEO)
 			{
@@ -2437,9 +2462,9 @@ extend class FCW_Platform
 					}
 				}
 			}
-			return false;
 		}
-		return true;
+		bCannotPush = oldCannotPush;
+		return moved;
 	}
 
 	//============================
@@ -2527,8 +2552,7 @@ extend class FCW_Platform
 				else
 					ForgetPassenger(index); //Stuck actors can't be passengers
 			}
-			vector3 pushForce = level.Vec3Diff(pos, mo.pos + (0, 0, mo.height * 0.5)).Unit();
-			PushObstacle(mo, pushForce);
+			PushObstacle(mo);
 		}
 
 		if (stuckActors.Size())

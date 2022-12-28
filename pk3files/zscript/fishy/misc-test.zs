@@ -13,3 +13,22 @@ class TestSplash : Actor
 		Stop;
 	}
 }
+
+class TESTPushable1 : ExplosiveBarrel
+{
+	Default
+	{
+		+PUSHABLE;
+		PushSound "pain/pain";
+		PushFactor 3;
+	}
+}
+
+class TESTPushable2 : BurningBarrel
+{
+	Default
+	{
+		+PUSHABLE;
+		PushSound "*usefail";
+	}
+}
