@@ -92,6 +92,10 @@ class FCW_Platform : Actor abstract
 		//$Arg3 Crush Damage
 		//$Arg3Tooltip If an obstacle is pushed against a wall,\nthe damage is applied once per 4 tics.
 
+		//$Arg4 Special Holder
+		//$Arg4Type 14
+		//$Arg4Tooltip Another actor that holds the thing action special and arguments for this platform.\n(The platform will copy the special+args for itself.)
+
 		+INTERPOLATEANGLES;
 		+ACTLIKEBRIDGE;
 		+NOGRAVITY;
@@ -269,6 +273,7 @@ extend class FCW_Platform
 		ARG_OPTIONS			= 1,
 		ARG_GROUPTID		= 2,
 		ARG_CRUSHDMG		= 3,
+		ARG_SPECTID			= 4,
 
 		//For "ARG_OPTIONS"
 		OPTFLAG_LINEAR			= 1,
@@ -343,6 +348,8 @@ extend class FCW_Platform
 	transient int lastGetNPTime; //Make sure there's only one GetNewPassengers() blockmap search per tic
 	transient bool lastGetNPResult;
 	transient int lastGetUPTime; //Same deal for GetUnlinkedPortal()
+	int options;
+	int crushDamage;
 
 	//Unlike PathFollower classes, our interpolations are done with
 	//vector3 coordinates instead of checking InterpolationPoint positions.
@@ -421,6 +428,8 @@ extend class FCW_Platform
 		if (bPortCopy)
 			return;
 
+		options = args[ARG_OPTIONS];
+		crushDamage = args[ARG_CRUSHDMG];
 		bool noPrefix = (args[ARG_GROUPTID] && !SetUpGroup(args[ARG_GROUPTID], false));
 
 		//If the group origin is already active then call PlatMove() here to move us
@@ -443,14 +452,38 @@ extend class FCW_Platform
 		//get something for HandleOldPassengers() to monitor.
 		GetNewPassengers(true);
 
+		//We use our thing arguments to define our behaviour.
+		//Our actual thing special and arguments have to be defined in another actor (eg. a Mapspot).
+		int nodeTid = args[ARG_NODETID]; //Need this for later.
+		if (args[ARG_SPECTID])
+		{
+			let it = level.CreateActorIterator(args[ARG_SPECTID]);
+			Actor mo = it.Next();
+			if (mo == self)
+				mo = it.Next(); //Ignore self
+
+			if (mo)
+			{
+				special = mo.special;
+				for (int i = 0; i < 5; ++i)
+					args[i] = mo.args[i];
+			}
+			else
+			{
+				String prefix = noPrefix ? "" : "\n\ckPlatform class '" .. GetClassName() .. "' with tid " .. tid .. " at position " .. pos .. ":\n";
+				Console.Printf(prefix .. "\ckCan't find special holder with tid " .. args[ARG_SPECTID] .. ".");
+				noPrefix = true;
+			}
+		}
+
 		//Print no (additional) warnings if we're not supposed to have a interpolation point
-		if (!args[ARG_NODETID])
+		if (!nodeTid)
 			return;
 
-		if (!SetUpPath(args[ARG_NODETID], noPrefix))
+		if (!SetUpPath(nodeTid, noPrefix))
 			return;
 
-		if (args[ARG_OPTIONS] & OPTFLAG_STARTACTIVE)
+		if (options & OPTFLAG_STARTACTIVE)
 			Activate(self);
 	}
 
@@ -479,9 +512,9 @@ extend class FCW_Platform
 			FCW_OldStuff_Common.CheckNodeTypes(firstNode); //The old nodes shouldn't point to platform nodes
 		}
 
-		bool optGoToNode = (args[ARG_OPTIONS] & OPTFLAG_GOTONODE);
+		bool optGoToNode = (options & OPTFLAG_GOTONODE);
 
-		if (args[ARG_OPTIONS] & OPTFLAG_LINEAR)
+		if (options & OPTFLAG_LINEAR)
 		{
 			//Linear path; need 2 nodes unless the first node is the destination
 			if (!optGoToNode && !firstNode.next)
@@ -616,7 +649,7 @@ extend class FCW_Platform
 		double piDelta = DeltaAngle(ori.pitch, ori.groupPitch);
 		double roDelta = DeltaAngle(ori.roll, ori.groupRoll);
 
-		if (args[ARG_OPTIONS] & OPTFLAG_MIRROR)
+		if (options & OPTFLAG_MIRROR)
 		{
 			vector3 offset = level.Vec3Diff(ori.groupPos, ori.pos);
 			groupPos = level.Vec3Offset(pos, offset);
@@ -689,7 +722,7 @@ extend class FCW_Platform
 			if (portTwin && portTwin.group && portTwin.group == plat.group)
 				return false; //Don't collide with portal twin's groupmates
 
-			if (args[ARG_OPTIONS] & OPTFLAG_IGNOREGEO)
+			if (options & OPTFLAG_IGNOREGEO)
 				return false; //Don't collide with any platform in general
 		}
 
@@ -708,7 +741,7 @@ extend class FCW_Platform
 				if (i > -1 && (!plat || plat == self)) //Already handled self
 					continue;
 
-				if (plat != self && (!grp.origin || !(grp.origin.args[ARG_OPTIONS] & OPTFLAG_DIFFPASSCOLL))) //If desired, don't collide with any groupmate's passengers either
+				if (plat != self && (!grp.origin || !(grp.origin.options & OPTFLAG_DIFFPASSCOLL))) //If desired, don't collide with any groupmate's passengers either
 					break;
 
 				if (plat.passengers.Find(other) < plat.passengers.Size())
@@ -804,7 +837,6 @@ extend class FCW_Platform
 		//Helper function for PushObstacle().
 		//Retuns false if 'pushed' was destroyed.
 
-		int crushDamage = args[ARG_CRUSHDMG];
 		if (crushDamage <= 0)
 			return true;
 
@@ -814,7 +846,7 @@ extend class FCW_Platform
 		//then always apply damage.
 		//However, if there was no 'pushForce' whatsoever and 'hurtfulPush' is
 		//desired then the "damage every 4th tic" rule always applies.
-		bool hurtfulPush = (args[ARG_OPTIONS] & OPTFLAG_HURTFULPUSH);
+		bool hurtfulPush = (options & OPTFLAG_HURTFULPUSH);
 		if (noPush)
 		{
 			if (hurtfulPush && !(level.mapTime & 3))
@@ -1188,7 +1220,7 @@ extend class FCW_Platform
 				return false;
 
 			//If either one has this option then don't carry it
-			if ((args[ARG_OPTIONS] | plat.args[ARG_OPTIONS]) & OPTFLAG_IGNOREGEO)
+			if ((options | plat.options) & OPTFLAG_IGNOREGEO)
 				return false;
 
 			//Don't carry platform if it's in our group
@@ -1222,7 +1254,7 @@ extend class FCW_Platform
 
 		//'other' is a groupmate with the same top
 		return (mo &&
-			((args[ARG_OPTIONS] ^ other.args[ARG_OPTIONS]) & OPTFLAG_MIRROR) &&   //Only steal if we have different "mirror" flag settings and
+			((options ^ other.options) & OPTFLAG_MIRROR) &&   //Only steal if we have different "mirror" flag settings and
 			OverlapXY(self, mo, radius) && !OverlapXY(other, mo, other.radius) ); //'mo' is within our radius and NOT within other's radius.
 	}
 
@@ -1736,14 +1768,14 @@ extend class FCW_Platform
 			return true; //No passengers? Nothing to do
 
 		FCW_PlatformGroup grp = bPortCopy ? portTwin.group : self.group;
-		if (!grp || !grp.origin || !(grp.origin.args[ARG_OPTIONS] & OPTFLAG_DIFFPASSCOLL))
+		if (!grp || !grp.origin || !(grp.origin.options & OPTFLAG_DIFFPASSCOLL))
 			UnlinkPassengers();
 
 		//Move our passengers (platform rotation is taken into account)
 		double top = endPos.z + height;
 		double c = cos(delta), s = sin(delta);
 		vector2 piAndRoOffset = (0, 0);
-		if ((piDelta || roDelta) && !(args[ARG_OPTIONS] & OPTFLAG_NOPITCHROLL))
+		if ((piDelta || roDelta) && !(options & OPTFLAG_NOPITCHROLL))
 		{
 			piDelta *= 2;
 			roDelta *= 2;
@@ -1949,7 +1981,7 @@ extend class FCW_Platform
 				//Optionally have passengers push away obstacles.
 				//(No need if this passenger is a platform because
 				//being a platform it already pushed an obstacle.)
-				if (!plat && (args[ARG_OPTIONS] & OPTFLAG_PASSCANPUSH) && mo.blockingMobj)
+				if (!plat && (options & OPTFLAG_PASSCANPUSH) && mo.blockingMobj)
 					PushObstacle(mo.blockingMobj, pushForce, mo);
 
 				Array<Actor> movedBack = { mo };
@@ -2011,7 +2043,7 @@ extend class FCW_Platform
 								PushObstacle(mo.blockingMobj, pushForce, mo);
 						}
 
-						if (!grp || !grp.origin || !(grp.origin.args[ARG_OPTIONS] & OPTFLAG_DIFFPASSCOLL))
+						if (!grp || !grp.origin || !(grp.origin.options & OPTFLAG_DIFFPASSCOLL))
 							LinkPassengers(false);
 
 						return false;
@@ -2040,7 +2072,7 @@ extend class FCW_Platform
 			mo.vel.z = oldVelZ;
 		}
 
-		if (!grp || !grp.origin || !(grp.origin.args[ARG_OPTIONS] & OPTFLAG_DIFFPASSCOLL))
+		if (!grp || !grp.origin || !(grp.origin.options & OPTFLAG_DIFFPASSCOLL))
 			LinkPassengers(true);
 
 		return true;
@@ -2080,7 +2112,7 @@ extend class FCW_Platform
 			{
 				//Add velocity to the passenger we just lost track of.
 				//It's likely to be a player that has jumped away.
-				if (args[ARG_OPTIONS] & OPTFLAG_ADDVELJUMP)
+				if (options & OPTFLAG_ADDVELJUMP)
 					mo.vel += level.Vec3Diff(oldPos, pos);
 
 				ForgetPassenger(i--);
@@ -2409,7 +2441,7 @@ extend class FCW_Platform
 		}
 		else if (!moved) //Blocked by geometry?
 		{
-			if (args[ARG_OPTIONS] & OPTFLAG_IGNOREGEO)
+			if (options & OPTFLAG_IGNOREGEO)
 			{
 				moved = true;
 				if (!bPortCopy)
@@ -2605,8 +2637,11 @@ extend class FCW_Platform
 				plat.portTwin.bNotAutoAimed = plat.bNotAutoAimed;
 				plat.portTwin.bCannotPush = plat.bCannotPush;
 				plat.portTwin.bPushable = plat.bPushable;
-				plat.portTwin.args[ARG_OPTIONS] = plat.args[ARG_OPTIONS];
-				plat.portTwin.args[ARG_CRUSHDMG] = plat.args[ARG_CRUSHDMG];
+				plat.portTwin.options = plat.options;
+				plat.portTwin.crushDamage = plat.crushDamage;
+				plat.portTwin.special = plat.special;
+				for (int i = 0; i < 5; ++i)
+					plat.portTwin.args[i] = plat.args[i];
 
 				if (plat.portTwin.bNoBlockmap && plat.lastUPort)
 				{
@@ -2674,7 +2709,7 @@ extend class FCW_Platform
 			plat.bMoved = false;
 			plat.bInMove = true;
 
-			if (group && group.origin && (group.origin.args[ARG_OPTIONS] & OPTFLAG_DIFFPASSCOLL))
+			if (group && group.origin && (group.origin.options & OPTFLAG_DIFFPASSCOLL))
 				plat.UnlinkPassengers();
 		}
 
@@ -2690,7 +2725,7 @@ extend class FCW_Platform
 
 			plat.bInMove = false;
 
-			if (group && group.origin && (group.origin.args[ARG_OPTIONS] & OPTFLAG_DIFFPASSCOLL))
+			if (group && group.origin && (group.origin.options & OPTFLAG_DIFFPASSCOLL))
 				plat.LinkPassengers(plat.bMoved);
 		}
 		return result;
@@ -2965,11 +3000,11 @@ extend class FCW_Platform
 		//A heavily modified version of the
 		//original function from PathFollower.
 
-		bool linear = (args[ARG_OPTIONS] & OPTFLAG_LINEAR);
-		bool changeAng = ((args[ARG_OPTIONS] | acsFlags) & OPTFLAG_ANGLE);
-		bool changePi  = ((args[ARG_OPTIONS] | acsFlags) & OPTFLAG_PITCH);
-		bool changeRo  = ((args[ARG_OPTIONS] | acsFlags) & OPTFLAG_ROLL);
-		bool faceMove = (args[ARG_OPTIONS] & OPTFLAG_FACEMOVE);
+		bool linear = (options & OPTFLAG_LINEAR);
+		bool changeAng = ((options | acsFlags) & OPTFLAG_ANGLE);
+		bool changePi  = ((options | acsFlags) & OPTFLAG_PITCH);
+		bool changeRo  = ((options | acsFlags) & OPTFLAG_ROLL);
+		bool faceMove = (options & OPTFLAG_FACEMOVE);
 
 		Vector3 dpos = (0, 0, 0);
 		if (faceMove && time > 0)
@@ -3089,16 +3124,16 @@ extend class FCW_Platform
 			if (!plat || plat == self)
 				continue;
 
-			bool changeAng = (plat.args[ARG_OPTIONS] & OPTFLAG_ANGLE);
-			bool changePi = (plat.args[ARG_OPTIONS] & OPTFLAG_PITCH);
-			bool changeRo = (plat.args[ARG_OPTIONS] & OPTFLAG_ROLL);
+			bool changeAng = (plat.options & OPTFLAG_ANGLE);
+			bool changePi = (plat.options & OPTFLAG_PITCH);
+			bool changeRo = (plat.options & OPTFLAG_ROLL);
 
 			vector3 newPos;
 			double newAngle = plat.angle;
 			double newPitch = plat.pitch;
 			double newRoll = plat.roll;
 
-			if (plat.args[ARG_OPTIONS] & OPTFLAG_MIRROR)
+			if (plat.options & OPTFLAG_MIRROR)
 			{
 				//The way we mirror movement is by getting the offset going
 				//from the origin's current position to its 'groupPos'
@@ -3219,7 +3254,7 @@ extend class FCW_Platform
 			if (portTwin)
 				portTwin.bActive = false;
 
-			if ((args[ARG_OPTIONS] & OPTFLAG_RESUMEPATH) && time <= 1.0)
+			if ((options & OPTFLAG_RESUMEPATH) && time <= 1.0)
 			{
 				bActive = true;
 				if (group)
@@ -3236,7 +3271,7 @@ extend class FCW_Platform
 				portDelta = 0;
 				acsFlags = 0;
 
-				bGoToNode = (args[ARG_OPTIONS] & OPTFLAG_GOTONODE);
+				bGoToNode = (options & OPTFLAG_GOTONODE);
 				if (!bGoToNode) //Don't call specials if going to 'currNode'
 				{
 					CallNodeSpecials();
@@ -3249,9 +3284,9 @@ extend class FCW_Platform
 
 				if (!bGoToNode)
 				{
-					double newAngle = (args[ARG_OPTIONS] & OPTFLAG_ANGLE) ? currNode.angle : angle;
-					double newPitch = (args[ARG_OPTIONS] & OPTFLAG_PITCH) ? currNode.pitch : pitch;
-					double newRoll = (args[ARG_OPTIONS] & OPTFLAG_ROLL) ? currNode.roll : roll;
+					double newAngle = (options & OPTFLAG_ANGLE) ? currNode.angle : angle;
+					double newPitch = (options & OPTFLAG_PITCH) ? currNode.pitch : pitch;
+					double newRoll = (options & OPTFLAG_ROLL) ? currNode.roll : roll;
 					PlatMove(currNode.pos, newAngle, newPitch, newRoll, MOVE_TELEPORT);
 				}
 				else
@@ -3272,7 +3307,7 @@ extend class FCW_Platform
 	//============================
 	private void Stopped (vector3 startPos, vector3 endPos)
 	{
-		if (!(args[ARG_OPTIONS] & OPTFLAG_ADDVELSTOP))
+		if (!(options & OPTFLAG_ADDVELSTOP))
 			return;
 
 		vector3 pushForce = level.Vec3Diff(startPos, endPos);
@@ -3317,7 +3352,7 @@ extend class FCW_Platform
 		if ((vel.z < 0 && pos.z <= floorZ) ||
 			(vel.z > 0 && pos.z + height >= ceilingZ))
 		{
-			if (!(args[ARG_OPTIONS] & OPTFLAG_IGNOREGEO))
+			if (!(options & OPTFLAG_IGNOREGEO))
 				vel.z = 0;
 		}
 
@@ -3544,7 +3579,7 @@ extend class FCW_Platform
 
 				bool finishedPath = false;
 				if (!currNode || !currNode.next ||
-					(!goneToNode && !(args[ARG_OPTIONS] & OPTFLAG_LINEAR) && (!currNode.next.next || !prevNode) ) )
+					(!goneToNode && !(options & OPTFLAG_LINEAR) && (!currNode.next.next || !prevNode) ) )
 				{
 					finishedPath = true;
 				}
@@ -3572,9 +3607,9 @@ extend class FCW_Platform
 				//Make sure we're exactly at our intended position.
 				//(It doesn't matter if we can't fit at this "intended position"
 				//because that's what the "stuck actors" logic is there for.)
-				bool changeAng = (!(args[ARG_OPTIONS] & OPTFLAG_FACEMOVE) && ((args[ARG_OPTIONS] | acsFlags) & OPTFLAG_ANGLE));
-				bool changePi =  (!(args[ARG_OPTIONS] & OPTFLAG_FACEMOVE) && ((args[ARG_OPTIONS] | acsFlags) & OPTFLAG_PITCH));
-				bool changeRo =  (!(args[ARG_OPTIONS] & OPTFLAG_FACEMOVE) && ((args[ARG_OPTIONS] | acsFlags) & OPTFLAG_ROLL));
+				bool changeAng = (!(options & OPTFLAG_FACEMOVE) && ((options | acsFlags) & OPTFLAG_ANGLE));
+				bool changePi =  (!(options & OPTFLAG_FACEMOVE) && ((options | acsFlags) & OPTFLAG_PITCH));
+				bool changeRo =  (!(options & OPTFLAG_FACEMOVE) && ((options | acsFlags) & OPTFLAG_ROLL));
 				PlatMove(pNext, changeAng ? pNextAngs.x : angle,
 								changePi  ? pNextAngs.y : pitch,
 								changeRo  ? pNextAngs.z : roll, MOVE_QUICK);
@@ -3753,7 +3788,7 @@ extend class FCW_Platform
 	//============================
 	private void CheckFloorCeiling ()
 	{
-		if (args[ARG_OPTIONS] & OPTFLAG_IGNOREGEO)
+		if (options & OPTFLAG_IGNOREGEO)
 			return;
 
 		if (PlatIsActive() && !PlatHasMoved(true)) //Possibly blocked?
@@ -3997,9 +4032,9 @@ extend class FCW_Platform
 			//
 			// And changing 'OPTFLAG_STARTACTIVE' after it has called PostBeginPlay() is utterly pointless.
 
-			int oldFlags = plat.args[ARG_OPTIONS];
+			int oldFlags = plat.options;
 			int newFlags = (oldFlags & ~toClear) | toSet;
-			plat.args[ARG_OPTIONS] = newFlags;
+			plat.options = newFlags;
 
 			//If for some reason you wanted to cancel ACS induced rotations, you can do it this way
 			plat.acsFlags &= ~(toClear & (OPTFLAG_ANGLE | OPTFLAG_PITCH | OPTFLAG_ROLL));
@@ -4018,7 +4053,7 @@ extend class FCW_Platform
 	{
 		ActorIterator it = platTid ? level.CreateActorIterator(platTid, "FCW_Platform") : null;
 		let plat = FCW_Platform(it ? it.Next() : act);
-		return plat ? plat.args[ARG_OPTIONS] : 0;
+		return plat ? plat.options : 0;
 	}
 
 	//============================
@@ -4028,7 +4063,7 @@ extend class FCW_Platform
 	{
 		ActorIterator it = platTid ? level.CreateActorIterator(platTid, "FCW_Platform") : null;
 		for (let plat = FCW_Platform(it ? it.Next() : act); plat; plat = it ? FCW_Platform(it.Next()) : null)
-			plat.args[ARG_CRUSHDMG] = damage;
+			plat.crushDamage = damage;
 	}
 
 	//============================
@@ -4038,7 +4073,7 @@ extend class FCW_Platform
 	{
 		ActorIterator it = platTid ? level.CreateActorIterator(platTid, "FCW_Platform") : null;
 		let plat = FCW_Platform(it ? it.Next() : act);
-		return plat ? plat.args[ARG_CRUSHDMG] : 0;
+		return plat ? plat.crushDamage : 0;
 	}
 
 	//============================

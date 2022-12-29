@@ -90,7 +90,6 @@ class TESTBlueishPlatform : TESTPlat
 	{
 		Radius 64;
 		Height 16;
-		FCW_Platform.PassengerLookTics 16; //For TEST02
 	}
 }
 
