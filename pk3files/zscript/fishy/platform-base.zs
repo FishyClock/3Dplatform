@@ -1021,9 +1021,22 @@ extend class FCW_Platform
 			return;
 
 		int newTime = currNode.args[NODEARG_TRAVELTIME];
-		if (newTime <= 0)
+		if (!newTime)
 		{
 			timeFrac = 1.0; //Ignore time unit if it's supposed to be "instant"
+			return;
+		}
+
+		if (newTime < 0) //Negative values are speed in map units per tic
+		{
+			double distance = (pNext - pCurr).Length();
+			int speed = -newTime;
+
+			if (speed - 1 >= distance)
+				timeFrac = 1.0; //Too fast
+			else
+				timeFrac = 1.0 / (distance / speed);
+
 			return;
 		}
 
@@ -2972,7 +2985,7 @@ extend class FCW_Platform
 	//============================
 	double Splerp (double p1, double p2, double p3, double p4)
 	{
-		if (p2 ~== p3)
+		if (p1 ~== p2 && p1 ~== p3 && p1 ~== p4)
 			return p2;
 
 		// This was copy-pasted from PathFollower's Splerp() function
@@ -3560,11 +3573,13 @@ extend class FCW_Platform
 						return; //Abort if we got Thing_Remove()'d
 
 					if (prevNode && prevNode.bDestroyed)
+					{
 						prevNode = null; //Prev node got Thing_Remove()'d
-
+					}
 					if (currNode && currNode.bDestroyed)
+					{
 						currNode = null; //Current node got Thing_Remove()'d
-
+					}
 					else if (currNode &&
 						currNode.next && currNode.next.bDestroyed)
 					{
@@ -3577,17 +3592,10 @@ extend class FCW_Platform
 					}
 				}
 
-				bool finishedPath = false;
-				if (!currNode || !currNode.next ||
-					(!goneToNode && !(options & OPTFLAG_LINEAR) && (!currNode.next.next || !prevNode) ) )
-				{
-					finishedPath = true;
-				}
-				else if (currNode)
-				{
-					SetTimeFraction();
+				bool finishedPath = (!currNode || !currNode.next ||
+									(!goneToNode && !(options & OPTFLAG_LINEAR) && (!currNode.next.next || !prevNode) ) );
+				if (!finishedPath)
 					SetHoldTime();
-				}
 
 				//Stopped() must be called before PlatMove() in this case
 				if (finishedPath || holdTime > 0)
@@ -3621,6 +3629,7 @@ extend class FCW_Platform
 				else
 				{
 					SetInterpolationCoordinates();
+					SetTimeFraction();
 					time -= 1.0;
 					reachedTime = time;
 					vel = (0, 0, 0);
@@ -3644,7 +3653,7 @@ extend class FCW_Platform
 			{
 				Actor mo;
 				onGround = bOnMobj = ((lastGetNPTime == level.mapTime && !lastGetNPResult) ||
-					((mo = blockingMobj) && mo.pos.z <= pos.z && OverlapXY(self, mo)) ||
+					((mo = blockingMobj) && mo.pos.z <= pos.z && OverlapXY(self, mo) ) ||
 					!TestMobjZ(true) );
 			}
 

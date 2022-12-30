@@ -49,9 +49,14 @@ map VMABORT "Don't do that! test"
 {
 }
 
+map SPEED "Platform racing"
+{
+}
+
 clearEpisodes
 episode MAP01 { name = "Demo map" }
 episode TEST01 { name = "Test map #1" }
 episode TEST03 { name = "Test map #2" }
 episode TEST02 { name = "Stress test" }
+episode SPEED { name = "Speed test" }
 episode VMABORT { name = "VM abort test" }
