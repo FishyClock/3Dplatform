@@ -357,8 +357,8 @@ extend class FCW_Platform
 	//1) Making it portal aware.
 	//2) Can be arbitrarily set through ACS (See utility functions below).
 	//3) If following a path, can course correct itself after being pushed or carried by another platform.
-	vector3 pCurr, pPrev, pNext, pNextNext; //Positions in the world.
-	vector3 pCurrAngs, pPrevAngs, pNextAngs, pNextNextAngs; //X = angle, Y = pitch, Z = roll.
+	vector3 pCurr, pPrev, pNext, pLast; //Positions in the world.
+	vector3 pCurrAngs, pPrevAngs, pNextAngs, pLastAngs; //X = angle, Y = pitch, Z = roll.
 
 	//============================
 	// BeginPlay (override)
@@ -414,8 +414,8 @@ extend class FCW_Platform
 		lastGetNPResult = false;
 		lastGetUPTime = -1;
 
-		pCurr = pPrev = pNext = pNextNext = (0, 0, 0);
-		pCurrAngs = pPrevAngs = pNextAngs = pNextNextAngs = (0, 0, 0);
+		pCurr = pPrev = pNext = pLast = (0, 0, 0);
+		pCurrAngs = pPrevAngs = pNextAngs = pLastAngs = (0, 0, 0);
 	}
 
 	//============================
@@ -1131,23 +1131,23 @@ extend class FCW_Platform
 
 			if (nextNode.next)
 			{
-				pNextNext = pos + Vec3To(nextNode.next); //Make it portal aware in a way so TryMove() can handle it
-				pNextNextAngs = pNextAngs + (
+				pLast = pos + Vec3To(nextNode.next); //Make it portal aware in a way so TryMove() can handle it
+				pLastAngs = pNextAngs + (
 				DeltaAngle(pNextAngs.x, nextNode.next.angle + portDelta),
 				DeltaAngle(pNextAngs.y, nextNode.next.pitch),
 				DeltaAngle(pNextAngs.z, nextNode.next.roll));
 			}
 			else //No nextNode.next
 			{
-				pNextNext = pNext;
-				pNextNextAngs = pNextAngs;
+				pLast = pNext;
+				pLastAngs = pNextAngs;
 			}
 		}
 
 		if (!currNode || (!currNode.next && !bGoToNode))
 		{
-			pNextNext = pNext = pCurr;
-			pNextNextAngs = pNextAngs = pCurrAngs;
+			pLast = pNext = pCurr;
+			pLastAngs = pNextAngs = pCurrAngs;
 		}
 
 		if (!prevNode || bGoToNode)
@@ -1163,31 +1163,31 @@ extend class FCW_Platform
 	private void AdjustInterpolationCoordinates (vector3 startPos, vector3 endPos, double delta)
 	{
 		//Used for when crossing portals
-	
+
 		//Offset and possibly rotate the coordinates
 		pPrev -= startPos;
 		pCurr -= startPos;
 		pNext -= startPos;
-		pNextNext -= startPos;
+		pLast -= startPos;
 
 		if (delta)
 		{
 			pPrevAngs.x += delta;
 			pCurrAngs.x += delta;
 			pNextAngs.x += delta;
-			pNextNextAngs.x += delta;
+			pLastAngs.x += delta;
 
 			//Rotate them
 			double c = cos(delta), s = sin(delta);
 			pPrev.xy = (pPrev.x*c - pPrev.y*s, pPrev.x*s + pPrev.y*c);
 			pCurr.xy = (pCurr.x*c - pCurr.y*s, pCurr.x*s + pCurr.y*c);
 			pNext.xy = (pNext.x*c - pNext.y*s, pNext.x*s + pNext.y*c);
-			pNextNext.xy = (pNextNext.x*c - pNextNext.y*s, pNextNext.x*s + pNextNext.y*c);
+			pLast.xy = (pLast.x*c - pLast.y*s, pLast.x*s + pLast.y*c);
 		}
 		pPrev += endPos;
 		pCurr += endPos;
 		pNext += endPos;
-		pNextNext += endPos;
+		pLast += endPos;
 	}
 
 	//============================
@@ -3023,9 +3023,9 @@ extend class FCW_Platform
 		}
 		else //Spline
 		{
-			newPos.x = Splerp(pPrev.x, pCurr.x, pNext.x, pNextNext.x);
-			newPos.y = Splerp(pPrev.y, pCurr.y, pNext.y, pNextNext.y);
-			newPos.z = Splerp(pPrev.z, pCurr.z, pNext.z, pNextNext.z);
+			newPos.x = Splerp(pPrev.x, pCurr.x, pNext.x, pLast.x);
+			newPos.y = Splerp(pPrev.y, pCurr.y, pNext.y, pLast.y);
+			newPos.z = Splerp(pPrev.z, pCurr.z, pNext.z, pLast.z);
 		}
 
 		if (faceMove && changeRo)
@@ -3045,9 +3045,9 @@ extend class FCW_Platform
 			{
 				dpos = newPos;
 				time = timeFrac;
-				newPos.x = Splerp(pPrev.x, pCurr.x, pNext.x, pNextNext.x);
-				newPos.y = Splerp(pPrev.y, pCurr.y, pNext.y, pNextNext.y);
-				newPos.z = Splerp(pPrev.z, pCurr.z, pNext.z, pNextNext.z);
+				newPos.x = Splerp(pPrev.x, pCurr.x, pNext.x, pLast.x);
+				newPos.y = Splerp(pPrev.y, pCurr.y, pNext.y, pLast.y);
+				newPos.z = Splerp(pPrev.z, pCurr.z, pNext.z, pLast.z);
 				time = 0;
 				dpos = newPos - dpos;
 				newPos -= dpos;
@@ -3085,15 +3085,15 @@ extend class FCW_Platform
 			{
 				//Interpolate angle
 				if (changeAng)
-					newAngle = Splerp(pPrevAngs.x, pCurrAngs.x, pNextAngs.x, pNextNextAngs.x);
+					newAngle = Splerp(pPrevAngs.x, pCurrAngs.x, pNextAngs.x, pLastAngs.x);
 
 				//Interpolate pitch
 				if (changePi)
-					newPitch = Splerp(pPrevAngs.y, pCurrAngs.y, pNextAngs.y, pNextNextAngs.y);
+					newPitch = Splerp(pPrevAngs.y, pCurrAngs.y, pNextAngs.y, pLastAngs.y);
 
 				//Interpolate roll
 				if (changeRo)
-					newRoll = Splerp(pPrevAngs.z, pCurrAngs.z, pNextAngs.z, pNextNextAngs.z);
+					newRoll = Splerp(pPrevAngs.z, pCurrAngs.z, pNextAngs.z, pLastAngs.z);
 			}
 		}
 
@@ -3944,11 +3944,11 @@ extend class FCW_Platform
 		{
 			plat.CommonACSSetup(travelTime);
 
-			plat.pNext = plat.pNextNext = plat.pos + (exactPos ?
+			plat.pNext = plat.pLast = plat.pos + (exactPos ?
 				level.Vec3Diff(plat.pos, (x, y, z)) : //Make it portal aware in a way so TryMove() can handle it
 				(x, y, z)); //Absolute offset so TryMove() can handle it
 
-			plat.pNextAngs = plat.pNextNextAngs = plat.pCurrAngs + (
+			plat.pNextAngs = plat.pLastAngs = plat.pCurrAngs + (
 				exactAngs ? DeltaAngle(plat.pCurrAngs.x, ang) : ang,
 				exactAngs ? DeltaAngle(plat.pCurrAngs.y, pi) : pi,
 				exactAngs ? DeltaAngle(plat.pCurrAngs.z, ro) : ro);
@@ -3971,9 +3971,9 @@ extend class FCW_Platform
 		{
 			plat.CommonACSSetup(travelTime);
 
-			plat.pNext = plat.pNextNext = plat.pos + plat.Vec3To(spot); //Make it portal aware in a way so TryMove() can handle it
+			plat.pNext = plat.pLast = plat.pos + plat.Vec3To(spot); //Make it portal aware in a way so TryMove() can handle it
 
-			plat.pNextAngs = plat.pNextNextAngs = plat.pCurrAngs + (
+			plat.pNextAngs = plat.pLastAngs = plat.pCurrAngs + (
 				!dontRotate ? DeltaAngle(plat.pCurrAngs.x, spot.angle) : 0,
 				!dontRotate ? DeltaAngle(plat.pCurrAngs.y, spot.pitch) : 0,
 				!dontRotate ? DeltaAngle(plat.pCurrAngs.z, spot.roll) : 0);
