@@ -79,7 +79,7 @@ class FCW_Platform : Actor abstract
 
 		//$Arg0 Interpolation Point
 		//$Arg0Type 14
-		//$Arg0Tooltip Must be 'Platform Interpolation Point' or GZDoom's 'Interpolation Point' class.\nWhichever is more convenient.\n'Interpolation Special' works with both.
+		//$Arg0Tooltip Must be 'Platform Interpolation Point' or GZDoom's 'Interpolation Point' class.\nWhichever is more convenient.\n'Interpolation Special' works with both.\nNOTE: A negative 'Travel Time' is interpreted as speed in map units per tic. (This works on both interpolation point classes.)
 
 		//$Arg1 Options
 		//$Arg1Type 12
@@ -157,12 +157,14 @@ class FCW_PlatformNode : InterpolationPoint
 		//$Arg0Tooltip Next point must be another platform interpolation point.\n(It can't be the old interpolation point class.)
 
 		//$Arg1 Travel Time
+		//$Arg1Tooltip A negative 'Travel Time' is interpreted as speed in map units per tic. (Even on old interpolation points.)
 
 		//$Arg2 Hold Time
 
 		//$Arg3 Travel Time Unit
 		//$Arg3Type 11
 		//$Arg3Enum {0 = "Octics"; 1 = "Tics"; 2 = "Seconds";}
+		//$Arg3Tooltip Does nothing if 'Travel Time' is negative.
 
 		//$Arg4 Hold Time Unit
 		//$Arg4Type 11
@@ -1013,6 +1015,25 @@ extend class FCW_Platform
 	}
 
 	//============================
+	// SetTravelSpeed
+	//============================
+	private void SetTravelSpeed (int speed)
+	{
+		if (!speed)
+		{
+			timeFrac = 1.0; //Zero speed means "instant"
+		}
+		else
+		{
+			double distance = (pNext - pCurr).Length();
+			if (speed - 1 >= distance)
+				timeFrac = 1.0; //Too fast
+			else
+				timeFrac = 1.0 / (distance / speed);
+		}
+	}
+
+	//============================
 	// SetTimeFraction
 	//============================
 	private void SetTimeFraction ()
@@ -1021,22 +1042,9 @@ extend class FCW_Platform
 			return;
 
 		int newTime = currNode.args[NODEARG_TRAVELTIME];
-		if (!newTime)
+		if (newTime <= 0) //Negative values are speed in map units per tic
 		{
-			timeFrac = 1.0; //Ignore time unit if it's supposed to be "instant"
-			return;
-		}
-
-		if (newTime < 0) //Negative values are speed in map units per tic
-		{
-			double distance = (pNext - pCurr).Length();
-			int speed = -newTime;
-
-			if (speed - 1 >= distance)
-				timeFrac = 1.0; //Too fast
-			else
-				timeFrac = 1.0 / (distance / speed);
-
+			SetTravelSpeed(-newTime);
 			return;
 		}
 
@@ -2983,10 +2991,21 @@ extend class FCW_Platform
 	//============================
 	// Splerp
 	//============================
-	double Splerp (double p1, double p2, double p3, double p4)
+	double Splerp (double p1, double p2, double p3, double p4, bool isAngle = false)
 	{
-		if (p1 ~== p2 && p1 ~== p3 && p1 ~== p4)
-			return p2;
+		//With angles it's enough that "current" (p2) and "next" (p3) are approximately the same
+		//in which case the other two points that influence the spline will be completely ignored.
+		//(It just looks bad otherwise.)
+		if (isAngle)
+		{
+			if (p2 ~== p3)
+				return p2;
+		}
+		else //World coordinate
+		{
+			if (p1 ~== p2 && p1 ~== p3 && p1 ~== p4)
+				return p2;
+		}
 
 		// This was copy-pasted from PathFollower's Splerp() function
 		//
@@ -3098,15 +3117,15 @@ extend class FCW_Platform
 			{
 				//Interpolate angle
 				if (changeAng)
-					newAngle = Splerp(pPrevAngs.x, pCurrAngs.x, pNextAngs.x, pLastAngs.x);
+					newAngle = Splerp(pPrevAngs.x, pCurrAngs.x, pNextAngs.x, pLastAngs.x, true);
 
 				//Interpolate pitch
 				if (changePi)
-					newPitch = Splerp(pPrevAngs.y, pCurrAngs.y, pNextAngs.y, pLastAngs.y);
+					newPitch = Splerp(pPrevAngs.y, pCurrAngs.y, pNextAngs.y, pLastAngs.y, true);
 
 				//Interpolate roll
 				if (changeRo)
-					newRoll = Splerp(pPrevAngs.z, pCurrAngs.z, pNextAngs.z, pLastAngs.z);
+					newRoll = Splerp(pPrevAngs.z, pCurrAngs.z, pNextAngs.z, pLastAngs.z, true);
 			}
 		}
 
@@ -3631,6 +3650,12 @@ extend class FCW_Platform
 					SetInterpolationCoordinates();
 					SetTimeFraction();
 					time -= 1.0;
+
+					//Don't go faster than the next point's travel time/speed would allow it.
+					//This can happen if the previous speed was very high.
+					if (time > timeFrac)
+						time = timeFrac;
+
 					reachedTime = time;
 					vel = (0, 0, 0);
 				}
@@ -3914,14 +3939,13 @@ extend class FCW_Platform
 	//============================
 	// CommonACSSetup
 	//============================
-	private void CommonACSSetup (int travelTime)
+	private void CommonACSSetup ()
 	{
 		currNode = null; //Deactivate when done moving
 		prevNode = null;
 		time = 0;
 		reachedTime = 0;
 		holdTime = 0;
-		timeFrac = 1.0 / max(1, travelTime); //Time unit is always in tics from the ACS side
 		bActive = true;
 		if (group)
 			group.origin = self;
@@ -3951,7 +3975,7 @@ extend class FCW_Platform
 		ActorIterator it = platTid ? level.CreateActorIterator(platTid, "FCW_Platform") : null;
 		for (let plat = FCW_Platform(it ? it.Next() : act); plat; plat = it ? FCW_Platform(it.Next()) : null)
 		{
-			plat.CommonACSSetup(travelTime);
+			plat.CommonACSSetup();
 
 			plat.pNext = plat.pLast = plat.pos + (exactPos ?
 				level.Vec3Diff(plat.pos, (x, y, z)) : //Make it portal aware in a way so TryMove() can handle it
@@ -3961,6 +3985,11 @@ extend class FCW_Platform
 				exactAngs ? DeltaAngle(plat.pCurrAngs.x, ang) : ang,
 				exactAngs ? DeltaAngle(plat.pCurrAngs.y, pi) : pi,
 				exactAngs ? DeltaAngle(plat.pCurrAngs.z, ro) : ro);
+
+			if (travelTime <= 0) //Negative values are interpreted as speed in map units per tic
+				plat.SetTravelSpeed(-travelTime);
+			else
+				plat.timeFrac = 1.0 / travelTime; //Time unit is always in tics from the ACS side
 		}
 	}
 
@@ -3978,7 +4007,7 @@ extend class FCW_Platform
 		it = platTid ? level.CreateActorIterator(platTid, "FCW_Platform") : null;
 		for (let plat = FCW_Platform(it ? it.Next() : act); plat; plat = it ? FCW_Platform(it.Next()) : null)
 		{
-			plat.CommonACSSetup(travelTime);
+			plat.CommonACSSetup();
 
 			plat.pNext = plat.pLast = plat.pos + plat.Vec3To(spot); //Make it portal aware in a way so TryMove() can handle it
 
@@ -3986,6 +4015,11 @@ extend class FCW_Platform
 				!dontRotate ? DeltaAngle(plat.pCurrAngs.x, spot.angle) : 0,
 				!dontRotate ? DeltaAngle(plat.pCurrAngs.y, spot.pitch) : 0,
 				!dontRotate ? DeltaAngle(plat.pCurrAngs.z, spot.roll) : 0);
+
+			if (travelTime <= 0) //Negative values are interpreted as speed in map units per tic
+				plat.SetTravelSpeed(-travelTime);
+			else
+				plat.timeFrac = 1.0 / travelTime; //Time unit is always in tics from the ACS side
 		}
 	}
 
