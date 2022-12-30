@@ -1,12 +1,5 @@
 class DemoGenericPlat : FCW_Platform abstract
 {
-	Default
-	{
-		//For testing 
-		//FCW_Platform.PassengerLookTics 8;
-		FCW_Platform.PortalLookTics 0; //(There are no non-static line portals on MAP01)
-	}
-
 	States
 	{
 	Spawn:

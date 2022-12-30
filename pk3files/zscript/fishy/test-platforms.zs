@@ -78,7 +78,9 @@ class TESTSPritePitchIndicator : Actor
 				Destroy();
 				return;
 			}
-			SetOrigin(tracer.Vec3Offset(cos(tracer.angle)*tracer.radius, sin(tracer.angle)*tracer.radius, sin(-tracer.pitch)*tracer.radius), true);
+			quat q = quat.FromAngles(tracer.angle, tracer.pitch, tracer.roll);
+			vector3 offset = q * (tracer.radius, 0, 0);
+			SetOrigin(level.Vec3Offset(tracer.pos, offset), true);
 		}
 		Loop;
 	}
