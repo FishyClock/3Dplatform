@@ -1026,10 +1026,10 @@ extend class FCW_Platform
 		else
 		{
 			double distance = (pNext - pCurr).Length();
-			if (speed - 1 >= distance)
+			if (distance <= speed || (distance /= speed) ~== 0)
 				timeFrac = 1.0; //Too fast
 			else
-				timeFrac = 1.0 / (distance / speed);
+				timeFrac = 1.0 / distance;
 		}
 	}
 
