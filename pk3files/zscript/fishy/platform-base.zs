@@ -3650,6 +3650,12 @@ extend class FCW_Platform
 					SetInterpolationCoordinates();
 					SetTimeFraction();
 					time -= 1.0;
+
+					//Don't go faster than the next point's travel time/speed would allow it.
+					//This can happen if the previous speed was very high.
+					if (time > timeFrac)
+						time = timeFrac;
+
 					reachedTime = time;
 					vel = (0, 0, 0);
 				}
