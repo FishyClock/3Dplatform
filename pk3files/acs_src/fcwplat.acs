@@ -1,0 +1,304 @@
+#library "fcwplat"
+#include "zcommon.acs"
+
+// All that's here are wrapper functions for the ACS utility functions of the FCW_Platform class.
+// This allows for neater ACS code, but otherwise isn't essential at all.
+// So instead of
+// ScriptCall("FCW_Platform", "DoThing", a, b, c);
+// You'd use
+// FCWPlat_DoThing(a, b, c);
+//
+// Please note that "double" in ZScript are fixed point numbers in ACS.
+// Meaning while 0 is interpreted as 0.0, 90 is NOT interpreted as 90.0
+//
+// Also, ACS functions can't be defined with arguments that have default values
+// so to make this work there will be multiple functions that call the same
+// function from FCW_Platform. There is deliberate redundancy.
+// (Yes, this was compiled with acc.exe)
+//
+// Lastly, the order of arguments here may not match the order of arguments
+// of the function being ScriptCall()'d. See FCWPlat_MoveAndRotate().
+
+
+//Bitfield values to be used with FCWPlat_SetOptions() and FCWPlat_GetOptions().
+//These are the same as the ones in platform-base.zs sans the FCWP_ prefix.
+#libdefine FCWP_OPTFLAG_LINEAR			1
+#libdefine FCWP_OPTFLAG_ANGLE			(1<<1)
+#libdefine FCWP_OPTFLAG_PITCH			(1<<2)
+#libdefine FCWP_OPTFLAG_ROLL			(1<<3)
+#libdefine FCWP_OPTFLAG_FACEMOVE		(1<<4)
+#libdefine FCWP_OPTFLAG_IGNOREGEO		(1<<5)
+#libdefine FCWP_OPTFLAG_STARTACTIVE		(1<<6)
+#libdefine FCWP_OPTFLAG_MIRROR			(1<<7)
+#libdefine FCWP_OPTFLAG_ADDVELJUMP		(1<<8)
+#libdefine FCWP_OPTFLAG_ADDVELSTOP		(1<<9)
+#libdefine FCWP_OPTFLAG_GOTONODE		(1<<10)
+#libdefine FCWP_OPTFLAG_RESUMEPATH		(1<<11)
+#libdefine FCWP_OPTFLAG_HURTFULPUSH		(1<<12)
+#libdefine FCWP_OPTFLAG_NOPITCHROLL		(1<<13)
+#libdefine FCWP_OPTFLAG_PASSCANPUSH		(1<<14)
+#libdefine FCWP_OPTFLAG_DIFFPASSCOLL	(1<<15)
+
+function void FCWPlat_Move (int platTid, int/*fixed*/ x, int/*fixed*/ y, int/*fixed*/ z, bool exactPos, int travelTime)
+{
+	/*********************************************************************************
+	**Moves all platforms with tid "platTid"**
+
+	- platTid = TID of the platform(s) to move. if 0 then this is the script activator.
+
+	- x/y/z = See exactPos.
+
+	- exactPos = if "false" x/y/z are offsets from the platform's current position.
+	  If "true" x/y/z are absolute map coordinates to move to.
+
+	- travelTime = How many tics until platform completes the move.
+	  if this is a negative number then this is speed in map units per tic instead.
+	*********************************************************************************/
+	ScriptCall("FCW_Platform", "Move", platTid, x, y, z, exactPos, travelTime);
+}
+
+function void FCWPlat_Rotate (int platTid, int/*fixed*/ ang, int/*fixed*/ pi, int/*fixed*/ ro, bool exactAngs, int travelTime)
+{
+	/*********************************************************************************
+	**Rotates all platforms with tid "platTid"**
+
+	- platTid = TID of the platform(s) to rotate. if 0 then this is the script activator.
+
+	- ang/pi/ro = See exactAngs.
+
+	- exactAngs = if "false" ang/pi/ro are offsets.
+	  If "true" ang/pi/ro are exact values.
+
+	  Note: if "true" the platform will take the shortest rotation direction until its
+	  angle/pitch/roll matches the given values. If "false" the rotation direction is maintained.
+
+	  Eg. if "false" and "ang" is 360.0, platform will rotate 360 degrees counterclockwise,
+	  while -360.0 will rotate 360 degrees clockwise.
+
+	  In addition, the FCWP_OPTFLAG_FACEMOVE (face movement direction) option in combination
+	  with the FCWP_OPTFLAG_ANGLE/PITCH/ROLL options takes precedence over any rotations
+	  on the affected axes.
+
+	- travelTime = How many tics until platform completes the rotation.
+	  if this is a negative number then this is speed in map units per tic instead.
+	*********************************************************************************/
+	ScriptCall("FCW_Platform", "Move", platTid, 0, 0, 0, false, travelTime, ang, pi, ro, exactAngs);
+}
+
+function void FCWPlat_MoveAndRotate (int platTid, int/*fixed*/ x, int/*fixed*/ y, int/*fixed*/ z, bool exactPos, int/*fixed*/ ang, int/*fixed*/ pi, int/*fixed*/ ro, bool exactAngs, int travelTime)
+{
+	/*********************************************************************************
+	**Moves and/or rotates all platforms with tid "platTid"**
+
+	- platTid = TID of the platform(s) to move/rotate. if 0 then this is the script activator.
+
+	- x/y/z = See exactPos.
+
+	- exactPos = if "false" x/y/z are offsets from the platform's current position.
+	  If "true" x/y/z are absolute map coordinates to move to.
+
+	- ang/pi/ro = See exactAngs.
+
+	- exactAngs = if "false" ang/pi/ro are offsets.
+	  If "true" ang/pi/ro are exact values.
+
+	  Note: if "true" the platform will take the shortest rotation direction until its
+	  angle/pitch/roll matches the given values. If "false" the rotation direction is maintained.
+
+	  Eg. if "false" and "ang" is 360.0, platform will rotate 360 degrees counterclockwise,
+	  while -360.0 will rotate 360 degrees clockwise.
+
+	  In addition, the FCWP_OPTFLAG_FACEMOVE (face movement direction) option in combination
+	  with the FCWP_OPTFLAG_ANGLE/PITCH/ROLL options takes precedence over any rotations
+	  on the affected axes.
+
+	- travelTime = How many tics until platform completes the move and/or rotation.
+	  if this is a negative number then this is speed in map units per tic instead.
+	*********************************************************************************/
+	ScriptCall("FCW_Platform", "Move", platTid, x, y, z, exactPos, travelTime, ang, pi, ro, exactAngs);
+}
+
+function void FCWPlat_MoveToSpot (int platTid, int spotTid, int travelTime)
+{
+	/*********************************************************************************
+	**Moves all platforms with tid "platTid" to the first found actor with tid "spotTid" (eg. MapSpot).**
+
+	- platTid = TID of the platform(s) to move. if 0 then this is the script activator.
+
+	- spotTid = TID of actor to move to. if 0 then this is the script activator.
+
+	- travelTime = How many tics until platform completes the move.
+	  if this is a negative number then this is speed in map units per tic instead.
+	*********************************************************************************/
+	ScriptCall("FCW_Platform", "MoveToSpot", platTid, spotTid, travelTime, true);
+}
+
+function void FCWPlat_MoveToSpotAndRotate (int platTid, int spotTid, int travelTime)
+{
+	/*********************************************************************************
+	**Moves all platforms with tid "platTid" to the first found actor with tid "spotTid" (eg. MapSpot).
+	The platforms will also rotate (the shortest direction) to match the spot's angle/pitch/roll.**
+
+	- platTid = TID of the platform(s) to move/rotate. if 0 then this is the script activator.
+
+	- spotTid = TID of actor to move to and match its angle/pitch/roll. if 0 then this is the script activator.
+
+	  Regarding rotations, the FCWP_OPTFLAG_FACEMOVE (face movement direction) option in combination
+	  with the FCWP_OPTFLAG_ANGLE/PITCH/ROLL options takes precedence over any rotations
+	  on the affected axes.
+
+	- travelTime = How many tics until platform completes the move and/or rotation.
+	  if this is a negative number then this is speed in map units per tic instead.
+	*********************************************************************************/
+	ScriptCall("FCW_Platform", "MoveToSpot", platTid, spotTid, travelTime, false);
+}
+
+function bool FCWPlat_IsActive (int platTid)
+{
+	/*********************************************************************************
+	**Returns "true" when it finds the first active platform with tid "platTid",
+	otherwise returns "false". Being "active" also implies velocity based movement. (eg. being pushed)
+	(Please note if the platform is in a group then what's actually checked is the group origin.)**
+
+	- platTid = TID of the platform to check. if 0 then this is the script activator.
+	*********************************************************************************/
+	return ScriptCall("FCW_Platform", "IsActive", platTid);
+}
+
+function bool FCWPlat_HasMoved (int platTid, bool posOnly)
+{
+	/*********************************************************************************
+	**Returns "true" when it finds the first active platform with tid "platTid" that has moved since last tic,
+	otherwise returns "false". Being "active" also implies velocity based movement. (eg. being pushed)
+	(Please note if the platform is in a group then what's actually checked is the group origin.)**
+
+	- platTid = TID of the platform to check. if 0 then this is the script activator.
+
+	- posOnly = if true, only checks if position has changed since last tic.
+	  If false, checks if position/angle/pitch/roll has changed since last tic.
+	*********************************************************************************/
+	return ScriptCall("FCW_Platform", "HasMoved", platTid, posOnly);
+}
+
+function void FCWPlat_SetNodePath (int platTid, int nodeTid)
+{
+	/*********************************************************************************
+	**Finds all platforms with tid "platTId" and makes them target the first found
+	interpolation point with tid "nodeTid". Specifically, this is the path to follow when Thing_Activate()-ing
+	the platform. It won't stop/change an active platform.**
+
+	- platTid = TID of the platform(s) whose path to set. If 0 then this is the script activator.
+
+	- nodeTid = TID of the interpolation point for platform(s) to target.
+	*********************************************************************************/
+	ScriptCall("FCW_Platform", "SetNodePath", platTid, nodeTid);
+}
+
+function void FCWPlat_SetOptions (int platTid, int toSet, int toClear)
+{
+	/*********************************************************************************
+	**Finds all platforms with tid "platTId" and sets and/or clears their options (thing argument 2).**
+
+	- platTid = TID of the platform(s) whose options to set/clear. If 0 then this is the script activator.
+
+	- toSet = the option-flags (bitfield) to set. (Please use the FCWP_OPTFLAG_* constants, see above.)
+
+	- toClear = the option-flags (bitfield) to clear.
+	*********************************************************************************/
+	ScriptCall("FCW_Platform", "SetOptions", platTid, toSet, toClear);
+}
+
+function int FCWPlat_GetOptions (int platTid)
+{
+	/*********************************************************************************
+	**Finds the first platform with tid "platTid" and returns its options. (This is a bitfield).**
+
+	- platTid = TID of the platform whose options to get. If 0 then this is the script activator.
+
+	NOTE: If checking the script activator and it's not a platform class, this returns 0.
+	*********************************************************************************/
+	return ScriptCall("FCW_Platform", "GetOptions", platTid);
+}
+
+function void FCWPlat_SetCrushDamage (int platTid, int damage)
+{
+	/*********************************************************************************
+	**Finds all platforms with tid "platTId" and sets their crush damage.**
+
+	- platTid = TID of the platform(s) whose damage to set. If 0 then this is the script activator.
+
+	- damage = the crush damage to set.
+	*********************************************************************************/
+	ScriptCall("FCW_Platform", "SetCrushDamage", platTid, damage);
+}
+
+function int FCWPlat_GetCrushDamage (int platTid)
+{
+	/*********************************************************************************
+	**Finds the first platform with tid "platTid" and returns its crush damage.**
+
+	- platTid = TID of the platform whose crush damage to get. If 0 then this is the script activator.
+
+	NOTE: If checking the script activator and it's not a platform class, this returns 0.
+	*********************************************************************************/
+	return ScriptCall("FCW_Platform", "GetCrushDamage", platTid);
+}
+
+function void FCWPlat_MakeGroup (int platTid, int otherPlatTid)
+{
+	/*********************************************************************************
+	**Find all platforms with tid "platTid" and all platforms with tid "otherPlatTid" and groups them together.**
+
+	- platTid = TID of the first platform(s) to group. If 0 then this is the script activator.
+
+	- otherPlatTid = TID of the other platform(s) to group. If 0 then this is the script activator.
+
+	NOTE: If each platform already belongs to their own group, those two groups end up
+	merging together. Meaning all members of group A will join with all members of group B.
+	*********************************************************************************/
+	ScriptCall("FCW_Platform", "MakeGroup", platTid, otherPlatTid);
+}
+
+function void FCWPlat_LeaveGroup (int platTid)
+{
+	/*********************************************************************************
+	**Find all platforms with tid "platTid" and makes them leave their group.**
+
+	- platTid = TID of the platform(s) who will leave its/their group(s). If 0 then this is the script activator.
+	*********************************************************************************/
+	ScriptCall("FCW_Platform", "LeaveGroup", platTid);
+}
+
+function void FCWPlat_DisbandGroup (int platTid)
+{
+	/*********************************************************************************
+	**Find all platforms with tid "platTid" and disbands their group.**
+
+	- platTid = TID of the platform(s) whose group(s) will disband. If 0 then this is the script activator.
+	*********************************************************************************/
+	ScriptCall("FCW_Platform", "DisbandGroup", platTid);
+}
+
+function void FCWPlat_SetAirFriction (int platTid, int/*fixed*/ fric)
+{
+	/*********************************************************************************
+	**Finds all platforms with tid "platTid" and sets their "AirFriction" property.**
+
+	- platTid = TID of the platform(s) whose "AirFriction" to set. If 0 then this is the script activator.
+
+	- fric = The friction to set.
+	*********************************************************************************/
+	ScriptCall("FCW_Platform", "SetAirFriction", platTid, fric);
+}
+
+function int/*fixed*/ FCWPlat_GetAirFriction (int platTid)
+{
+	/*********************************************************************************
+	**Finds the first platform with tid "platTid" and returns its "AirFriction" property.**
+
+	- platTid = TID of the platform whose "AirFriction" to get. If 0 then this is the script activator.
+
+	NOTE: If checking the script activator and it's not a platform class, this returns 0.
+	*********************************************************************************/
+	return ScriptCall("FCW_Platform", "GetAirFriction", platTid);
+}
