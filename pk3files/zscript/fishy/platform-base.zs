@@ -454,20 +454,30 @@ extend class FCW_Platform
 		crushDamage = args[ARG_CRUSHDMG];
 		bool noPrefix = (args[ARG_GROUPTID] && !SetUpGroup(args[ARG_GROUPTID], false));
 
-		//If the group origin is already active then call PlatMove() here to move us
-		//along with the rest of the group. This matters if the origin's first
-		//interpolation point has a defined hold time because depending on who ticks first
-		//some members might have already moved and some might have not.
+		//Having a group origin at this point implies the group is already on the move.
+		//We need to call PlatMove() on the origin here to move us along with the rest
+		//of the group. This matters if the origin's first interpolation point has a
+		//defined hold time because depending on who ticks first some members might have
+		//already moved and some might have not.
 		if (group && group.origin)
 		{
 			let ori = group.origin;
-			if (ori.pos != ori.groupPos ||
-				ori.angle != ori.groupAngle ||
-				ori.pitch != ori.groupPitch ||
-				ori.roll != ori.groupRoll)
+			SetOrbitInfo();
+			ori.PlatMove(ori.pos, ori.angle, ori.pitch, ori.roll, MOVE_TELEPORT);
+		}
+		else if (group && !group.origin)
+		{
+			//Same issue if we're grouping with a lone, active platform.
+			//Make it the origin and call PlatMove() for the same reason.
+			for (int i = 0; i < group.members.Size(); ++i)
 			{
-				SetOrbitInfo();
-				ori.PlatMove(ori.pos, ori.angle, ori.pitch, ori.roll, MOVE_TELEPORT);
+				let plat = group.GetMember(i);
+				if (plat && (plat.bActive || plat.vel != (0, 0, 0)))
+				{
+					group.SetGroupOrigin(plat);
+					plat.PlatMove(plat.pos, plat.angle, plat.pitch, plat.roll, MOVE_TELEPORT);
+					break;
+				}
 			}
 		}
 
@@ -715,15 +725,15 @@ extend class FCW_Platform
 	//============================
 	// PlatRotateVector
 	//============================
-	static vector3 PlatRotateVector (vector3 vec, double yDelta, double pDelta, double rDelta, double baseAngle, bool backward)
+	static vector3 PlatRotateVector (vector3 vec, double yaDelta, double piDelta, double roDelta, double baseAngle, bool backward)
 	{
 		//Used by MoveGroup()   where backward == false
 		//and UpdateGroupInfo() where backward == true.
 
-		if (!pDelta && !rDelta)
+		if (!piDelta && !roDelta)
 		{
-			if (yDelta)
-				vec.xy = RotateVector(vec.xy, yDelta);
+			if (yaDelta)
+				vec.xy = RotateVector(vec.xy, yaDelta);
 
 			return vec;
 		}
@@ -732,11 +742,11 @@ extend class FCW_Platform
 			vec.xy = RotateVector(vec.xy, -baseAngle); //Rotate to 0 angle
 
 		//'backward' determines rotation order so a simple quat.FromAngles() won't do
-		quat qY = quat.AxisAngle((0, 0, 1), yDelta);
-		quat qP = quat.AxisAngle((0, 1, 0), pDelta);
-		quat qR = quat.AxisAngle((1, 0, 0), rDelta);
-		quat qRot = backward ? (qR * qP * qY) : (qY * qP * qR);
-		vec = qRot * vec;
+		quat qYa = quat.AxisAngle((0, 0, 1), yaDelta);
+		quat qPi = quat.AxisAngle((0, 1, 0), piDelta);
+		quat qRo = quat.AxisAngle((1, 0, 0), roDelta);
+		quat qRotation = backward ? (qRo * qPi * qYa) : (qYa * qPi * qRo);
+		vec = qRotation * vec;
 
 		if (baseAngle)
 			vec.xy = RotateVector(vec.xy, baseAngle); //Rotate back to 'baseAngle'
