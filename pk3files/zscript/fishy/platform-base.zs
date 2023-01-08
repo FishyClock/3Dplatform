@@ -260,10 +260,24 @@ class FCW_PlatformGroup play
 		}
 
 		if (!origin && otherGroup.origin)
-			origin = otherGroup.origin;
+			SetGroupOrigin(otherGroup.origin);
 
 		if (!carrier && otherGroup.carrier)
 			carrier = otherGroup.carrier;
+	}
+
+	void SetGroupOrigin (FCW_Platform ori)
+	{
+		if (origin == ori)
+			return; //Same as before; no need to update anything
+		origin = ori;
+
+		for (int i = 0; i < members.Size(); ++i)
+		{
+			let plat = GetMember(i);
+			if (plat)
+				plat.SetOrbitInfo();
+		}
 	}
 }
 
@@ -326,10 +340,13 @@ extend class FCW_Platform
 	double oldPitch;
 	double oldRoll;
 	FCW_PlatformGroup group;
-	vector3 groupPos;
-	double groupAngle;
-	double groupPitch;
-	double groupRoll;
+	vector3 groupPos;	//The position when this platform joins a group - used for orbiting and mirroring behaviour.
+	double groupAngle;	//Ditto for angle.
+	double groupPitch;	//Ditto for pitch.
+	double groupRoll;	//Ditto for roll.
+	vector3 groupOrbitOffset;		//The groupOrbit* stuff is precalculated data for orbitting platforms
+	double groupOrbitAngDiffCos;	//and only gets updated when the group origin changes.
+	double groupOrbitAngDiffSin;
 	double time;
 	double reachedTime;
 	double timeFrac;
@@ -395,6 +412,9 @@ extend class FCW_Platform
 		groupAngle = angle;
 		groupPitch = pitch;
 		groupRoll = roll;
+		groupOrbitOffset = (0, 0, 0);
+		groupOrbitAngDiffCos = 0;
+		groupOrbitAngDiffSin = 0;
 		time = 1.1;
 		reachedTime = 0;
 		timeFrac = 0;
@@ -446,6 +466,7 @@ extend class FCW_Platform
 				ori.pitch != ori.groupPitch ||
 				ori.roll != ori.groupRoll)
 			{
+				SetOrbitInfo();
 				ori.PlatMove(ori.pos, ori.angle, ori.pitch, ori.roll, MOVE_TELEPORT);
 			}
 		}
@@ -641,6 +662,21 @@ extend class FCW_Platform
 	}
 
 	//============================
+	// SetOrbitInfo
+	//============================
+	void SetOrbitInfo ()
+	{
+		//For mirror behaviour this isn't relevant. Also make sure there is an origin and we're not it.
+		if ((options & OPTFLAG_MIRROR) || !group || !group.origin || group.origin == self)
+			return; //Nothing to update
+
+		groupOrbitOffset = level.Vec3Diff(group.origin.groupPos, groupPos);
+		double difference = DeltaAngle(group.origin.groupAngle, groupAngle);
+		groupOrbitAngDiffCos = cos(difference);
+		groupOrbitAngDiffSin = sin(difference);
+	}
+
+	//============================
 	// UpdateGroupInfo
 	//============================
 	private void UpdateGroupInfo ()
@@ -667,8 +703,9 @@ extend class FCW_Platform
 			groupPos = level.Vec3Offset(ori.groupPos, offset);
 
 			groupAngle = angle + delta;
-			double diff = DeltaAngle(ori.groupAngle, groupAngle);
-			double c = cos(diff), s = sin(diff);
+			SetOrbitInfo();
+			double c = groupOrbitAngDiffCos;
+			double s = groupOrbitAngDiffSin;
 
 			groupPitch = pitch + piDelta*c - roDelta*s;
 			groupRoll = roll + piDelta*s + roDelta*c;
@@ -1663,7 +1700,7 @@ extend class FCW_Platform
 					}
 				}
 			}
-			plat.group.origin = FCW_Platform(passengers[i]);
+			plat.group.SetGroupOrigin(FCW_Platform(passengers[i]));
 		}
 		lastGetNPResult = result;
 		return result;
@@ -2617,7 +2654,7 @@ extend class FCW_Platform
 
 		FCW_Platform plat;
 		if (group)
-			group.origin = self;
+			group.SetGroupOrigin(self);
 
 		if (moveType != MOVE_QUICK)
 		for (int i = -1; i == -1 || (group && i < group.members.Size()); ++i)
@@ -3185,8 +3222,7 @@ extend class FCW_Platform
 			}
 			else //Non-mirror movement. Orbiting happens here.
 			{
-				vector3 offset = level.Vec3Diff(groupPos, plat.groupPos);
-				offset = PlatRotateVector(offset, delta, piDelta, roDelta, groupAngle, false);
+				vector3 offset = PlatRotateVector(plat.groupOrbitOffset, delta, piDelta, roDelta, groupAngle, false);
 				newPos = level.Vec3Offset(pos, offset);
 
 				if (changeAng)
@@ -3194,8 +3230,8 @@ extend class FCW_Platform
 
 				if (changePi || changeRo)
 				{
-					double diff = DeltaAngle(groupAngle, plat.groupAngle);
-					double c = cos(diff), s = sin(diff);
+					double c = plat.groupOrbitAngDiffCos;
+					double s = plat.groupOrbitAngDiffSin;
 					if (changePi)
 						newPitch = plat.groupPitch + piDelta*c - roDelta*s;
 					if (changeRo)
@@ -3290,7 +3326,7 @@ extend class FCW_Platform
 			{
 				bActive = true;
 				if (group)
-					group.origin = self;
+					group.SetGroupOrigin(self);
 				MustGetNewPassengers(); //Ignore search tic rate; do a search now
 				return;
 			}
@@ -3312,7 +3348,7 @@ extend class FCW_Platform
 				}
 				bActive = true;
 				if (group)
-					group.origin = self;
+					group.SetGroupOrigin(self);
 
 				if (!bGoToNode)
 				{
@@ -3461,7 +3497,7 @@ extend class FCW_Platform
 
 			if ((!group.origin || (!group.origin.bActive && group.origin.vel == (0, 0, 0))) && (bActive || vel != (0, 0, 0)))
 			{
-				group.origin = self;
+				group.SetGroupOrigin(self);
 			}
 			else if (group.origin && group.origin != self)
 			{
@@ -3948,7 +3984,7 @@ extend class FCW_Platform
 		holdTime = 0;
 		bActive = true;
 		if (group)
-			group.origin = self;
+			group.SetGroupOrigin(self);
 		portDelta = 0;
 		acsFlags = (OPTFLAG_ANGLE | OPTFLAG_PITCH | OPTFLAG_ROLL);
 		pPrev = pCurr = pos;
