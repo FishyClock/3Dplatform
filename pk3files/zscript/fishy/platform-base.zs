@@ -1073,6 +1073,19 @@ extend class FCW_Platform
 		else
 		{
 			double distance = (pNext - pCurr).Length();
+			if (distance ~== 0 && !(options & OPTFLAG_FACEMOVE))
+			{
+				//If two interpolation points occupy the same spot,
+				//determine distance by picking the longest
+				//interpolation angle instead.
+				//(Unless "face movement direction" is enabled.)
+				double ang = ((options | acsFlags) & OPTFLAG_ANGLE) ? abs(pNextAngs.x - pCurrAngs.x) : 0;
+				double pi =  ((options | acsFlags) & OPTFLAG_PITCH) ? abs(pNextAngs.y - pCurrAngs.y) : 0;
+				double ro =  ((options | acsFlags) & OPTFLAG_ROLL)  ? abs(pNextAngs.z - pCurrAngs.z) : 0;
+				distance = max(ang, pi);
+				distance = max(distance, ro);
+			}
+
 			if (distance <= speed || (distance /= speed) < 1.1)
 				timeFrac = 1.0; //Too fast
 			else
