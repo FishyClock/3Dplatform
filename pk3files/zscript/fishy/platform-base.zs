@@ -345,8 +345,7 @@ extend class FCW_Platform
 	double groupPitch;	//Ditto for pitch.
 	double groupRoll;	//Ditto for roll.
 	vector3 groupOrbitOffset;		//The groupOrbit* stuff is precalculated data for orbitting platforms
-	double groupOrbitAngDiffCos;	//and only gets updated when the group origin changes.
-	double groupOrbitAngDiffSin;
+	vector2 groupOrbitAngDiff;		//and only gets updated when the group origin changes.
 	double time;
 	double reachedTime;
 	double timeFrac;
@@ -413,8 +412,7 @@ extend class FCW_Platform
 		groupPitch = pitch;
 		groupRoll = roll;
 		groupOrbitOffset = (0, 0, 0);
-		groupOrbitAngDiffCos = 0;
-		groupOrbitAngDiffSin = 0;
+		groupOrbitAngDiff = (0, 0);
 		time = 1.1;
 		reachedTime = 0;
 		timeFrac = 0;
@@ -682,8 +680,7 @@ extend class FCW_Platform
 
 		groupOrbitOffset = level.Vec3Diff(group.origin.groupPos, groupPos);
 		double difference = DeltaAngle(group.origin.groupAngle, groupAngle);
-		groupOrbitAngDiffCos = cos(difference);
-		groupOrbitAngDiffSin = sin(difference);
+		groupOrbitAngDiff = (cos(difference), sin(difference));
 	}
 
 	//============================
@@ -714,8 +711,8 @@ extend class FCW_Platform
 
 			groupAngle = angle + delta;
 			SetOrbitInfo();
-			double c = groupOrbitAngDiffCos;
-			double s = groupOrbitAngDiffSin;
+			double c = groupOrbitAngDiff.x;
+			double s = groupOrbitAngDiff.y;
 
 			groupPitch = pitch + piDelta*c - roDelta*s;
 			groupRoll = roll + piDelta*s + roDelta*c;
@@ -3250,8 +3247,8 @@ extend class FCW_Platform
 
 				if (changePi || changeRo)
 				{
-					double c = plat.groupOrbitAngDiffCos;
-					double s = plat.groupOrbitAngDiffSin;
+					double c = plat.groupOrbitAngDiff.x;
+					double s = plat.groupOrbitAngDiff.y;
 					if (changePi)
 						newPitch = plat.groupPitch + piDelta*c - roDelta*s;
 					if (changeRo)
