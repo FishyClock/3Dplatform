@@ -734,24 +734,21 @@ extend class FCW_Platform
 		{
 			if (yaDelta)
 				vec.xy = RotateVector(vec.xy, yaDelta);
-
 			return vec;
 		}
-
-		if (baseAngle)
-			vec.xy = RotateVector(vec.xy, -baseAngle); //Rotate to 0 angle
+		quat qFirst = quat.AxisAngle((0, 0, 1), baseAngle);
+		quat qLast = quat(-qFirst.x, -qFirst.y, -qFirst.z, +qFirst.w) / qFirst.LengthSquared(); //This would be qFirst.Inverse(); if not for the JIT error
 
 		//'backward' determines rotation order so a simple quat.FromAngles() won't do
 		quat qYa = quat.AxisAngle((0, 0, 1), yaDelta);
 		quat qPi = quat.AxisAngle((0, 1, 0), piDelta);
 		quat qRo = quat.AxisAngle((1, 0, 0), roDelta);
-		quat qRotation = backward ? (qRo * qPi * qYa) : (qYa * qPi * qRo);
-		vec = qRotation * vec;
-
-		if (baseAngle)
-			vec.xy = RotateVector(vec.xy, baseAngle); //Rotate back to 'baseAngle'
-
-		return vec;
+		quat qRotation;
+		if (!backward)
+			qRotation = qFirst * qYa * qPi * qRo * qLast;
+		else
+			qRotation = qFirst * qRo * qPi * qYa * qLast;
+		return qRotation * vec;
 	}
 
 	//============================
