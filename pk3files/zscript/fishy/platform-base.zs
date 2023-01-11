@@ -731,7 +731,7 @@ extend class FCW_Platform
 			return quat.AxisAngle((0, 0, 1), yaDelta); //Simpler yaw-only rotation
 
 		quat qFirst = quat.AxisAngle((0, 0, 1), baseAngle);
-		quat qLast = quat(-qFirst.x, -qFirst.y, -qFirst.z, +qFirst.w) / qFirst.LengthSquared(); //This would be qFirst.Inverse(); if not for the JIT error
+		quat qLast = quat(-qFirst.x, -qFirst.y, -qFirst.z, +qFirst.w); //This would be qFirst.Conjugate(); if not for the JIT error
 
 		//'backward' determines rotation order so a simple quat.FromAngles() won't do
 		quat qYa = quat.AxisAngle((0, 0, 1), yaDelta);
