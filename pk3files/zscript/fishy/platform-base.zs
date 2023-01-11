@@ -3197,6 +3197,8 @@ extend class FCW_Platform
 		double delta = DeltaAngle(groupAngle, angle);
 		double piDelta = DeltaAngle(groupPitch, pitch);
 		double roDelta = DeltaAngle(groupRoll, roll);
+
+		vector3 mirOfs = (double.nan, double.nan, double.nan);
 		quat qRot = quat(double.nan, double.nan, double.nan, double.nan);
 
 		for (int iPlat = 0; iPlat < group.members.Size(); ++iPlat)
@@ -3222,8 +3224,9 @@ extend class FCW_Platform
 				//the attached platform's 'groupPos'.
 				//So we pretty much always go in the opposite direction
 				//using our 'groupPos' as a reference point.
-				vector3 offset = level.Vec3Diff(pos, groupPos);
-				newPos = level.Vec3Offset(plat.groupPos, offset);
+				if (mirOfs != mirOfs) //NaN check
+					mirOfs = level.Vec3Diff(pos, groupPos);
+				newPos = level.Vec3Offset(plat.groupPos, mirOfs);
 
 				if (changeAng)
 					newAngle = plat.groupAngle - delta;
