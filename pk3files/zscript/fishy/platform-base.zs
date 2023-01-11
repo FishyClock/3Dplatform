@@ -706,7 +706,7 @@ extend class FCW_Platform
 		else //Set up for proper orbiting
 		{
 			vector3 offset = level.Vec3Diff(ori.pos, pos);
-			offset = PlatRotateVector(offset, delta, piDelta, roDelta, ori.groupAngle, true);
+			offset = GetQuatRotation(delta, piDelta, roDelta, ori.groupAngle, true) * offset;
 			groupPos = level.Vec3Offset(ori.groupPos, offset);
 
 			groupAngle = angle + delta;
@@ -720,19 +720,16 @@ extend class FCW_Platform
 	}
 
 	//============================
-	// PlatRotateVector
+	// GetQuatRotation
 	//============================
-	static vector3 PlatRotateVector (vector3 vec, double yaDelta, double piDelta, double roDelta, double baseAngle, bool backward)
+	static quat GetQuatRotation (double yaDelta, double piDelta, double roDelta, double baseAngle, bool backward)
 	{
 		//Used by MoveGroup()   where backward == false
 		//and UpdateGroupInfo() where backward == true.
 
 		if (!piDelta && !roDelta)
-		{
-			if (yaDelta)
-				vec.xy = RotateVector(vec.xy, yaDelta);
-			return vec;
-		}
+			return quat.AxisAngle((0, 0, 1), yaDelta); //Simpler yaw-only rotation
+
 		quat qFirst = quat.AxisAngle((0, 0, 1), baseAngle);
 		quat qLast = quat(-qFirst.x, -qFirst.y, -qFirst.z, +qFirst.w) / qFirst.LengthSquared(); //This would be qFirst.Inverse(); if not for the JIT error
 
@@ -740,12 +737,9 @@ extend class FCW_Platform
 		quat qYa = quat.AxisAngle((0, 0, 1), yaDelta);
 		quat qPi = quat.AxisAngle((0, 1, 0), piDelta);
 		quat qRo = quat.AxisAngle((1, 0, 0), roDelta);
-		quat qRotation;
 		if (!backward)
-			qRotation = qFirst * qYa * qPi * qRo * qLast;
-		else
-			qRotation = qFirst * qRo * qPi * qYa * qLast;
-		return qRotation * vec;
+			return qFirst * qYa * qPi * qRo * qLast;
+		return qFirst * qRo * qPi * qYa * qLast;
 	}
 
 	//============================
@@ -3203,6 +3197,7 @@ extend class FCW_Platform
 		double delta = DeltaAngle(groupAngle, angle);
 		double piDelta = DeltaAngle(groupPitch, pitch);
 		double roDelta = DeltaAngle(groupRoll, roll);
+		quat qRot = quat(double.nan, double.nan, double.nan, double.nan);
 
 		for (int iPlat = 0; iPlat < group.members.Size(); ++iPlat)
 		{
@@ -3239,8 +3234,9 @@ extend class FCW_Platform
 			}
 			else //Non-mirror movement. Orbiting happens here.
 			{
-				vector3 offset = PlatRotateVector(plat.groupOrbitOffset, delta, piDelta, roDelta, groupAngle, false);
-				newPos = level.Vec3Offset(pos, offset);
+				if (qRot != qRot) //NaN check
+					qRot = GetQuatRotation(delta, piDelta, roDelta, groupAngle, false);
+				newPos = level.Vec3Offset(pos, qRot * plat.groupOrbitOffset);
 
 				if (changeAng)
 					newAngle = plat.groupAngle + delta;
