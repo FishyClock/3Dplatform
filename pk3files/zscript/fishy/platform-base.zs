@@ -705,8 +705,9 @@ extend class FCW_Platform
 		}
 		else //Set up for proper orbiting
 		{
-			vector3 offset = level.Vec3Diff(ori.pos, pos);
-			offset = GetQuatRotation(delta, piDelta, roDelta, ori.groupAngle, true) * offset;
+			quat qRot = GetQuatRotation(-delta, -piDelta, -roDelta, ori.groupAngle);
+			qRot = quat(-qRot.x, -qRot.y, -qRot.z, +qRot.w); //This would be qRot.Conjugate(); if not for the JIT error
+			vector3 offset = qRot * level.Vec3Diff(ori.pos, pos);
 			groupPos = level.Vec3Offset(ori.groupPos, offset);
 
 			groupAngle = angle + delta;
@@ -722,10 +723,9 @@ extend class FCW_Platform
 	//============================
 	// GetQuatRotation
 	//============================
-	static quat GetQuatRotation (double yaDelta, double piDelta, double roDelta, double baseAngle, bool backward)
+	static quat GetQuatRotation (double yaDelta, double piDelta, double roDelta, double baseAngle)
 	{
-		//Used by MoveGroup()   where backward == false
-		//and UpdateGroupInfo() where backward == true.
+		//Used by MoveGroup() and UpdateGroupInfo()
 
 		if (!piDelta && !roDelta)
 			return quat.AxisAngle((0, 0, 1), yaDelta); //Simpler yaw-only rotation
@@ -733,13 +733,7 @@ extend class FCW_Platform
 		quat qFirst = quat.AxisAngle((0, 0, 1), baseAngle);
 		quat qLast = quat(-qFirst.x, -qFirst.y, -qFirst.z, +qFirst.w); //This would be qFirst.Conjugate(); if not for the JIT error
 
-		//'backward' determines rotation order so a simple quat.FromAngles() won't do
-		quat qYa = quat.AxisAngle((0, 0, 1), yaDelta);
-		quat qPi = quat.AxisAngle((0, 1, 0), piDelta);
-		quat qRo = quat.AxisAngle((1, 0, 0), roDelta);
-		if (!backward)
-			return qFirst * qYa * qPi * qRo * qLast;
-		return qFirst * qRo * qPi * qYa * qLast;
+		return qFirst * quat.FromAngles(yaDelta, piDelta, roDelta) * qLast;
 	}
 
 	//============================
@@ -3238,7 +3232,7 @@ extend class FCW_Platform
 			else //Non-mirror movement. Orbiting happens here.
 			{
 				if (qRot != qRot) //NaN check
-					qRot = GetQuatRotation(delta, piDelta, roDelta, groupAngle, false);
+					qRot = GetQuatRotation(delta, piDelta, roDelta, groupAngle);
 				newPos = level.Vec3Offset(pos, qRot * plat.groupOrbitOffset);
 
 				if (changeAng)
