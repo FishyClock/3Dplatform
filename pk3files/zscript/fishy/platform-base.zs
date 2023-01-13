@@ -276,7 +276,11 @@ class FCW_PlatformGroup play
 		{
 			let plat = GetMember(i);
 			if (plat)
-				plat.SetOrbitInfo();
+			{
+				plat.groupMirrorPos = plat.pos;
+				if (!(plat.options & plat.OPTFLAG_MIRROR) && plat != origin)
+					plat.SetOrbitInfo();
+			}
 		}
 	}
 }
@@ -340,12 +344,13 @@ extend class FCW_Platform
 	double oldPitch;
 	double oldRoll;
 	FCW_PlatformGroup group;
-	vector3 groupPos;	//The position when this platform joins a group - used for orbiting and mirroring behaviour.
-	double groupAngle;	//Ditto for angle.
-	double groupPitch;	//Ditto for pitch.
-	double groupRoll;	//Ditto for roll.
-	vector3 groupOrbitOffset;		//The groupOrbit* stuff is precalculated data for orbitting platforms
-	vector2 groupOrbitAngDiff;		//and only gets updated when the group origin changes.
+	vector3 groupMirrorPos; //The position when this platform joins a group - used for mirroring behaviour - changes when origin changes.
+	vector3 groupOrbitPos;  //The position when this platform joins a group - used for orbiting behaviour - doesn't change when origin changes.
+	double groupAngle; //The angle when this platform joins a group - doesn't change when origin changes.
+	double groupPitch; //The pitch when this platform joins a group - doesn't change when origin changes.
+	double groupRoll;  //The roll when this platform joins a group - doesn't change when origin changes.
+	vector3 groupOrbitOffset;  //Precalculated offset from origin's groupOrbitPos to orbiter's groupOrbitPos - changes when origin changes.
+	vector2 groupOrbitAngDiff; //Precalculated delta from origin's groupAngle to orbiter's groupAngle as a cosine(x) and sine(y) - changes when origin changes.
 	double time;
 	double reachedTime;
 	double timeFrac;
@@ -407,7 +412,8 @@ extend class FCW_Platform
 		oldPitch = pitch;
 		oldRoll = roll;
 		group = null;
-		groupPos = pos;
+		groupMirrorPos = pos;
+		groupOrbitPos = pos;
 		groupAngle = angle;
 		groupPitch = pitch;
 		groupRoll = roll;
@@ -460,7 +466,8 @@ extend class FCW_Platform
 		if (group && group.origin)
 		{
 			let ori = group.origin;
-			SetOrbitInfo();
+			if (!(options & OPTFLAG_MIRROR))
+				SetOrbitInfo();
 			ori.PlatMove(ori.pos, ori.angle, ori.pitch, ori.roll, MOVE_TELEPORT);
 		}
 		else if (group && !group.origin)
@@ -649,7 +656,8 @@ extend class FCW_Platform
 			plat = group.GetMember(i);
 			if (plat)
 			{
-				plat.groupPos = plat.pos;
+				plat.groupMirrorPos = plat.pos;
+				plat.groupOrbitPos = plat.pos;
 				plat.groupAngle = plat.angle;
 				plat.groupPitch = plat.pitch;
 				plat.groupRoll = plat.roll;
@@ -674,11 +682,7 @@ extend class FCW_Platform
 	//============================
 	void SetOrbitInfo ()
 	{
-		//For mirror behaviour this isn't relevant. Also make sure there is an origin and we're not it.
-		if ((options & OPTFLAG_MIRROR) || !group || !group.origin || group.origin == self)
-			return; //Nothing to update
-
-		groupOrbitOffset = level.Vec3Diff(group.origin.groupPos, groupPos);
+		groupOrbitOffset = level.Vec3Diff(group.origin.groupOrbitPos, groupOrbitPos);
 		double difference = DeltaAngle(group.origin.groupAngle, groupAngle);
 		groupOrbitAngDiff = (cos(difference), sin(difference));
 	}
@@ -688,7 +692,10 @@ extend class FCW_Platform
 	//============================
 	private void UpdateGroupInfo ()
 	{
-		//This is similar to MoveGroup() but backwards
+		//Called when a platform joins a group with a designated
+		//origin. Or when a group member's mirror flag changes.
+		//This is similar to MoveGroup() but backwards.
+
 		let ori = group.origin;
 		double delta = DeltaAngle(ori.angle, ori.groupAngle);
 		double piDelta = DeltaAngle(ori.pitch, ori.groupPitch);
@@ -696,8 +703,8 @@ extend class FCW_Platform
 
 		if (options & OPTFLAG_MIRROR)
 		{
-			vector3 offset = level.Vec3Diff(ori.groupPos, ori.pos);
-			groupPos = level.Vec3Offset(pos, offset);
+			vector3 offset = level.Vec3Diff(ori.groupMirrorPos, ori.pos);
+			groupMirrorPos = level.Vec3Offset(pos, offset);
 
 			groupAngle = angle - delta;
 			groupPitch = pitch - piDelta;
@@ -708,7 +715,7 @@ extend class FCW_Platform
 			quat qRot = GetQuatRotation(-delta, -piDelta, -roDelta, ori.groupAngle);
 			qRot = quat(-qRot.x, -qRot.y, -qRot.z, +qRot.w); //This would be qRot.Conjugate(); if not for the JIT error
 			vector3 offset = qRot * level.Vec3Diff(ori.pos, pos);
-			groupPos = level.Vec3Offset(ori.groupPos, offset);
+			groupOrbitPos = level.Vec3Offset(ori.groupOrbitPos, offset);
 
 			groupAngle = angle + delta;
 			SetOrbitInfo();
@@ -2778,7 +2785,7 @@ extend class FCW_Platform
 
 		int result = DoMove(newPos, newAngle, newPitch, newRoll, moveType) ? 1 : 0;
 		if (result)
-			result = MoveGroup(moveType) ? 2 : 1;
+			result = (!group || MoveGroup(moveType)) ? 2 : 1;
 
 		for (int i = -1; i == -1 || (group && i < group.members.Size()); ++i)
 		{
@@ -3185,9 +3192,6 @@ extend class FCW_Platform
 	//============================
 	private bool MoveGroup (int moveType)
 	{
-		if (!group)
-			return true;
-
 		double delta = DeltaAngle(groupAngle, angle);
 		double piDelta = DeltaAngle(groupPitch, pitch);
 		double roDelta = DeltaAngle(groupRoll, roll);
@@ -3213,14 +3217,14 @@ extend class FCW_Platform
 			if (plat.options & OPTFLAG_MIRROR)
 			{
 				//The way we mirror movement is by getting the offset going
-				//from the origin's current position to its 'groupPos'
+				//from the origin's current position to its 'groupMirrorPos'
 				//and using that to get a offsetted position from
-				//the attached platform's 'groupPos'.
+				//the attached platform's 'groupMirrorPos'.
 				//So we pretty much always go in the opposite direction
-				//using our 'groupPos' as a reference point.
+				//using 'groupMirrorPos' as a reference point.
 				if (mirOfs != mirOfs) //NaN check
-					mirOfs = level.Vec3Diff(pos, groupPos);
-				newPos = level.Vec3Offset(plat.groupPos, mirOfs);
+					mirOfs = level.Vec3Diff(pos, groupMirrorPos);
+				newPos = level.Vec3Offset(plat.groupMirrorPos, mirOfs);
 
 				if (changeAng)
 					newAngle = plat.groupAngle - delta;
