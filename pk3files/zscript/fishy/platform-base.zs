@@ -266,7 +266,7 @@ class FCW_PlatformGroup play
 			carrier = otherGroup.carrier;
 	}
 
-	void SetGroupOrigin (FCW_Platform ori)
+	void SetGroupOrigin (FCW_Platform ori, bool setMirrorPos = true)
 	{
 		if (origin == ori)
 			return; //Same as before; no need to update anything
@@ -277,7 +277,8 @@ class FCW_PlatformGroup play
 			let plat = GetMember(i);
 			if (plat)
 			{
-				plat.groupMirrorPos = plat.pos;
+				if (setMirrorPos)
+					plat.groupMirrorPos = plat.pos;
 				if (!(plat.options & plat.OPTFLAG_MIRROR) && plat != origin)
 					plat.SetOrbitInfo();
 			}
@@ -479,7 +480,7 @@ extend class FCW_Platform
 				let plat = group.GetMember(i);
 				if (plat && (plat.bActive || plat.vel != (0, 0, 0)))
 				{
-					group.SetGroupOrigin(plat);
+					group.SetGroupOrigin(plat, false);
 					plat.PlatMove(plat.pos, plat.angle, plat.pitch, plat.roll, MOVE_TELEPORT);
 					break;
 				}
