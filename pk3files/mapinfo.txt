@@ -1,6 +1,6 @@
 DoomEdNums
 {
-	15000 = FCW_PlatformNode
+	15000 = FishyPlatformNode
 
 	//Demomap
 	15100 = DemoCavePlat

@@ -1,4 +1,4 @@
-class DemoGenericPlat : FCW_Platform abstract
+class DemoGenericPlat : FishyPlatform abstract
 {
 	States
 	{
@@ -8,7 +8,7 @@ class DemoGenericPlat : FCW_Platform abstract
 	}
 }
 
-class DemoPlatWithSnd : FCW_Platform abstract
+class DemoPlatWithSnd : FishyPlatform abstract
 {
 	bool wasMoving;
 	Name sndSeq;
@@ -20,7 +20,7 @@ class DemoPlatWithSnd : FCW_Platform abstract
 		MODL A 1 NoDelay { wasMoving = false; }
 		MODL A 1
 		{
-			bool isMoving = PlatHasMoved();
+			bool isMoving = HasMoved();
 			if (isMoving == wasMoving)
 				return;
 
@@ -84,7 +84,7 @@ class DemoSlidingFloor : DemoPlatWithSnd
 	}
 }
 
-class DemoWobblyMeatFloor : FCW_Platform
+class DemoWobblyMeatFloor : FishyPlatform
 {
 	Default
 	{
@@ -129,7 +129,7 @@ class DemoFirebluSegmentTiny : DemoGenericPlat
 	}
 }
 
-class DemoDiabolicalCube : FCW_Platform //This one isn't a model user. Oooh!
+class DemoDiabolicalCube : FishyPlatform //This one isn't a model user. Oooh!
 {
 	Default
 	{

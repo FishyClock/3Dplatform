@@ -31,20 +31,20 @@
  horizontally moving geometry that you can stand on and be carried by.
 
  In a nutshell this file contains:
- FCW_Platform - The main platform class;
+ FishyPlatform - The main platform class;
 
- FCW_PlatformNode - a platform-centric interpolation point class
+ FishyPlatformNode - a platform-centric interpolation point class
  (though GZDoom's "InterpolationPoint" is still perfectly usable);
 
- FCW_PlatformGroup - a class to help with the "group" logic;
+ FishyPlatformGroup - a class to help with the "group" logic;
 
  And lastly
- FCW_OldStuff_* - a measure that takes into account old
- "PathFollower" classes trying to use FCW_PlatformNode
+ FishyOldStuff_* - a measure that takes into account old
+ "PathFollower" classes trying to use FishyPlatformNode
  as well as having a interpolation path made up of
- both InterpolationPoints and FCW_PlatformNodes.
+ both InterpolationPoints and FishyPlatformNodes.
 
- It is recommended you replace the "FCW_" prefix to avoid conflicts with
+ It is recommended you replace the "Fishy" prefix to avoid conflicts with
  other people's projects.
 
  Regarding custom actors. Platforms can generally handle moving
@@ -66,7 +66,7 @@
 
 ******************************************************************************/
 
-class FCW_Platform : Actor abstract
+class FishyPlatform : Actor abstract
 {
 	Default
 	{
@@ -109,9 +109,9 @@ class FCW_Platform : Actor abstract
 		+DONTTHRUST;
 		+NOTAUTOAIMED;
 
-		FCW_Platform.AirFriction 0.99;
-		FCW_Platform.PassengerLookTics 1;
-		FCW_Platform.PortalLookTics 1;
+		FishyPlatform.AirFriction 0.99;
+		FishyPlatform.PassengerLookTics 1;
+		FishyPlatform.PortalLookTics 1;
 	}
 
 	//===New flags===//
@@ -146,7 +146,7 @@ class FCW_Platform : Actor abstract
 	}
 }
 
-class FCW_PlatformNode : InterpolationPoint
+class FishyPlatformNode : InterpolationPoint
 {
 	Default
 	{
@@ -175,7 +175,7 @@ class FCW_PlatformNode : InterpolationPoint
 //Ultimate Doom Builder doesn't need to read the rest
 //$GZDB_SKIP
 
-extend class FCW_PlatformNode
+extend class FishyPlatformNode
 {
 	void PNodeFormChain ()
 	{
@@ -201,11 +201,11 @@ extend class FCW_PlatformNode
 				Console.Printf("\n\ckPlatform interpolation point with tid " .. node.tid .. " at position " ..node.pos ..
 				":\n\ckcannot find next platform interpolation point with tid " .. node.args[0] .. ".");
 			}
-			else if (node.next && !(node.next is "FCW_PlatformNode"))
+			else if (node.next && !(node.next is "FishyPlatformNode"))
 			{
 				Console.Printf("\ckPlatform interpolation point with tid " .. node.tid .. " at position " ..node.pos ..
 				":\n\ckis pointing at a non-platform interpolation point with tid " .. node.args[0] .. " at position " .. node.next.pos .. "\n.");
-				new("FCW_OldStuff_DelayedAbort"); //For what this does, see bottom of this file
+				new("FishyOldStuff_DelayedAbort"); //For what this does, see bottom of this file
 				return;
 			}
 		}
@@ -214,29 +214,29 @@ extend class FCW_PlatformNode
 
 //A container class for grouped platforms.
 //It has an array pointing to all group members and each member points to this group.
-class FCW_PlatformGroup play
+class FishyPlatformGroup play
 {
-	Array<FCW_Platform> members;
-	FCW_Platform origin;	//The member that thinks for the other members when it ticks.
-	FCW_Platform carrier;	//A non-member that carries one member of this group. Used for passenger theft checks.
+	Array<FishyPlatform> members;
+	FishyPlatform origin;	//The member that thinks for the other members when it ticks.
+	FishyPlatform carrier;	//A non-member that carries one member of this group. Used for passenger theft checks.
 
-	static FCW_PlatformGroup Create ()
+	static FishyPlatformGroup Create ()
 	{
-		let group = new("FCW_PlatformGroup");
+		let group = new("FishyPlatformGroup");
 		group.members.Clear();
 		group.origin = null;
 		group.carrier = null;
 		return group;
 	}
 
-	void Add (FCW_Platform plat)
+	void Add (FishyPlatform plat)
 	{
 		plat.group = self;
 		if (members.Find(plat) >= members.Size())
 			members.Push(plat);
 	}
 
-	FCW_Platform GetMember (int index)
+	FishyPlatform GetMember (int index)
 	{
 		//Handle invalid entries
 		while (index < members.Size() && !members[index])
@@ -250,7 +250,7 @@ class FCW_PlatformGroup play
 		return null;
 	}
 
-	void MergeWith (FCW_PlatformGroup otherGroup)
+	void MergeWith (FishyPlatformGroup otherGroup)
 	{
 		for (int i = 0; i < otherGroup.members.Size(); ++i)
 		{
@@ -266,7 +266,7 @@ class FCW_PlatformGroup play
 			carrier = otherGroup.carrier;
 	}
 
-	void SetGroupOrigin (FCW_Platform ori, bool setMirrorPos = true)
+	void SetGroupOrigin (FishyPlatform ori, bool setMirrorPos = true)
 	{
 		if (origin == ori)
 			return; //Same as before; no need to update anything
@@ -286,7 +286,7 @@ class FCW_PlatformGroup play
 	}
 }
 
-extend class FCW_Platform
+extend class FishyPlatform
 {
 	enum ArgValues
 	{
@@ -314,13 +314,13 @@ extend class FCW_Platform
 		OPTFLAG_PASSCANPUSH		= (1<<14),
 		OPTFLAG_DIFFPASSCOLL	= (1<<15),
 
-		//FCW_PlatformNode args that we check
+		//FishyPlatformNode args that we check
 		NODEARG_TRAVELTIME		= 1, //Also applies to InterpolationPoint
 		NODEARG_HOLDTIME		= 2, //Ditto
 		NODEARG_TRAVELTUNIT		= 3,
 		NODEARG_HOLDTUNIT		= 4,
 
-		//For FCW_PlatformNode's "NODEARG_TRAVELTUNIT" and "NODEARG_HOLDTUNIT"
+		//For FishyPlatformNode's "NODEARG_TRAVELTUNIT" and "NODEARG_HOLDTUNIT"
 		TIMEUNIT_OCTICS		= 0,
 		TIMEUNIT_TICS		= 1,
 		TIMEUNIT_SECS		= 2,
@@ -344,7 +344,7 @@ extend class FCW_Platform
 	double oldAngle;
 	double oldPitch;
 	double oldRoll;
-	FCW_PlatformGroup group;
+	FishyPlatformGroup group;
 	vector3 groupMirrorPos; //The position when this platform joins a group - used for mirroring behaviour - changes when origin changes.
 	vector3 groupOrbitPos;  //The position when this platform joins a group - used for orbiting behaviour - doesn't change when origin changes.
 	double groupAngle; //The angle when this platform joins a group - doesn't change when origin changes.
@@ -365,7 +365,7 @@ extend class FCW_Platform
 	Array<Actor> passengers;
 	Array<Actor> stuckActors;
 	Line lastUPort;
-	private FCW_Platform portTwin; //Helps with collision when dealing with unlinked line portals
+	private FishyPlatform portTwin; //Helps with collision when dealing with unlinked line portals
 	private bool bPortCopy;
 	double portDelta;
 	int acsFlags;
@@ -541,14 +541,14 @@ extend class FCW_Platform
 		}
 
 		//Verify the path has enough nodes
-		if (firstNode is "FCW_PlatformNode")
+		if (firstNode is "FishyPlatformNode")
 		{
-			FCW_PlatformNode(firstNode).PNodeFormChain();
+			FishyPlatformNode(firstNode).PNodeFormChain();
 		}
 		else
 		{
 			firstNode.FormChain();
-			FCW_OldStuff_Common.CheckNodeTypes(firstNode); //The old nodes shouldn't point to platform nodes
+			FishyOldStuff_Common.CheckNodeTypes(firstNode); //The old nodes shouldn't point to platform nodes
 		}
 
 		bool optGoToNode = (options & OPTFLAG_GOTONODE);
@@ -602,11 +602,11 @@ extend class FCW_Platform
 	//============================
 	private bool SetUpGroup (int otherPlatTid, bool doUpdateGroupInfo)
 	{
-		let it = level.CreateActorIterator(otherPlatTid, "FCW_Platform");
-		FCW_Platform plat;
-		Array<FCW_Platform> newMembers;
+		let it = level.CreateActorIterator(otherPlatTid, "FishyPlatform");
+		FishyPlatform plat;
+		Array<FishyPlatform> newMembers;
 		bool foundOne = false;
-		while (plat = FCW_Platform(it.Next()))
+		while (plat = FishyPlatform(it.Next()))
 		{
 			if (plat != self)
 				foundOne = true;
@@ -632,7 +632,7 @@ extend class FCW_Platform
 			}
 			else if (plat != self) //Neither are in a group
 			{
-				let newGroup = FCW_PlatformGroup.Create();
+				let newGroup = FishyPlatformGroup.Create();
 				newGroup.Add(self);
 				newGroup.Add(plat);
 			}
@@ -749,7 +749,7 @@ extend class FCW_Platform
 	//============================
 	override bool CanCollideWith (Actor other, bool passive)
 	{
-		let plat = FCW_Platform(other);
+		let plat = FishyPlatform(other);
 		if (plat)
 		{
 			if (plat == portTwin)
@@ -772,7 +772,7 @@ extend class FCW_Platform
 		{
 			//If me or my twin is moving, don't
 			//collide with either one's passengers.
-			FCW_PlatformGroup grp = bPortCopy ? portTwin.group : self.group;
+			FishyPlatformGroup grp = bPortCopy ? portTwin.group : self.group;
 			for (int i = -1; i == -1 || (grp && i < grp.members.Size()); ++i)
 			{
 				plat = (i == -1) ? self : grp.members[i]; //Not calling GetMember() here because that deletes null entries and nothing is supposed to change here
@@ -917,7 +917,7 @@ extend class FCW_Platform
 
 		if ((pusher.bCannotPush && (pusher != self || stuckActors.Find(pushed) >= stuckActors.Size() ) ) || //Can't push it if we have CANNOTPUSH and this isn't an actor that's stuck in us.
 			(!pushed.bPushable && //Always push actors that have PUSHABLE.
-			(pushed.bDontThrust || pushed is "FCW_Platform") ) ) //Otherwise, only push it if it's a non-platform and doesn't have DONTTHRUST.
+			(pushed.bDontThrust || pushed is "FishyPlatform") ) ) //Otherwise, only push it if it's a non-platform and doesn't have DONTTHRUST.
 		{
 			CrushObstacle(pushed, true, true, pusher); //Handle OPTFLAG_HURTFULPUSH
 			return; //No velocity modification
@@ -1098,7 +1098,7 @@ extend class FCW_Platform
 			return;
 		}
 
-		if (currNode is "FCW_PlatformNode")
+		if (currNode is "FishyPlatformNode")
 		{
 			switch (currNode.args[NODEARG_TRAVELTUNIT])
 			{
@@ -1132,7 +1132,7 @@ extend class FCW_Platform
 		if (newTime <= 0)
 			return;
 
-		if (currNode is "FCW_PlatformNode")
+		if (currNode is "FishyPlatformNode")
 		{
 			switch (currNode.args[NODEARG_HOLDTUNIT])
 			{
@@ -1284,7 +1284,7 @@ extend class FCW_Platform
 		if (mo.bCantLeaveFloorPic)
 			return false;
 
-		let plat = FCW_Platform(mo);
+		let plat = FishyPlatform(mo);
 		if (plat)
 		{
 			if (!plat.bCarriable)
@@ -1312,7 +1312,7 @@ extend class FCW_Platform
 	//============================
 	// CanStealFrom
 	//============================
-	bool CanStealFrom (FCW_Platform other, Actor mo)
+	bool CanStealFrom (FishyPlatform other, Actor mo)
 	{
 		double myTop = pos.z + height;
 		double otherTop = other.pos.z + other.height;
@@ -1334,7 +1334,7 @@ extend class FCW_Platform
 	//============================
 	private void ForgetPassenger (int index)
 	{
-		let plat = FCW_Platform(passengers[index]);
+		let plat = FishyPlatform(passengers[index]);
 		if (plat && plat.group && plat.group.carrier == self)
 			plat.group.carrier = null;
 		passengers.Delete(index);
@@ -1411,7 +1411,7 @@ extend class FCW_Platform
 		Array<Actor> miscActors; //The actors on top of or stuck inside confirmed passengers (We'll move those, too)
 		Array<Actor> newPass; //Potential new passengers, usually (but not always) detected on top of us
 		Array<Actor> tryZFix, tryZFixItems;
-		Array<FCW_Platform> otherPlats;
+		Array<FishyPlatform> otherPlats;
 
 		//Call Grind() after we're done iterating because destroying
 		//actors during iteration can mess up the iterator.
@@ -1434,7 +1434,7 @@ extend class FCW_Platform
 			if (mo == self || mo == portTwin)
 				continue;
 
-			let plat = FCW_Platform(mo);
+			let plat = FishyPlatform(mo);
 			if (plat)
 				otherPlats.Push(plat);
 
@@ -1543,9 +1543,9 @@ extend class FCW_Platform
 			bool fits = FitsAtPosition(mo, (mo.pos.xy, top), true);
 			if (fits)
 			{
-				if (mo is "FCW_Platform")
+				if (mo is "FishyPlatform")
 				{
-					FCW_Platform(mo).PlatMove((mo.pos.xy, top), mo.angle, mo.pitch, mo.roll, MOVE_QUICK);
+					FishyPlatform(mo).PlatMove((mo.pos.xy, top), mo.angle, mo.pitch, mo.roll, MOVE_QUICK);
 				}
 				else
 				{
@@ -1652,10 +1652,10 @@ extend class FCW_Platform
 		//If we have passengers that are grouped platforms,
 		//prune 'passengers' array; we only want one member per group.
 		//Preferably the origin if active, else the closest member.
-		Array<FCW_PlatformGroup> otherGroups;
+		Array<FishyPlatformGroup> otherGroups;
 		for (int i = 0; i < passengers.Size(); ++i)
 		{
-			let plat = FCW_Platform(passengers[i]);
+			let plat = FishyPlatform(passengers[i]);
 			if (!plat || !plat.group)
 				continue;
 
@@ -1713,7 +1713,7 @@ extend class FCW_Platform
 					}
 				}
 			}
-			plat.group.SetGroupOrigin(FCW_Platform(passengers[i]));
+			plat.group.SetGroupOrigin(FishyPlatform(passengers[i]));
 		}
 		lastGetNPResult = result;
 		return result;
@@ -1838,7 +1838,7 @@ extend class FCW_Platform
 		if (!passengers.Size())
 			return true; //No passengers? Nothing to do
 
-		FCW_PlatformGroup grp = bPortCopy ? portTwin.group : self.group;
+		FishyPlatformGroup grp = bPortCopy ? portTwin.group : self.group;
 		if (!grp || !grp.origin || !(grp.origin.options & OPTFLAG_DIFFPASSCOLL))
 			UnlinkPassengers();
 
@@ -1861,7 +1861,7 @@ extend class FCW_Platform
 			let mo = passengers[i];
 			let moOldPos = mo.pos;
 			let moOldNoDropoff = mo.bNoDropoff;
-			let plat = FCW_Platform(mo);
+			let plat = FishyPlatform(mo);
 
 			vector3 offset = level.Vec3Diff(startPos, moOldPos);
 			if (delta) //Will 'offset' get rotated?
@@ -2085,7 +2085,7 @@ extend class FCW_Platform
 
 						//Put 'otherMo' back at its old position
 						vector3 otherOldPos = (preMovePos[iOther*3], preMovePos[iOther*3 + 1], preMovePos[iOther*3 + 2]);
-						plat = FCW_Platform(otherMo);
+						plat = FishyPlatform(otherMo);
 						if (!plat)
 							otherMo.SetOrigin(otherOldPos, true);
 						else
@@ -2107,7 +2107,7 @@ extend class FCW_Platform
 					if (blocked)
 					{
 						PushObstacle(mo, pushForce, self, startPos.xy);
-						if (mo && !mo.bDestroyed && !(mo is "FCW_Platform") && mo != movedBack[0]) //We (potentially) already pushed/crushed the first one's blocker
+						if (mo && !mo.bDestroyed && !(mo is "FishyPlatform") && mo != movedBack[0]) //We (potentially) already pushed/crushed the first one's blocker
 						{
 							//The blocker in this case can only be a former passenger.
 							if (mo.blockingMobj)
@@ -2403,7 +2403,7 @@ extend class FCW_Platform
 			if (mo.Distance3D(portTwin) < mo.Distance3D(self) &&
 				portTwin.passengers.Find(mo) >= portTwin.passengers.Size())
 			{
-				let plat = FCW_Platform(mo);
+				let plat = FishyPlatform(mo);
 				if (plat && plat.group && plat.group.carrier == self)
 					plat.group.carrier = portTwin;
 
@@ -2426,7 +2426,7 @@ extend class FCW_Platform
 			if (mo.Distance3D(self) < mo.Distance3D(portTwin) &&
 				passengers.Find(mo) >= passengers.Size())
 			{
-				let plat = FCW_Platform(mo);
+				let plat = FishyPlatform(mo);
 				if (plat && plat.group && plat.group.carrier == portTwin)
 					plat.group.carrier = self;
 
@@ -2496,10 +2496,10 @@ extend class FCW_Platform
 					}
 					else
 					{
-						if (mo is "FCW_Platform")
+						if (mo is "FishyPlatform")
 						{
 							mo.SetZ(moOldZ);
-							FCW_Platform(mo).PlatMove((mo.pos.xy, moNewZ), mo.angle, mo.pitch, mo.roll, MOVE_QUICK);
+							FishyPlatform(mo).PlatMove((mo.pos.xy, moNewZ), mo.angle, mo.pitch, mo.roll, MOVE_QUICK);
 						}
 						else
 						{
@@ -2588,7 +2588,7 @@ extend class FCW_Platform
 			if (stuckActors.Find(mo) < stuckActors.Size())
 				continue; //Already in the array
 
-			let plat = FCW_Platform(mo);
+			let plat = FishyPlatform(mo);
 			if (plat && (plat.bInMove || (plat.portTwin && plat.portTwin.bInMove) ) )
 				continue; //This is likely the platform that carries us; ignore it
 
@@ -2631,9 +2631,9 @@ extend class FCW_Platform
 				bool fits = FitsAtPosition(mo, (mo.pos.xy, top), true);
 				if (fits)
 				{
-					if (mo is "FCW_Platform")
+					if (mo is "FishyPlatform")
 					{
-						FCW_Platform(mo).PlatMove((mo.pos.xy, top), mo.angle, mo.pitch, mo.roll, MOVE_QUICK);
+						FishyPlatform(mo).PlatMove((mo.pos.xy, top), mo.angle, mo.pitch, mo.roll, MOVE_QUICK);
 					}
 					else
 					{
@@ -2665,7 +2665,7 @@ extend class FCW_Platform
 		// that 'newPos/Angle/Pitch/Roll' is only marginally different from
 		// the current position/angles.
 
-		FCW_Platform plat;
+		FishyPlatform plat;
 		if (group)
 			group.SetGroupOrigin(self);
 
@@ -2682,7 +2682,7 @@ extend class FCW_Platform
 				if (plat.lastUPort && !plat.portTwin)
 				{
 					//Create invisible portal twin to help with non-static line portal collision/physics
-					plat.portTwin = FCW_Platform(Spawn(plat.GetClass(), TranslatePortalVector(plat.pos, plat.lastUPort, true, false)));
+					plat.portTwin = FishyPlatform(Spawn(plat.GetClass(), TranslatePortalVector(plat.pos, plat.lastUPort, true, false)));
 					plat.portTwin.portTwin = plat;
 					plat.portTwin.bPortCopy = true;
 					plat.portTwin.bInvisible = true;
@@ -2744,7 +2744,7 @@ extend class FCW_Platform
 			//That should allow them to take some of our other passengers.
 			for (int iPass = 0; iPass < plat.passengers.Size(); ++iPass)
 			{
-				let platPass = FCW_Platform(plat.passengers[iPass]);
+				let platPass = FishyPlatform(plat.passengers[iPass]);
 				if (!platPass || platPass.bNoBlockmap) //They shouldn't have NOBLOCKMAP now - this is taken care of below
 					continue;
 				platPass.GetNewPassengers(moveType == MOVE_TELEPORT);
@@ -2759,7 +2759,7 @@ extend class FCW_Platform
 			if (plat.portTwin && !plat.portTwin.bNoBlockmap)
 			for (int iPass = 0; iPass < plat.portTwin.passengers.Size(); ++iPass)
 			{
-				let platPass = FCW_Platform(plat.portTwin.passengers[iPass]);
+				let platPass = FishyPlatform(plat.portTwin.passengers[iPass]);
 				if (!platPass || platPass.bNoBlockmap) //They shouldn't have NOBLOCKMAP now - this is taken care of below
 					continue;
 				platPass.GetNewPassengers(moveType == MOVE_TELEPORT);
@@ -3876,7 +3876,7 @@ extend class FCW_Platform
 		if (options & OPTFLAG_IGNOREGEO)
 			return;
 
-		if (PlatIsActive() && !PlatHasMoved(true)) //Possibly blocked?
+		if (IsActive() && !HasMoved(true)) //Possibly blocked?
 			FindFloorCeiling(); //If there's a 3D floor, sets 'floorZ' and 'ceilingZ' accordingly.
 
 		let oldZ = pos.z;
@@ -3956,9 +3956,9 @@ extend class FCW_Platform
 	}
 
 	//============================
-	// PlatIsActive
+	// IsActive
 	//============================
-	bool PlatIsActive ()
+	bool IsActive ()
 	{
 		//When checking group members we only care about the origin.
 		//Either "every member is active" or "every member is not active."
@@ -3970,9 +3970,9 @@ extend class FCW_Platform
 	}
 
 	//============================
-	// PlatHasMoved
+	// HasMoved
 	//============================
-	bool PlatHasMoved (bool posOnly = false)
+	bool HasMoved (bool posOnly = false)
 	{
 		//When checking group members we only care about the origin.
 		//Either "every member has moved" or "every member has not moved."
@@ -4019,12 +4019,12 @@ extend class FCW_Platform
 	//
 
 	//============================
-	// Move (ACS utility)
+	// ACSFuncMove
 	//============================
-	static void Move (Actor act, int platTid, double x, double y, double z, bool exactPos, int travelTime, double ang = 0, double pi = 0, double ro = 0, bool exactAngs = false)
+	static void ACSFuncMove (Actor act, int platTid, double x, double y, double z, bool exactPos, int travelTime, double ang = 0, double pi = 0, double ro = 0, bool exactAngs = false)
 	{
-		ActorIterator it = platTid ? level.CreateActorIterator(platTid, "FCW_Platform") : null;
-		for (let plat = FCW_Platform(it ? it.Next() : act); plat; plat = it ? FCW_Platform(it.Next()) : null)
+		ActorIterator it = platTid ? level.CreateActorIterator(platTid, "FishyPlatform") : null;
+		for (let plat = FishyPlatform(it ? it.Next() : act); plat; plat = it ? FishyPlatform(it.Next()) : null)
 		{
 			plat.CommonACSSetup();
 
@@ -4045,9 +4045,9 @@ extend class FCW_Platform
 	}
 
 	//============================
-	// MoveToSpot (ACS utility)
+	// ACSFuncMoveToSpot
 	//============================
-	static void MoveToSpot (Actor act, int platTid, int spotTid, int travelTime, bool dontRotate = false)
+	static void ACSFuncMoveToSpot (Actor act, int platTid, int spotTid, int travelTime, bool dontRotate = false)
 	{
 		//This is the only place you can make a platform use any actor as a travel destination
 		ActorIterator it = spotTid ? level.CreateActorIterator(spotTid) : null;
@@ -4055,8 +4055,8 @@ extend class FCW_Platform
 		if (!spot)
 			return; //No spot? Nothing to do
 
-		it = platTid ? level.CreateActorIterator(platTid, "FCW_Platform") : null;
-		for (let plat = FCW_Platform(it ? it.Next() : act); plat; plat = it ? FCW_Platform(it.Next()) : null)
+		it = platTid ? level.CreateActorIterator(platTid, "FishyPlatform") : null;
+		for (let plat = FishyPlatform(it ? it.Next() : act); plat; plat = it ? FishyPlatform(it.Next()) : null)
 		{
 			plat.CommonACSSetup();
 
@@ -4075,50 +4075,50 @@ extend class FCW_Platform
 	}
 
 	//============================
-	// IsActive (ACS utility)
+	// ACSFuncIsActive
 	//============================
-	static bool IsActive (Actor act, int platTid)
+	static bool ACSFuncIsActive (Actor act, int platTid)
 	{
-		ActorIterator it = platTid ? level.CreateActorIterator(platTid, "FCW_Platform") : null;
-		for (let plat = FCW_Platform(it ? it.Next() : act); plat; plat = it ? FCW_Platform(it.Next()) : null)
+		ActorIterator it = platTid ? level.CreateActorIterator(platTid, "FishyPlatform") : null;
+		for (let plat = FishyPlatform(it ? it.Next() : act); plat; plat = it ? FishyPlatform(it.Next()) : null)
 		{
-			if (plat.PlatIsActive())
+			if (plat.IsActive())
 				return true;
 		}
 		return false;
 	}
 
 	//============================
-	// HasMoved (ACS utility)
+	// ACSFuncHasMoved
 	//============================
-	static bool HasMoved (Actor act, int platTid, bool posOnly = false)
+	static bool ACSFuncHasMoved (Actor act, int platTid, bool posOnly = false)
 	{
-		ActorIterator it = platTid ? level.CreateActorIterator(platTid, "FCW_Platform") : null;
-		for (let plat = FCW_Platform(it ? it.Next() : act); plat; plat = it ? FCW_Platform(it.Next()) : null)
+		ActorIterator it = platTid ? level.CreateActorIterator(platTid, "FishyPlatform") : null;
+		for (let plat = FishyPlatform(it ? it.Next() : act); plat; plat = it ? FishyPlatform(it.Next()) : null)
 		{
-			if (plat.PlatHasMoved(posOnly))
+			if (plat.HasMoved(posOnly))
 				return true;
 		}
 		return false;
 	}
 
 	//============================
-	// SetNodePath (ACS utility)
+	// ACSFuncSetNodePath
 	//============================
-	static void SetNodePath (Actor act, int platTid, int nodeTid)
+	static void ACSFuncSetNodePath (Actor act, int platTid, int nodeTid)
 	{
-		ActorIterator it = platTid ? level.CreateActorIterator(platTid, "FCW_Platform") : null;
-		for (let plat = FCW_Platform(it ? it.Next() : act); plat; plat = it ? FCW_Platform(it.Next()) : null)
+		ActorIterator it = platTid ? level.CreateActorIterator(platTid, "FishyPlatform") : null;
+		for (let plat = FishyPlatform(it ? it.Next() : act); plat; plat = it ? FishyPlatform(it.Next()) : null)
 			plat.SetUpPath(nodeTid, false);
 	}
 
 	//============================
-	// SetOptions (ACS utility)
+	// ACSFuncSetOptions
 	//============================
-	static void SetOptions (Actor act, int platTid, int toSet, int toClear = 0)
+	static void ACSFuncSetOptions (Actor act, int platTid, int toSet, int toClear = 0)
 	{
-		ActorIterator it = platTid ? level.CreateActorIterator(platTid, "FCW_Platform") : null;
-		for (let plat = FCW_Platform(it ? it.Next() : act); plat; plat = it ? FCW_Platform(it.Next()) : null)
+		ActorIterator it = platTid ? level.CreateActorIterator(platTid, "FishyPlatform") : null;
+		for (let plat = FishyPlatform(it ? it.Next() : act); plat; plat = it ? FishyPlatform(it.Next()) : null)
 		{
 			// NOTE: Changing most options on an active platform has an immediate effect except for
 			// 'OPTFLAG_GOTONODE' which is checked in Activate() meaning you can't stop it from
@@ -4141,39 +4141,39 @@ extend class FCW_Platform
 	}
 
 	//============================
-	// GetOptions (ACS utility)
+	// ACSFuncGetOptions
 	//============================
-	static int GetOptions (Actor act, int platTid)
+	static int ACSFuncGetOptions (Actor act, int platTid)
 	{
-		ActorIterator it = platTid ? level.CreateActorIterator(platTid, "FCW_Platform") : null;
-		let plat = FCW_Platform(it ? it.Next() : act);
+		ActorIterator it = platTid ? level.CreateActorIterator(platTid, "FishyPlatform") : null;
+		let plat = FishyPlatform(it ? it.Next() : act);
 		return plat ? plat.options : 0;
 	}
 
 	//============================
-	// SetCrushDamage (ACS utility)
+	// ACSFuncSetCrushDamage
 	//============================
-	static void SetCrushDamage (Actor act, int platTid, int damage)
+	static void ACSFuncSetCrushDamage (Actor act, int platTid, int damage)
 	{
-		ActorIterator it = platTid ? level.CreateActorIterator(platTid, "FCW_Platform") : null;
-		for (let plat = FCW_Platform(it ? it.Next() : act); plat; plat = it ? FCW_Platform(it.Next()) : null)
+		ActorIterator it = platTid ? level.CreateActorIterator(platTid, "FishyPlatform") : null;
+		for (let plat = FishyPlatform(it ? it.Next() : act); plat; plat = it ? FishyPlatform(it.Next()) : null)
 			plat.crushDamage = damage;
 	}
 
 	//============================
-	// GetCrushDamage (ACS utility)
+	// ACSFuncGetCrushDamage
 	//============================
-	static int GetCrushDamage (Actor act, int platTid)
+	static int ACSFuncGetCrushDamage (Actor act, int platTid)
 	{
-		ActorIterator it = platTid ? level.CreateActorIterator(platTid, "FCW_Platform") : null;
-		let plat = FCW_Platform(it ? it.Next() : act);
+		ActorIterator it = platTid ? level.CreateActorIterator(platTid, "FishyPlatform") : null;
+		let plat = FishyPlatform(it ? it.Next() : act);
 		return plat ? plat.crushDamage : 0;
 	}
 
 	//============================
-	// MakeGroup (ACS utility)
+	// ACSFuncMakeGroup
 	//============================
-	static void MakeGroup (Actor act, int platTid, int otherPlatTid)
+	static void ACSFuncMakeGroup (Actor act, int platTid, int otherPlatTid)
 	{
 		if (platTid && !otherPlatTid)
 		{
@@ -4183,18 +4183,18 @@ extend class FCW_Platform
 			otherPlatTid = firstPlatTid;
 		}
 
-		ActorIterator it = platTid ? level.CreateActorIterator(platTid, "FCW_Platform") : null;
-		for (let plat = FCW_Platform(it ? it.Next() : act); plat; plat = it ? FCW_Platform(it.Next()) : null)
+		ActorIterator it = platTid ? level.CreateActorIterator(platTid, "FishyPlatform") : null;
+		for (let plat = FishyPlatform(it ? it.Next() : act); plat; plat = it ? FishyPlatform(it.Next()) : null)
 			plat.SetUpGroup(otherPlatTid, true);
 	}
 
 	//============================
-	// LeaveGroup (ACS utility)
+	// ACSFuncLeaveGroup
 	//============================
-	static void LeaveGroup (Actor act, int platTid)
+	static void ACSFuncLeaveGroup (Actor act, int platTid)
 	{
-		ActorIterator it = platTid ? level.CreateActorIterator(platTid, "FCW_Platform") : null;
-		for (let plat = FCW_Platform(it ? it.Next() : act); plat; plat = it ? FCW_Platform(it.Next()) : null)
+		ActorIterator it = platTid ? level.CreateActorIterator(platTid, "FishyPlatform") : null;
+		for (let plat = FishyPlatform(it ? it.Next() : act); plat; plat = it ? FishyPlatform(it.Next()) : null)
 		{
 			if (!plat.group)
 				continue;
@@ -4211,12 +4211,12 @@ extend class FCW_Platform
 	}
 
 	//============================
-	// DisbandGroup (ACS utility)
+	// ACSFuncDisbandGroup
 	//============================
-	static void DisbandGroup (Actor act, int platTid)
+	static void ACSFuncDisbandGroup (Actor act, int platTid)
 	{
-		ActorIterator it = platTid ? level.CreateActorIterator(platTid, "FCW_Platform") : null;
-		for (let plat = FCW_Platform(it ? it.Next() : act); plat; plat = it ? FCW_Platform(it.Next()) : null)
+		ActorIterator it = platTid ? level.CreateActorIterator(platTid, "FishyPlatform") : null;
+		for (let plat = FishyPlatform(it ? it.Next() : act); plat; plat = it ? FishyPlatform(it.Next()) : null)
 		{
 			if (!plat.group)
 				continue;
@@ -4232,35 +4232,35 @@ extend class FCW_Platform
 	}
 
 	//============================
-	// SetAirFriction (ACS utility)
+	// ACSFuncSetAirFriction
 	//============================
-	static void SetAirFriction (Actor act, int platTid, double fric)
+	static void ACSFuncSetAirFriction (Actor act, int platTid, double fric)
 	{
-		ActorIterator it = platTid ? level.CreateActorIterator(platTid, "FCW_Platform") : null;
-		for (let plat = FCW_Platform(it ? it.Next() : act); plat; plat = it ? FCW_Platform(it.Next()) : null)
+		ActorIterator it = platTid ? level.CreateActorIterator(platTid, "FishyPlatform") : null;
+		for (let plat = FishyPlatform(it ? it.Next() : act); plat; plat = it ? FishyPlatform(it.Next()) : null)
 			plat.platAirFric = fric;
 	}
 
 	//============================
-	// GetAirFriction (ACS utility)
+	// ACSFuncGetAirFriction
 	//============================
-	static double GetAirFriction (Actor act, int platTid)
+	static double ACSFuncGetAirFriction (Actor act, int platTid)
 	{
-		ActorIterator it = platTid ? level.CreateActorIterator(platTid, "FCW_Platform") : null;
-		let plat = FCW_Platform(it ? it.Next() : act);
+		ActorIterator it = platTid ? level.CreateActorIterator(platTid, "FishyPlatform") : null;
+		let plat = FishyPlatform(it ? it.Next() : act);
 		return plat ? plat.platAirFric : 0;
 	}
-} //End of FCW_Platform class definition
+} //End of FishyPlatform class definition
 
 /******************************************************************************
 
  The following concerns old classes that make use of the old
- InterpolationPoint class. They should not use FCW_PlatformNode
+ InterpolationPoint class. They should not use FishyPlatformNode
  since it wasn't made for them.
 
 ******************************************************************************/
 
-struct FCW_OldStuff_Common play
+struct FishyOldStuff_Common play
 {
 	static void CheckNodeTypes (Actor pointer)
 	{
@@ -4280,13 +4280,13 @@ struct FCW_OldStuff_Common play
 				return;
 			foundNodes.Push(node);
 
-			if (node is "FCW_PlatformNode")
+			if (node is "FishyPlatformNode")
 			{
 				String cls = pointer.GetClassName();
-				cls.Replace("FCW_OldStuff_", "");
+				cls.Replace("FishyOldStuff_", "");
 				Console.Printf("\ck'" .. cls .. "' with tid " .. pointer.tid .. " at position " .. pointer.pos ..
 							":\nis pointing at a 'Platform Interpolation Point' with tid ".. node.tid .. " at position " .. node.pos .. "\n.");
-				new("FCW_OldStuff_DelayedAbort");
+				new("FishyOldStuff_DelayedAbort");
 			}
 
 			pointer = node;
@@ -4295,20 +4295,20 @@ struct FCW_OldStuff_Common play
 	}
 }
 
-mixin class FCW_OldStuff
+mixin class FishyOldStuff
 {
 	override void PostBeginPlay ()
 	{
 		Super.PostBeginPlay();
-		FCW_OldStuff_Common.CheckNodeTypes(self);
+		FishyOldStuff_Common.CheckNodeTypes(self);
 	}
 }
 
-class FCW_OldStuff_PathFollower : PathFollower replaces PathFollower { mixin FCW_OldStuff; }
-class FCW_OldStuff_MovingCamera : MovingCamera replaces MovingCamera { mixin FCW_OldStuff; }
-class FCW_OldStuff_ActorMover : ActorMover replaces ActorMover { mixin FCW_OldStuff; }
+class FishyOldStuff_PathFollower : PathFollower replaces PathFollower { mixin FishyOldStuff; }
+class FishyOldStuff_MovingCamera : MovingCamera replaces MovingCamera { mixin FishyOldStuff; }
+class FishyOldStuff_ActorMover : ActorMover replaces ActorMover { mixin FishyOldStuff; }
 
-class FCW_OldStuff_DelayedAbort : Thinker
+class FishyOldStuff_DelayedAbort : Thinker
 {
 	int startTime;
 

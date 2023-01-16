@@ -1,4 +1,4 @@
-class TESTPlat : FCW_Platform abstract
+class TESTPlat : FishyPlatform abstract
 {
 	States
 	{
@@ -103,7 +103,7 @@ class TESTPushCrate : TESTPlat
 		Height 80;
 		+PUSHABLE;
 		-NOGRAVITY;
-		+FCW_Platform.CARRIABLE;
+		+FishyPlatform.CARRIABLE;
 	}
 }
 
