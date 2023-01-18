@@ -66,7 +66,7 @@
 
 ******************************************************************************/
 
-class FishyPlatform : Actor abstract
+class FishyPlatform : Actor
 {
 	Default
 	{
@@ -76,6 +76,8 @@ class FishyPlatform : Actor abstract
 		//For more info:
 		//https://zdoom.org/wiki/Editor_keys
 		//https://zdoom.org/wiki/Making_configurable_actors_in_DECORATE
+
+		//$Title Generic Platform (set model and size in the 'Custom' tab)
 
 		//$Arg0 Interpolation Point
 		//$Arg0Type 14
@@ -102,6 +104,7 @@ class FishyPlatform : Actor abstract
 		+CANPASS;
 		+SOLID;
 		+SHOOTABLE; //Block hitscan attacks
+		+BUMPSPECIAL;
 
 		//These are needed because we're shootable
 		+NODAMAGE;
@@ -112,6 +115,13 @@ class FishyPlatform : Actor abstract
 		FishyPlatform.AirFriction 0.99;
 		FishyPlatform.PassengerLookTics 1;
 		FishyPlatform.PortalLookTics 1;
+	}
+
+	States
+	{
+	Spawn:
+		MODL A -1 NoDelay A_FishyPlatUserSetup();
+		Stop;
 	}
 
 	//===New flags===//
@@ -129,7 +139,50 @@ class FishyPlatform : Actor abstract
 	int user_portalLookTics; //The amount of tics between searching for non-static line portals (via BlockLinesIterator) - Set to 0 (or a negative value) to never look for portals.
 	property PortalLookTics: user_portalLookTics;
 
-	private void HandleUserVars ()
+	//===User variables that are parameters for A_SetSize() and A_ChangeModel()===//
+	double user_radius;
+	double user_height;
+
+	string user_cmp1_modeldef;
+	int user_cmp2_modelindex;
+	string user_cmp3_modelpath;
+	string user_cmp4_model;
+	int user_cmp5_skinindex;
+	string user_cmp6_skinpath;
+	string user_cmp7_skin;
+	int user_cmp8_flags;
+	//$UserDefaultValue -1
+	int user_cmp9_generatorindex;
+	int user_cmp10_animationindex;
+	string user_cmp11_animationpath;
+	string user_cmp12_animation;
+
+	void A_FishyPlatUserSetup () //Sets the model, radius and height - called in the "Spawn" state sequence which subclasses can redefine in order to not call it
+	{
+		A_ChangeModel(
+			user_cmp1_modeldef,
+			user_cmp2_modelindex,
+			user_cmp3_modelpath,
+			user_cmp4_model,
+			user_cmp5_skinindex,
+			user_cmp6_skinpath,
+			user_cmp7_skin,
+			user_cmp8_flags,
+			user_cmp9_generatorindex,
+			user_cmp10_animationindex,
+			user_cmp11_animationpath,
+			user_cmp12_animation
+		);
+
+		A_SetSize(user_radius, user_height);
+	}
+
+	private void SetAtypicalUserDefaultValues () //Called in the BeginPlay() override - before the user vars get set
+	{
+		user_cmp9_generatorindex = -1;
+	}
+
+	private void HandleUserVars () //Called in the PostBeginPlay() override - after the user vars get set
 	{
 		if (bPortCopy)
 		{
@@ -440,6 +493,8 @@ extend class FishyPlatform
 		lastGetNPTime = -1;
 		lastGetNPResult = false;
 		lastGetUPTime = -1;
+
+		SetAtypicalUserDefaultValues();
 
 		pCurr = pPrev = pNext = pLast = (0, 0, 0);
 		pCurrAngs = pPrevAngs = pNextAngs = pLastAngs = (0, 0, 0);
@@ -2702,12 +2757,15 @@ extend class FishyPlatform
 				plat.portTwin.bCanPass = plat.bCanPass;
 				plat.portTwin.bSolid = plat.bSolid;
 				plat.portTwin.bShootable = plat.bShootable;
+				plat.portTwin.bBumpSpecial = plat.bBumpSpecial;
 				plat.portTwin.bNoDamage = plat.bNoDamage;
 				plat.portTwin.bNoBlood = plat.bNoBlood;
 				plat.portTwin.bDontThrust = plat.bDontThrust;
 				plat.portTwin.bNotAutoAimed = plat.bNotAutoAimed;
 				plat.portTwin.bCannotPush = plat.bCannotPush;
 				plat.portTwin.bPushable = plat.bPushable;
+				if (plat.portTwin.radius != plat.radius || plat.portTwin.height != plat.height)
+					plat.portTwin.A_SetSize(plat.radius, plat.height);
 				plat.portTwin.options = plat.options;
 				plat.portTwin.crushDamage = plat.crushDamage;
 				plat.portTwin.special = plat.special;

@@ -143,3 +143,11 @@ Model DemoFirebluSegmentTiny
 	Model 0 "DemoFirebluSegment.obj"
 	FrameIndex MODL A 0 0
 }
+
+//Bare-bones modeldef entry so A_ChangeModel() works as expected
+Model FishyPlatform
+{
+	USEACTORPITCH
+	USEACTORROLL
+	FrameIndex MODL A 0 0
+}
