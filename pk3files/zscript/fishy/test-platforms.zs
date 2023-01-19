@@ -3,7 +3,7 @@ class TESTPlat : FishyPlatform abstract
 	States
 	{
 	Spawn:
-		MODL A -1; //Don't call A_FishyPlatUserSetup()
+		MODL A -1;
 		Stop;
 	}
 }
@@ -16,7 +16,6 @@ class TESTMooPlatform : TESTPlat
 {
 	Default
 	{
-		//$Title TESTMooPlatform
 		Radius 64;
 		Height 32;
 	}
@@ -26,7 +25,6 @@ class TESTFloaty : TESTPlat
 {
 	Default
 	{
-		//$Title TESTFloaty
 		Radius 32;
 		Height 80;
 	}
@@ -36,7 +34,6 @@ class TESTFlyingDoor : TESTPlat
 {
 	Default
 	{
-		//$Title TESTFlyingDoor
 		Radius 64;
 		Height 8;
 	}
@@ -46,7 +43,6 @@ class TESTSprite : TESTPlat
 {
 	Default
 	{
-		//$Title TESTSprite
 		Radius 64;
 		Height 16;
 		+ROLLSPRITE;
@@ -94,7 +90,6 @@ class TESTBlueishPlatform : TESTPlat
 {
 	Default
 	{
-		//$Title TESTBlueishPlatform
 		Radius 64;
 		Height 16;
 	}
@@ -104,7 +99,6 @@ class TESTPushCrate : TESTPlat
 {
 	Default
 	{
-		//$Title TESTPushCrate
 		Radius 48;
 		Height 80;
 		+PUSHABLE;

@@ -145,7 +145,7 @@ Model DemoFirebluSegmentTiny
 }
 
 //Bare-bones modeldef entry so A_ChangeModel() works as expected
-Model FishyPlatform
+Model FishyPlatformGeneric
 {
 	USEACTORPITCH
 	USEACTORROLL

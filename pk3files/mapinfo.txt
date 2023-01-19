@@ -1,7 +1,7 @@
 DoomEdNums
 {
 	15000 = FishyPlatformNode
-	15001 = FishyPlatform
+	15001 = FishyPlatformGeneric
 
 	//Demomap
 	15100 = DemoCavePlat

@@ -4,6 +4,7 @@ version "4.10"
 #include "zscript/fishy/platform-base.zs"
 
 //Examples of platform subclasses
+#include "zscript/fishy/platform-generic.zs"
 #include "zscript/fishy/test-platforms.zs"
 #include "zscript/fishy/demo-platforms.zs"
 
