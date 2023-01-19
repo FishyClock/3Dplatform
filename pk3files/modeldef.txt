@@ -144,10 +144,14 @@ Model DemoFirebluSegmentTiny
 	FrameIndex MODL A 0 0
 }
 
-//Bare-bones modeldef entry so A_ChangeModel() works as expected
+//This actor needs a modeldef entry or else
+//it can't use A_ChangeModel() properly.
 Model FishyPlatformGeneric
 {
-	USEACTORPITCH
-	USEACTORROLL
+	USEACTORPITCH	//This along with FrameIndex
+	USEACTORROLL	//is all that GZDoom needs.
+
+	Path "models"	//While UDB needs an actual model defined.
+	Model 0 "generic-platform.obj"
 	FrameIndex MODL A 0 0
 }
