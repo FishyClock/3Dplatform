@@ -3,17 +3,21 @@ class FishyPlatformGeneric : FishyPlatform
 	Default
 	{
 		//$Title Generic Platform (set model and size in the 'Custom' tab)
+		Radius 16; //A visual size for UDB's Visual Mode since it has a default model
+		Height 16;
 	}
 
 	States
 	{
 	Spawn:
-		MODL A -1;
+		MODL A -1; //In order to use A_ChangeModel() it needs to have a modeldef entry with a sprite other than TNT1A0
 		Stop;
 	}
 
 	//===User variables that are parameters for A_SetSize() and A_ChangeModel()===//
+	//$UserDefaultValue -1
 	double user_radius;
+	//$UserDefaultValue -1
 	double user_height;
 
 	string user_cmp1_modeldef;
@@ -33,6 +37,8 @@ class FishyPlatformGeneric : FishyPlatform
 	override void BeginPlay () //This gets called before any user vars are set - any atypical default values have to be set here
 	{
 		Super.BeginPlay();
+		user_radius = -1; //Passing a negative value to A_SetSize() means "don't change"
+		user_height = -1;
 		user_cmp9_generatorindex = -1;
 	}
 
