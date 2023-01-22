@@ -16,30 +16,30 @@ class FishyPlatformGeneric : FishyPlatform
 
 	//===User variables that are parameters for A_SetSize() and A_ChangeModel()===//
 	//$UserDefaultValue -1
-	double user_radius;
+	double user_set_radius;
 	//$UserDefaultValue -1
-	double user_height;
+	double user_set_height;
 
-	string user_cmp1_modeldef;
-	int user_cmp2_modelindex;
-	string user_cmp3_modelpath;
-	string user_cmp4_model;
-	int user_cmp5_skinindex;
-	string user_cmp6_skinpath;
-	string user_cmp7_skin;
-	int user_cmp8_flags;
+	string user_cm_modeldef;
+	int user_cm_modelindex;
+	string user_cm_modelpath;
+	string user_cm_model;
+	int user_cm_skinindex;
+	string user_cm_skinpath;
+	string user_cm_skin;
+	int user_cm_flags;
 	//$UserDefaultValue -1
-	int user_cmp9_generatorindex;
-	int user_cmp10_animationindex;
-	string user_cmp11_animationpath;
-	string user_cmp12_animation;
+	int user_cm_generatorindex;
+	int user_cm_animationindex;
+	string user_cm_animationpath;
+	string user_cm_animation;
 
 	override void BeginPlay () //This gets called before any user vars are set - any atypical default values have to be set here
 	{
 		Super.BeginPlay();
-		user_radius = -1; //Passing a negative value to A_SetSize() means "don't change"
-		user_height = -1;
-		user_cmp9_generatorindex = -1;
+		user_set_radius = -1; //Passing a negative value to A_SetSize() means "don't change"
+		user_set_height = -1;
+		user_cm_generatorindex = -1;
 	}
 
 	override void PostBeginPlay ()
@@ -47,21 +47,21 @@ class FishyPlatformGeneric : FishyPlatform
 		if (!bPortCopy) //Make sure this isn't a invisible portal copy
 		{
 			A_ChangeModel(
-				user_cmp1_modeldef,
-				user_cmp2_modelindex,
-				user_cmp3_modelpath,
-				user_cmp4_model,
-				user_cmp5_skinindex,
-				user_cmp6_skinpath,
-				user_cmp7_skin,
-				user_cmp8_flags,
-				user_cmp9_generatorindex,
-				user_cmp10_animationindex,
-				user_cmp11_animationpath,
-				user_cmp12_animation
+				user_cm_modeldef,
+				user_cm_modelindex,
+				user_cm_modelpath,
+				user_cm_model,
+				user_cm_skinindex,
+				user_cm_skinpath,
+				user_cm_skin,
+				user_cm_flags,
+				user_cm_generatorindex,
+				user_cm_animationindex,
+				user_cm_animationpath,
+				user_cm_animation
 			);
 
-			A_SetSize(user_radius, user_height);
+			A_SetSize(user_set_radius, user_set_height);
 		}
 		Super.PostBeginPlay();
 	}
