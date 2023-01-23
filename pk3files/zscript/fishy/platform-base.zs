@@ -2,7 +2,7 @@
 
  MIT License
 
- Copyright (c) 2022 FishyClockwork
+ Copyright (c) 2022-2023 Fishytza A.K.A. FishyClockwork
 
  Permission is hereby granted, free of charge, to any person obtaining a copy
  of this software and associated documentation files (the "Software"), to deal
