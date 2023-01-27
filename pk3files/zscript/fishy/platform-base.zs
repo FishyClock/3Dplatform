@@ -269,10 +269,7 @@ class FishyPlatformGroup play
 
 	void SetGroupOrigin (FishyPlatform ori, bool setMirrorPos = true)
 	{
-		if (origin == ori)
-			return; //Same as before; no need to update anything
 		origin = ori;
-
 		for (int i = 0; i < members.Size(); ++i)
 		{
 			let plat = GetMember(i);
@@ -1714,7 +1711,10 @@ extend class FishyPlatform
 					}
 				}
 			}
-			plat.group.SetGroupOrigin(FishyPlatform(passengers[i]));
+
+			let newOri = FishyPlatform(passengers[i]);
+			if (plat.group.origin != newOri)
+				plat.group.SetGroupOrigin(newOri);
 		}
 		lastGetNPResult = result;
 		return result;
@@ -2667,7 +2667,7 @@ extend class FishyPlatform
 		// the current position/angles.
 
 		FishyPlatform plat;
-		if (group)
+		if (group && group.origin != self)
 			group.SetGroupOrigin(self);
 
 		if (moveType != MOVE_QUICK)
@@ -3344,7 +3344,7 @@ extend class FishyPlatform
 			if ((options & OPTFLAG_RESUMEPATH) && time <= 1.0)
 			{
 				bActive = true;
-				if (group)
+				if (group && group.origin != self)
 					group.SetGroupOrigin(self);
 				MustGetNewPassengers(); //Ignore search tic rate; do a search now
 				return;
@@ -3366,7 +3366,7 @@ extend class FishyPlatform
 						return; //Abort if we or the node got Thing_Remove()'d
 				}
 				bActive = true;
-				if (group)
+				if (group && group.origin != self)
 					group.SetGroupOrigin(self);
 
 				if (!bGoToNode)
@@ -4002,7 +4002,7 @@ extend class FishyPlatform
 		reachedTime = 0;
 		holdTime = 0;
 		bActive = true;
-		if (group)
+		if (group && group.origin != self)
 			group.SetGroupOrigin(self);
 		portDelta = 0;
 		acsFlags = (OPTFLAG_ANGLE | OPTFLAG_PITCH | OPTFLAG_ROLL);
