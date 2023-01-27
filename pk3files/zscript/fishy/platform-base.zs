@@ -438,9 +438,6 @@ extend class FishyPlatform
 		lastGetNPTime = -1;
 		lastGetNPResult = false;
 		lastGetUPTime = -1;
-
-		pCurr = pPrev = pNext = pLast = (0, 0, 0);
-		pCurrAngs = pPrevAngs = pNextAngs = pLastAngs = (0, 0, 0);
 	}
 
 	//============================
@@ -1215,8 +1212,10 @@ extend class FishyPlatform
 
 		if (!currNode || (!currNode.next && !bGoToNode))
 		{
-			pLast = pNext = pCurr;
-			pLastAngs = pNextAngs = pCurrAngs;
+			pNext = pCurr;
+			pLast = pCurr;
+			pNextAngs = pCurrAngs;
+			pLastAngs = pCurrAngs;
 		}
 
 		if (!prevNode || bGoToNode)
@@ -3732,9 +3731,10 @@ extend class FishyPlatform
 			if (yesGravity && !onGround)
 			{
 				Actor mo;
-				onGround = bOnMobj = ((lastGetNPTime == level.mapTime && !lastGetNPResult) ||
+				bOnMobj = ((lastGetNPTime == level.mapTime && !lastGetNPResult) ||
 					((mo = blockingMobj) && mo.pos.z <= pos.z && OverlapXY(self, mo) ) ||
 					!TestMobjZ(true) );
+				onGround = bOnMobj;
 			}
 
 			if (group && group.origin)
@@ -3755,9 +3755,10 @@ extend class FishyPlatform
 				if (yesGravity && !onGround)
 				{
 					Actor mo;
-					onGround = plat.bOnMobj = ((plat.lastGetNPTime == level.mapTime && !plat.lastGetNPResult) ||
+					plat.bOnMobj = ((plat.lastGetNPTime == level.mapTime && !plat.lastGetNPResult) ||
 						((mo = plat.blockingMobj) && mo.pos.z <= plat.pos.z && OverlapXY(plat, mo)) ||
 						!plat.TestMobjZ(true) );
+					onGround = plat.bOnMobj;
 				}
 			}
 
@@ -4006,11 +4007,13 @@ extend class FishyPlatform
 			group.SetGroupOrigin(self);
 		portDelta = 0;
 		acsFlags = (OPTFLAG_ANGLE | OPTFLAG_PITCH | OPTFLAG_ROLL);
-		pPrev = pCurr = pos;
-		pPrevAngs = pCurrAngs = (
+		pPrev = pos;
+		pCurr = pos;
+		pCurrAngs = (
 			Normalize180(angle),
 			Normalize180(pitch),
 			Normalize180(roll));
+		pPrevAngs = pCurrAngs;
 		vel = (0, 0, 0);
 		MustGetNewPassengers(); //Ignore search tic rate; do a search now
 	}
@@ -4032,14 +4035,16 @@ extend class FishyPlatform
 		{
 			plat.CommonACSSetup();
 
-			plat.pNext = plat.pLast = plat.pos + (exactPos ?
+			plat.pNext = plat.pos + (exactPos ?
 				level.Vec3Diff(plat.pos, (x, y, z)) : //Make it portal aware in a way so TryMove() can handle it
 				(x, y, z)); //Absolute offset so TryMove() can handle it
+			plat.pLast = plat.pNext;
 
-			plat.pNextAngs = plat.pLastAngs = plat.pCurrAngs + (
+			plat.pNextAngs = plat.pCurrAngs + (
 				exactAngs ? DeltaAngle(plat.pCurrAngs.x, ang) : ang,
 				exactAngs ? DeltaAngle(plat.pCurrAngs.y, pi) : pi,
 				exactAngs ? DeltaAngle(plat.pCurrAngs.z, ro) : ro);
+			plat.pLastAngs = plat.pNextAngs;
 
 			if (travelTime <= 0) //Negative values are interpreted as speed in map units per tic
 				plat.SetTravelSpeed(-travelTime);
@@ -4064,12 +4069,14 @@ extend class FishyPlatform
 		{
 			plat.CommonACSSetup();
 
-			plat.pNext = plat.pLast = plat.pos + plat.Vec3To(spot); //Make it portal aware in a way so TryMove() can handle it
+			plat.pNext = plat.pos + plat.Vec3To(spot); //Make it portal aware in a way so TryMove() can handle it
+			plat.pLast = plat.pNext;
 
-			plat.pNextAngs = plat.pLastAngs = plat.pCurrAngs + (
+			plat.pNextAngs = plat.pCurrAngs + (
 				!dontRotate ? DeltaAngle(plat.pCurrAngs.x, spot.angle) : 0,
 				!dontRotate ? DeltaAngle(plat.pCurrAngs.y, spot.pitch) : 0,
 				!dontRotate ? DeltaAngle(plat.pCurrAngs.z, spot.roll) : 0);
+			plat.pLastAngs = plat.pNextAngs;
 
 			if (travelTime <= 0) //Negative values are interpreted as speed in map units per tic
 				plat.SetTravelSpeed(-travelTime);
