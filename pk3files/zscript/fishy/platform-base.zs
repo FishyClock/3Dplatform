@@ -876,9 +876,6 @@ extend class FishyPlatform
 		//Helper function for PushObstacle().
 		//Retuns false if 'pushed' was destroyed.
 
-		if (crushDamage <= 0)
-			return true;
-
 		//Normally, if the obstacle is pushed against a wall or solid actor etc
 		//then apply damage every 4th tic so its pain sound can be heard.
 		//But if it's not pushed against anything and 'hurtfulPush' is enabled
@@ -919,7 +916,8 @@ extend class FishyPlatform
 			(!pushed.bPushable && //Always push actors that have PUSHABLE.
 			(pushed.bDontThrust || pushed is "FishyPlatform") ) ) //Otherwise, only push it if it's a non-platform and doesn't have DONTTHRUST.
 		{
-			CrushObstacle(pushed, true, true, pusher); //Handle OPTFLAG_HURTFULPUSH
+			if (crushDamage > 0 && (options & OPTFLAG_HURTFULPUSH))
+				CrushObstacle(pushed, true, true, pusher); //Handle OPTFLAG_HURTFULPUSH
 			return; //No velocity modification
 		}
 
@@ -972,7 +970,7 @@ extend class FishyPlatform
 			fits = FitsAtPosition(pushed, level.Vec3Offset(pushed.pos, pushForce));
 			if (!fits)
 			{
-				if (!CrushObstacle(pushed, false, false, pusher))
+				if (crushDamage > 0 && !CrushObstacle(pushed, false, false, pusher))
 					return; //Actor 'pushed' was destroyed
 				deliveredOuchies = true;
 
@@ -1017,7 +1015,7 @@ extend class FishyPlatform
 			fits = FitsAtPosition(pushed, level.Vec3Offset(pushed.pos, pushForce));
 			if (!fits && !deliveredOuchies)
 			{
-				if (!CrushObstacle(pushed, false, false, pusher))
+				if (crushDamage > 0 && !CrushObstacle(pushed, false, false, pusher))
 					return; //Actor 'pushed' was destroyed
 				deliveredOuchies = true;
 
@@ -1047,7 +1045,7 @@ extend class FishyPlatform
 
 		pushed.vel += pushForce; //Apply the actual push (unrelated to damage)
 
-		if (!deliveredOuchies)
+		if (!deliveredOuchies && crushDamage > 0 && (options & OPTFLAG_HURTFULPUSH))
 			CrushObstacle(pushed, (pushForce == (0, 0, 0)), true, pusher); //Handle OPTFLAG_HURTFULPUSH
 	}
 
@@ -1292,12 +1290,12 @@ extend class FishyPlatform
 			if (!plat.bCarriable)
 				return false;
 
-			//If either one has this option then don't carry it
-			if ((options | plat.options) & OPTFLAG_IGNOREGEO)
+			//Don't carry platform if it's in our group
+			if (group && group == plat.group)
 				return false;
 
-			//Don't carry platform if it's in our group
-			if (group && plat.group && group == plat.group)
+			//If either one has this option then don't carry it
+			if ((options | plat.options) & OPTFLAG_IGNOREGEO)
 				return false;
 
 			//If this is somebody's portal copy, ignore it
