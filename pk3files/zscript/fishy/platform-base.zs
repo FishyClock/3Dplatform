@@ -601,6 +601,8 @@ extend class FishyPlatform
 		FishyPlatform plat;
 		Array<FishyPlatform> newMembers;
 		bool foundOne = false;
+		bool gotOrigin = (group && group.origin);
+
 		while (plat = FishyPlatform(it.Next()))
 		{
 			if (plat != self)
@@ -608,21 +610,25 @@ extend class FishyPlatform
 
 			if (plat.group) //Target is in its own group?
 			{
+				gotOrigin |= (plat.group.origin != null);
 				if (!group) //We don't have a group?
 				{
-					newMembers.Push(self);
+					if (doUpdateGroupInfo && gotOrigin)
+						newMembers.Push(self);
 					plat.group.Add(self);
 				}
 				else if (plat.group != group) //Both are in different groups?
 				{
-					newMembers.Append(group.members);
+					if (doUpdateGroupInfo && gotOrigin)
+						newMembers.Append(group.members);
 					plat.group.MergeWith(group);
 				}
 				//else - nothing happens because it's the same group or plat == self
 			}
 			else if (group) //We're in a group but target doesn't have a group?
 			{
-				newMembers.Push(plat);
+				if (doUpdateGroupInfo && gotOrigin)
+					newMembers.Push(plat);
 				group.Add(plat);
 			}
 			else if (plat != self) //Neither are in a group
@@ -643,8 +649,7 @@ extend class FishyPlatform
 		if (!doUpdateGroupInfo)
 			return true;
 
-		let ori = group.origin;
-		if (!ori)
+		if (!gotOrigin)
 		for (int i = 0; i < group.members.Size(); ++i)
 		{
 			//With no designated origin, just update everyone's
@@ -4189,9 +4194,8 @@ extend class FishyPlatform
 		if (platTid && !otherPlatTid)
 		{
 			//Swap them. (If zero, 'otherPlatTid' is activator.)
-			int firstPlatTid = platTid;
-			platTid = otherPlatTid;
-			otherPlatTid = firstPlatTid;
+			otherPlatTid = platTid;
+			platTid = 0;
 		}
 
 		ActorIterator it = platTid ? level.CreateActorIterator(platTid, "FishyPlatform") : null;
