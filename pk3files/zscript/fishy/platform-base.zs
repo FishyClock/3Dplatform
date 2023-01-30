@@ -1162,21 +1162,18 @@ extend class FishyPlatform
 		//All checked angles have to be adjusted.
 		if (prevNode && !bGoToNode)
 		{
-			//'pPrev' has to be adjusted if 'currNode' position is different from platform's.
-			//Which can happen because of non-static line portals or because of velocity movement.
-			vector3 offset = currNode ? currNode.Vec3To(self) : (0, 0, 0);
-			pPrev = pos + Vec3To(prevNode) + offset; //Make it portal aware in a way so TryMove() can handle it
+			pPrev = pos + Vec3To(prevNode); //Make it portal aware in a way so TryMove() can handle it
 			pPrevAngs = (
 			Normalize180(prevNode.angle + portDelta),
 			Normalize180(prevNode.pitch),
 			Normalize180(prevNode.roll));
 		}
 
-		pCurr = pos;
+		pCurr = pos; //This is deliberately not "currNode.pos" because we might have crossed a portal while following our path
 		if (!prevNode || bGoToNode)
 		{
 			pCurrAngs = (
-			Normalize180(angle),
+			Normalize180(angle), //This is deliberately not "currNode.angle/pitch/roll" for the same reason
 			Normalize180(pitch),
 			Normalize180(roll));
 		}
@@ -1198,7 +1195,7 @@ extend class FishyPlatform
 			DeltaAngle(pCurrAngs.y, nextNode.pitch),
 			DeltaAngle(pCurrAngs.z, nextNode.roll));
 
-			if (nextNode.next)
+			if (nextNode.next && !bGoToNode)
 			{
 				pLast = pos + Vec3To(nextNode.next); //Make it portal aware in a way so TryMove() can handle it
 				pLastAngs = pNextAngs + (
@@ -1206,14 +1203,13 @@ extend class FishyPlatform
 				DeltaAngle(pNextAngs.y, nextNode.next.pitch),
 				DeltaAngle(pNextAngs.z, nextNode.next.roll));
 			}
-			else //No nextNode.next
+			else // (!nextNode.next || bGoToNode)
 			{
 				pLast = pNext;
 				pLastAngs = pNextAngs;
 			}
 		}
-
-		if (!currNode || (!currNode.next && !bGoToNode))
+		else // (!currNode || (!currNode.next && !bGoToNode))
 		{
 			pNext = pCurr;
 			pLast = pCurr;
@@ -1912,9 +1908,7 @@ extend class FishyPlatform
 					//interpolation coordinates.
 					if (result)
 					{
-						vector3 diff = level.Vec3Diff(moOldPos, mo.pos);
-						plat.pPrev += diff;
-						plat.pCurr += diff;
+						plat.pCurr += level.Vec3Diff(moOldPos, mo.pos);
 						if (moNewPos != mo.pos)
 							plat.AdjustInterpolationCoordinates(moNewPos, mo.pos, DeltaAngle(moNewAngle, mo.angle));
 					}
@@ -3471,7 +3465,6 @@ extend class FishyPlatform
 
 		if (result == 2)
 		{
-			pPrev += vel;
 			pCurr += vel;
 			if (pos != newPos) //Crossed a portal?
 				AdjustInterpolationCoordinates(newPos, pos, DeltaAngle(startAngle, angle));
@@ -3894,7 +3887,6 @@ extend class FishyPlatform
 		else if (pos.z + height > ceilingZ)
 			SetZ(ceilingZ - height);
 
-		pPrev.z += pos.z - oldZ;
 		pCurr.z += pos.z - oldZ;
 	}
 
