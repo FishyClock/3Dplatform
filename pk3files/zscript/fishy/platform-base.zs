@@ -355,6 +355,8 @@ extend class FishyPlatform
 	double timeFrac;
 	int holdTime;
 	bool bActive;
+	transient bool bRanActivationRoutine; //Check if CallNodeSpecials() ended up calling Active() on self.
+	transient bool bRanDeactivationRoutine; //Check if CallNodeSpecials() ended up calling Deactive() on self.
 	transient bool bInMove; //No collision between a platform and its passengers during said platform's move.
 	transient bool bMoved; //Used for PassengerPostMove() when everyone has finished (or tried) moving in this tic.
 	InterpolationPoint currNode, firstNode;
@@ -556,6 +558,7 @@ extend class FishyPlatform
 				Console.Printf(prefix .. "\ckPath needs at least 2 nodes. (Interpolation point tid: " .. nodeTid .. ".)");
 				return false;
 			}
+			firstPrevNode = null;
 		}
 		else //Spline path; need 4 nodes unless the first node is the destination
 		{
@@ -587,6 +590,10 @@ extend class FishyPlatform
 			{
 				firstPrevNode = firstNode;
 				firstNode = firstNode.next;
+			}
+			else
+			{
+				firstPrevNode = null;
 			}
 		}
 		return true;
@@ -3320,6 +3327,7 @@ extend class FishyPlatform
 			}
 		}
 		bActive = false;
+		bRanDeactivationRoutine = true;
 	}
 
 	//============================
@@ -3337,6 +3345,7 @@ extend class FishyPlatform
 			if (portTwin)
 				portTwin.bActive = false;
 
+			bRanActivationRoutine = true;
 			if ((options & OPTFLAG_RESUMEPATH) && time <= 1.0)
 			{
 				bActive = true;
@@ -3623,6 +3632,10 @@ extend class FishyPlatform
 			time += timeFrac;
 			if (time > 1.0) //Reached destination?
 			{
+				//These two might be "true" later thanks to CallNodeSpecials()
+				bRanActivationRoutine = false;
+				bRanDeactivationRoutine = false;
+
 				bool goneToNode = bGoToNode;
 				if (bGoToNode)
 				{
@@ -3663,12 +3676,13 @@ extend class FishyPlatform
 
 				bool finishedPath = (!currNode || !currNode.next ||
 									(!goneToNode && !(options & OPTFLAG_LINEAR) && (!currNode.next.next || !prevNode) ) );
-				if (!finishedPath)
+
+				if (!bRanActivationRoutine && !finishedPath)
 					SetHoldTime();
 
-				//Stopped() must be called before PlatMove() in this case
-				if (finishedPath || holdTime > 0)
+				if (!bRanDeactivationRoutine && (finishedPath || holdTime > 0))
 				{
+					//Stopped() must be called before PlatMove() in this case
 					if (!group)
 					{
 						Stopped(oldPos, pos);
@@ -3681,21 +3695,24 @@ extend class FishyPlatform
 					}
 				}
 
-				//Make sure we're exactly at our intended position.
-				//(It doesn't matter if we can't fit at this "intended position"
-				//because that's what the "stuck actors" logic is there for.)
-				bool changeAng = (!(options & OPTFLAG_FACEMOVE) && ((options | acsFlags) & OPTFLAG_ANGLE));
-				bool changePi =  (!(options & OPTFLAG_FACEMOVE) && ((options | acsFlags) & OPTFLAG_PITCH));
-				bool changeRo =  (!(options & OPTFLAG_FACEMOVE) && ((options | acsFlags) & OPTFLAG_ROLL));
-				PlatMove(pNext, changeAng ? pNextAngs.x : angle,
-								changePi  ? pNextAngs.y : pitch,
-								changeRo  ? pNextAngs.z : roll, MOVE_QUICK);
+				if (!bRanActivationRoutine)
+				{
+					//Make sure we're exactly at our intended position.
+					//(It doesn't matter if we can't fit at this "intended position"
+					//because that's what the "stuck actors" logic is there for.)
+					bool changeAng = (!(options & OPTFLAG_FACEMOVE) && ((options | acsFlags) & OPTFLAG_ANGLE));
+					bool changePi =  (!(options & OPTFLAG_FACEMOVE) && ((options | acsFlags) & OPTFLAG_PITCH));
+					bool changeRo =  (!(options & OPTFLAG_FACEMOVE) && ((options | acsFlags) & OPTFLAG_ROLL));
+					PlatMove(pNext, changeAng ? pNextAngs.x : angle,
+									changePi  ? pNextAngs.y : pitch,
+									changeRo  ? pNextAngs.z : roll, MOVE_QUICK);
+				}
 
 				if (finishedPath)
 				{
 					Deactivate(self);
 				}
-				else
+				else if (!bRanActivationRoutine)
 				{
 					SetInterpolationCoordinates();
 					SetTimeFraction();
