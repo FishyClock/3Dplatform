@@ -356,7 +356,6 @@ extend class FishyPlatform
 	int holdTime;
 	bool bActive;
 	transient bool bRanActivationRoutine; //Check if CallNodeSpecials() ended up calling Active() on self.
-	transient bool bRanDeactivationRoutine; //Check if CallNodeSpecials() ended up calling Deactive() on self.
 	transient bool bInMove; //No collision between a platform and its passengers during said platform's move.
 	transient bool bMoved; //Used for PassengerPostMove() when everyone has finished (or tried) moving in this tic.
 	InterpolationPoint currNode, firstNode;
@@ -3327,7 +3326,6 @@ extend class FishyPlatform
 			}
 		}
 		bActive = false;
-		bRanDeactivationRoutine = true;
 	}
 
 	//============================
@@ -3402,10 +3400,11 @@ extend class FishyPlatform
 		if (!(options & OPTFLAG_ADDVELSTOP))
 			return;
 
-		vector3 pushForce = level.Vec3Diff(startPos, endPos);
+		vector3 pushForce = (double.nan, double.nan, double.nan); //No passengers == don't call level.Vec3Diff()
 
 		if (passengers.Size())
 		{
+			pushForce = level.Vec3Diff(startPos, endPos);
 			for (int i = 0; i < passengers.Size(); ++i)
 			{
 				let mo = passengers[i];
@@ -3418,6 +3417,9 @@ extend class FishyPlatform
 
 		if (portTwin && !portTwin.bNoBlockmap && portTwin.passengers.Size())
 		{
+			if (pushForce != pushForce) //NaN check
+				pushForce = level.Vec3Diff(startPos, endPos);
+
 			if (lastUPort)
 				pushForce = TranslatePortalVector(pushForce, lastUPort, false, false);
 
@@ -3632,10 +3634,7 @@ extend class FishyPlatform
 			time += timeFrac;
 			if (time > 1.0) //Reached destination?
 			{
-				//These two might be "true" later thanks to CallNodeSpecials()
-				bRanActivationRoutine = false;
-				bRanDeactivationRoutine = false;
-
+				bRanActivationRoutine = false; //This might be "true" later thanks to CallNodeSpecials()
 				bool goneToNode = bGoToNode;
 				if (bGoToNode)
 				{
@@ -3680,7 +3679,7 @@ extend class FishyPlatform
 				if (!bRanActivationRoutine && !finishedPath)
 					SetHoldTime();
 
-				if (!bRanDeactivationRoutine && (finishedPath || holdTime > 0))
+				if (finishedPath || holdTime > 0 || !bActive) //'bActive' being false can happen if CallNodeSpecials() ended up calling Deactivate() on self
 				{
 					//Stopped() must be called before PlatMove() in this case
 					if (!group)
