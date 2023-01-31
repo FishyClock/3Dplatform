@@ -355,7 +355,8 @@ extend class FishyPlatform
 	double timeFrac;
 	int holdTime;
 	bool bActive;
-	transient bool bRanActivationRoutine; //Check if CallNodeSpecials() ended up calling Active() on self.
+	transient bool bRanActivationRoutine; //Used to check if Activate() was called on self through CallNodeSpecials().
+	transient bool bRanACSSetupRoutine; //Used to check if CommonACSSetup() was called on self through CallNodeSpecials().
 	transient bool bInMove; //No collision between a platform and its passengers during said platform's move.
 	transient bool bMoved; //Used for PassengerPostMove() when everyone has finished (or tried) moving in this tic.
 	InterpolationPoint currNode, firstNode;
@@ -3634,7 +3635,11 @@ extend class FishyPlatform
 			time += timeFrac;
 			if (time > 1.0) //Reached destination?
 			{
-				bRanActivationRoutine = false; //This might be "true" later thanks to CallNodeSpecials()
+				//These two will end up "true" if Activate() or CommonACSSetup() get called
+				//because of CallNodeSpecials() and we need to take that into account here.
+				bRanActivationRoutine = false;
+				bRanACSSetupRoutine = false;
+
 				bool goneToNode = bGoToNode;
 				if (bGoToNode)
 				{
@@ -3673,8 +3678,12 @@ extend class FishyPlatform
 					}
 				}
 
-				bool finishedPath = (!currNode || !currNode.next ||
-									(!goneToNode && !(options & OPTFLAG_LINEAR) && (!currNode.next.next || !prevNode) ) );
+				//ACS movement functions set 'time', 'timeFrac', 'holdTime' etc just like Activate() - so we might as well pretend Activate() was called
+				bRanActivationRoutine |= bRanACSSetupRoutine;
+
+				bool finishedPath = bRanACSSetupRoutine ? false : //The ACS side operates without interpolation nodes. ('currNode' and 'prevNode' get nulled.)
+					(!currNode || !currNode.next || //Reached our last node?
+					(!goneToNode && !(options & OPTFLAG_LINEAR) && (!currNode.next.next || !prevNode) ) ); //Finished spline path?
 
 				if (!bRanActivationRoutine && !finishedPath)
 					SetHoldTime();
@@ -4027,6 +4036,7 @@ extend class FishyPlatform
 		pPrevAngs = pCurrAngs;
 		vel = (0, 0, 0);
 		MustGetNewPassengers(); //Ignore search tic rate; do a search now
+		bRanACSSetupRoutine = true;
 	}
 
 	//
