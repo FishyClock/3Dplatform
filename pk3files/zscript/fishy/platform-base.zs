@@ -149,7 +149,7 @@ class FishyPlatform : Actor abstract
 
 class FishyPlatformNode : InterpolationPoint
 {
-	bool user_dontmovehere;
+	bool user_nopositionchange;
 
 	Default
 	{
@@ -1169,14 +1169,14 @@ extend class FishyPlatform
 		InterpolationPoint nextNode = !currNode ? null :
 			bGoToNode ? currNode : currNode.next;
 
-		bool dontMove = (nextNode && nextNode is "FishyPlatformNode" && FishyPlatformNode(nextNode).user_dontmovehere);
+		bool noPosChange = (nextNode && nextNode is "FishyPlatformNode" && FishyPlatformNode(nextNode).user_nopositionchange);
 
 		//Take into account angle changes when
 		//passing through non-static line portals.
 		//All checked angles have to be adjusted.
 		if (prevNode && !bGoToNode)
 		{
-			pPrev = pos + (dontMove ? (0, 0, 0) : Vec3To(prevNode)); //Make it portal aware in a way so TryMove() can handle it
+			pPrev = pos + (noPosChange ? (0, 0, 0) : Vec3To(prevNode)); //Make it portal aware in a way so TryMove() can handle it
 			pPrevAngs = (
 			Normalize180(prevNode.angle + portDelta),
 			Normalize180(prevNode.pitch),
@@ -1201,7 +1201,7 @@ extend class FishyPlatform
 
 		if (nextNode)
 		{
-			pNext = pos + (dontMove ? (0, 0, 0) : Vec3To(nextNode)); //Make it portal aware in a way so TryMove() can handle it
+			pNext = pos + (noPosChange ? (0, 0, 0) : Vec3To(nextNode)); //Make it portal aware in a way so TryMove() can handle it
 			pNextAngs = pCurrAngs + (
 			DeltaAngle(pCurrAngs.x, nextNode.angle + portDelta),
 			DeltaAngle(pCurrAngs.y, nextNode.pitch),
@@ -1209,7 +1209,7 @@ extend class FishyPlatform
 
 			if (nextNode.next && !bGoToNode)
 			{
-				pLast = pos +(dontMove ? (0, 0, 0) :  Vec3To(nextNode.next)); //Make it portal aware in a way so TryMove() can handle it
+				pLast = pos +(noPosChange ? (0, 0, 0) :  Vec3To(nextNode.next)); //Make it portal aware in a way so TryMove() can handle it
 				pLastAngs = pNextAngs + (
 				DeltaAngle(pNextAngs.x, nextNode.next.angle + portDelta),
 				DeltaAngle(pNextAngs.y, nextNode.next.pitch),
@@ -3380,7 +3380,7 @@ extend class FishyPlatform
 
 				if (!bGoToNode)
 				{
-					vector3 newPos = (currNode is "FishyPlatformNode" && FishyPlatformNode(currNode).user_dontmovehere) ? pos : currNode.pos;
+					vector3 newPos = (currNode is "FishyPlatformNode" && FishyPlatformNode(currNode).user_nopositionchange) ? pos : currNode.pos;
 					double newAngle = (options & OPTFLAG_ANGLE) ? currNode.angle : angle;
 					double newPitch = (options & OPTFLAG_PITCH) ? currNode.pitch : pitch;
 					double newRoll = (options & OPTFLAG_ROLL) ? currNode.roll : roll;
