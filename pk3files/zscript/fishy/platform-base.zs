@@ -3378,12 +3378,13 @@ extend class FishyPlatform
 				if (group && group.origin != self)
 					group.SetGroupOrigin(self);
 
-				if (!bGoToNode && (!(currNode is "FishyPlatformNode") || !FishyPlatformNode(currNode).user_dontmovehere))
+				if (!bGoToNode)
 				{
+					vector3 newPos = (currNode is "FishyPlatformNode" && FishyPlatformNode(currNode).user_dontmovehere) ? pos : currNode.pos;
 					double newAngle = (options & OPTFLAG_ANGLE) ? currNode.angle : angle;
 					double newPitch = (options & OPTFLAG_PITCH) ? currNode.pitch : pitch;
 					double newRoll = (options & OPTFLAG_ROLL) ? currNode.roll : roll;
-					PlatMove(currNode.pos, newAngle, newPitch, newRoll, MOVE_TELEPORT);
+					PlatMove(newPos, newAngle, newPitch, newRoll, MOVE_TELEPORT);
 				}
 				else
 				{
