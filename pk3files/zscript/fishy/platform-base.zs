@@ -79,22 +79,22 @@ class FishyPlatform : Actor abstract
 
 		//$Arg0 Interpolation Point
 		//$Arg0Type 14
-		//$Arg0Tooltip Must be 'Platform Interpolation Point' or GZDoom's 'Interpolation Point' class.\nWhichever is more convenient.\n'Interpolation Special' works with both.\nNOTE: A negative 'Travel Time' is interpreted as speed in map units per tic. (This works on both interpolation point classes.)
+		//$Arg0Tooltip Must be 'Platform Interpolation Point' or GZDoom's 'Interpolation Point' class.\nWhichever is more convenient.\n'Interpolation Special' works with both.\nNOTE: A negative 'Travel Time' is interpreted as speed in map units per tic. (This works on both interpolation point classes.)\nNOTE: Check the 'Custom' tab for more options.
 
 		//$Arg1 Options
 		//$Arg1Type 12
 		//$Arg1Enum {1 = "Linear path / (Does nothing for non-origin group members)"; 2 = "Use point angle / Group move: Rotate angle / (ACS commands don't need this)"; 4 = "Use point pitch / Group move: Rotate pitch / (ACS commands don't need this)"; 8 = "Use point roll / Group move: Rotate roll / (ACS commands don't need this)"; 16 = "Face movement direction / (Does nothing for non-origin group members)"; 32 = "Don't clip against geometry and other platforms"; 64 = "Start active"; 128 = "Group move: Mirror group origin's movement"; 256 = "Add velocity to passengers when they jump away"; 512 = "Add velocity to passengers when stopping (and not blocked)"; 1024 = "Interpolation point is destination"; 2048 = "Resume path when activated again"; 4096 = "Always do 'crush damage' when pushing obstacles"; 8192 = "Pitch/roll changes don't affect passengers"; 16384 = "Passengers can push obstacles"; 32768 = "All passengers get temp NOBLOCKMAP'd before moving platform group (Set on group origin)";}
-		//$Arg1Tooltip 'Group move' affects movement imposed by the group origin.\nThe 'group origin' is the platform that other members move with and orbit around.\nActivating any group member will turn it into the group origin.\nFlag 32768 is for cases where you want all passengers from the entire group to not collide with each other and to not collide with other platforms in the group (when moving everyone).
+		//$Arg1Tooltip 'Group move' affects movement imposed by the group origin.\nThe 'group origin' is the platform that other members move with and orbit around.\nActivating any group member will turn it into the group origin.\nFlag 32768 is for cases where you want all passengers from the entire group to not collide with each other and to not collide with other platforms in the group (when moving everyone).\nNOTE: Check the 'Custom' tab for more options.
 
 		//$Arg2 Platform(s) To Group With
 		//$Arg2Type 14
 
 		//$Arg3 Crush Damage
-		//$Arg3Tooltip If an obstacle is pushed against a wall,\nthe damage is applied once per 4 tics.
+		//$Arg3Tooltip If an obstacle is pushed against a wall,\nthe damage is applied once per 4 tics.\nNOTE: Check the 'Custom' tab for more options.
 
 		//$Arg4 Special Holder
 		//$Arg4Type 14
-		//$Arg4Tooltip Another actor that holds the thing action special and arguments for this platform.\n(The platform will copy the special+args for itself.)
+		//$Arg4Tooltip Another actor that holds the thing action special and arguments for this platform.\n(The platform will copy the special+args for itself.)\nNOTE: Check the 'Custom' tab for more options.
 
 		+INTERPOLATEANGLES;
 		+ACTLIKEBRIDGE;
@@ -149,23 +149,25 @@ class FishyPlatform : Actor abstract
 
 class FishyPlatformNode : InterpolationPoint
 {
+	bool user_dontmovehere;
+
 	Default
 	{
 		//$Title Platform Interpolation Point
 
 		//$Arg0 Next Point
 		//$Arg0Type 14
-		//$Arg0Tooltip Next point must be another platform interpolation point.\n(It can't be the old interpolation point class.)
+		//$Arg0Tooltip Next point must be another platform interpolation point.\n(It can't be the old interpolation point class.)\nNOTE: Check the 'Custom' tab for more options.
 
 		//$Arg1 Travel Time
-		//$Arg1Tooltip A negative 'Travel Time' is interpreted as speed in map units per tic. (Even on old interpolation points.)
+		//$Arg1Tooltip A negative 'Travel Time' is interpreted as speed in map units per tic. (Even on old interpolation points.)\nNOTE: Check the 'Custom' tab for more options.
 
 		//$Arg2 Hold Time
 
 		//$Arg3 Travel Time Unit
 		//$Arg3Type 11
 		//$Arg3Enum {0 = "Octics"; 1 = "Tics"; 2 = "Seconds";}
-		//$Arg3Tooltip Does nothing if 'Travel Time' is negative.
+		//$Arg3Tooltip Does nothing if 'Travel Time' is negative.\nNOTE: Check the 'Custom' tab for more options.
 
 		//$Arg4 Hold Time Unit
 		//$Arg4Type 11
@@ -1164,12 +1166,17 @@ extend class FishyPlatform
 	//============================
 	private void SetInterpolationCoordinates ()
 	{
+		InterpolationPoint nextNode = !currNode ? null :
+			bGoToNode ? currNode : currNode.next;
+
+		bool dontMove = (nextNode && nextNode is "FishyPlatformNode" && FishyPlatformNode(nextNode).user_dontmovehere);
+
 		//Take into account angle changes when
 		//passing through non-static line portals.
 		//All checked angles have to be adjusted.
 		if (prevNode && !bGoToNode)
 		{
-			pPrev = pos + Vec3To(prevNode); //Make it portal aware in a way so TryMove() can handle it
+			pPrev = pos + (dontMove ? (0, 0, 0) : Vec3To(prevNode)); //Make it portal aware in a way so TryMove() can handle it
 			pPrevAngs = (
 			Normalize180(prevNode.angle + portDelta),
 			Normalize180(prevNode.pitch),
@@ -1192,11 +1199,9 @@ extend class FishyPlatform
 			DeltaAngle(pPrevAngs.z, roll));
 		}
 
-		if (currNode && (currNode.next || bGoToNode))
+		if (nextNode)
 		{
-			InterpolationPoint nextNode = bGoToNode ? currNode : currNode.next;
-
-			pNext = pos + Vec3To(nextNode); //Make it portal aware in a way so TryMove() can handle it
+			pNext = pos + (dontMove ? (0, 0, 0) : Vec3To(nextNode)); //Make it portal aware in a way so TryMove() can handle it
 			pNextAngs = pCurrAngs + (
 			DeltaAngle(pCurrAngs.x, nextNode.angle + portDelta),
 			DeltaAngle(pCurrAngs.y, nextNode.pitch),
@@ -1204,7 +1209,7 @@ extend class FishyPlatform
 
 			if (nextNode.next && !bGoToNode)
 			{
-				pLast = pos + Vec3To(nextNode.next); //Make it portal aware in a way so TryMove() can handle it
+				pLast = pos +(dontMove ? (0, 0, 0) :  Vec3To(nextNode.next)); //Make it portal aware in a way so TryMove() can handle it
 				pLastAngs = pNextAngs + (
 				DeltaAngle(pNextAngs.x, nextNode.next.angle + portDelta),
 				DeltaAngle(pNextAngs.y, nextNode.next.pitch),
@@ -1216,7 +1221,7 @@ extend class FishyPlatform
 				pLastAngs = pNextAngs;
 			}
 		}
-		else // (!currNode || (!currNode.next && !bGoToNode))
+		else // (!nextNode)
 		{
 			pNext = pCurr;
 			pLast = pCurr;
@@ -3373,7 +3378,7 @@ extend class FishyPlatform
 				if (group && group.origin != self)
 					group.SetGroupOrigin(self);
 
-				if (!bGoToNode)
+				if (!bGoToNode && (!(currNode is "FishyPlatformNode") || !FishyPlatformNode(currNode).user_dontmovehere))
 				{
 					double newAngle = (options & OPTFLAG_ANGLE) ? currNode.angle : angle;
 					double newPitch = (options & OPTFLAG_PITCH) ? currNode.pitch : pitch;
@@ -3498,6 +3503,12 @@ extend class FishyPlatform
 		{
 			if (!portTwin)
 				Destroy();
+			return;
+		}
+
+		if (freezeTics > 0)
+		{
+			--freezeTics;
 			return;
 		}
 
