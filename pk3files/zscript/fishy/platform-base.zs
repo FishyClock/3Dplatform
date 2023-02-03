@@ -1612,7 +1612,7 @@ extend class FishyPlatform
 				if (!plat.passengers.Size())
 					continue;
 
-				for (int i = 0; i < newPass.Size(); ++i)
+				for (int i = newPass.Size() - 1; i > -1; --i)
 				{
 					let index = plat.passengers.Find(newPass[i]);
 					if (index < plat.passengers.Size())
@@ -1620,13 +1620,13 @@ extend class FishyPlatform
 						if (CanStealFrom(plat, newPass[i]))
 							plat.ForgetPassenger(index);
 						else
-							newPass.Delete(i--);
+							newPass.Delete(i);
 					}
 				}
-				for (int i = 0; i < miscActors.Size(); ++i)
+				for (int i = miscActors.Size() - 1; i > -1; --i)
 				{
 					if (plat.passengers.Find(miscActors[i]) < plat.passengers.Size())
-						miscActors.Delete(i--);
+						miscActors.Delete(i);
 				}
 			}
 			passengers.Append(newPass);
@@ -1638,19 +1638,24 @@ extend class FishyPlatform
 				let mo = passengers[i];
 				if (!mo)
 				{
+					//In this instance it's detrimental to go back-to-front on the 'passengers' array
+					//because of the below for loop. (Potential new passengers get added and we need
+					//to compare anything that's still in 'miscActors' with these new passengers.)
+					//Decrement 'i' so that when this loop increments it again it points to
+					//the correct array entry.
 					ForgetPassenger(i--);
 					continue;
 				}
 				moTop = mo.pos.z + mo.height;
 
-				for (int iOther = 0; iOther < miscActors.Size(); ++iOther)
+				for (int iOther = miscActors.Size() - 1; iOther > -1; --iOther)
 				{
 					let otherMo = miscActors[iOther];
 
 					if ( ( abs(otherMo.pos.z - moTop) <= TOP_EPSILON || OverlapZ(mo, otherMo) ) && //Is 'otherMo' on top of 'mo' or stuck inside 'mo'?
 						OverlapXY(mo, otherMo) ) //Within XY range?
 					{
-						miscActors.Delete(iOther--); //Don't compare this one against other passengers anymore
+						miscActors.Delete(iOther); //Don't compare this one against other passengers anymore
 						passengers.Push(otherMo);
 					}
 				}
@@ -1661,7 +1666,7 @@ extend class FishyPlatform
 		//prune 'passengers' array; we only want one member per group.
 		//Preferably the origin if active, else the closest member.
 		Array<FishyPlatformGroup> otherGroups;
-		for (int i = 0; i < passengers.Size(); ++i)
+		for (int i = passengers.Size() - 1; i > -1; --i)
 		{
 			let plat = FishyPlatform(passengers[i]);
 			if (!plat || !plat.group)
@@ -1669,7 +1674,7 @@ extend class FishyPlatform
 
 			if (otherGroups.Find(plat.group) < otherGroups.Size())
 			{
-				passengers.Delete(i--); //Already dealt with this group
+				passengers.Delete(i); //Already dealt with this group
 				continue;
 			}
 			otherGroups.Push(plat.group);
@@ -1681,7 +1686,7 @@ extend class FishyPlatform
 			{
 				if (!CanStealFrom(plat.group.carrier, null))
 				{
-					passengers.Delete(i--); //Can't take any of this group's members
+					passengers.Delete(i); //Can't take any of this group's members
 					continue;
 				}
 
@@ -1781,7 +1786,7 @@ extend class FishyPlatform
 		// At this moment there're no way to inject code or override
 		// CanCollideWith() with pre-existing or unknown actor classes.
 
-		for (int iPass = 0; iPass < passengers.Size(); ++iPass)
+		for (int iPass = passengers.Size() - 1; iPass > -1; --iPass)
 		{
 			let mo = passengers[iPass];
 			if (mo && !mo.bNoBlockmap) //If it has NOBLOCKMAP now, assume it's an inventory item that got picked up
@@ -1791,13 +1796,13 @@ extend class FishyPlatform
 			}
 			else
 			{
-				ForgetPassenger(iPass--);
+				ForgetPassenger(iPass);
 			}
 		}
 
 		//We have to do the same for our portal twin's passengers
 		if (portTwin)
-		for (int iPass = 0; iPass < portTwin.passengers.Size(); ++iPass)
+		for (int iPass = portTwin.passengers.Size() - 1; iPass > -1; --iPass)
 		{
 			let mo = portTwin.passengers[iPass];
 			if (mo && !mo.bNoBlockmap)
@@ -1807,7 +1812,7 @@ extend class FishyPlatform
 			}
 			else
 			{
-				portTwin.ForgetPassenger(iPass--);
+				portTwin.ForgetPassenger(iPass);
 			}
 		}
 	}
@@ -1818,7 +1823,7 @@ extend class FishyPlatform
 	private void LinkPassengers (bool moved)
 	{
 		//Link them back into the blockmap after they have been moved
-		for (int iPass = 0; iPass < passengers.Size(); ++iPass)
+		for (int iPass = passengers.Size() - 1; iPass > -1; --iPass)
 		{
 			let mo = passengers[iPass];
 			if (mo && mo.bNoBlockmap)
@@ -1829,7 +1834,7 @@ extend class FishyPlatform
 
 		//We have to do the same for our portal twin's passengers
 		if (portTwin)
-		for (int iPass = 0; iPass < portTwin.passengers.Size(); ++iPass)
+		for (int iPass = portTwin.passengers.Size() - 1; iPass > -1; --iPass)
 		{
 			let mo = portTwin.passengers[iPass];
 			if (mo && mo.bNoBlockmap)
@@ -1867,7 +1872,7 @@ extend class FishyPlatform
 
 		vector3 pushForce = level.Vec3Diff(startPos, endPos);
 		Array<double> preMovePos; //Sadly we can't have a vector2/3 dyn array
-		for (int i = 0; i < passengers.Size(); ++i)
+		for (int i = passengers.Size() - 1; i > -1; --i)
 		{
 			let mo = passengers[i];
 			let moOldPos = mo.pos;
@@ -1933,13 +1938,13 @@ extend class FishyPlatform
 						mo.A_ChangeLinkFlags(YES_BMAP);
 						PassengerPostMove(mo, result);
 					}
-					ForgetPassenger(i--); //Forget this active platform (we won't move it back in case something gets blocked)
+					ForgetPassenger(i); //Forget this active platform (we won't move it back in case something gets blocked)
 					continue;
 				}
 
 				if (!mo || mo.bDestroyed)
 				{
-					ForgetPassenger(i--);
+					ForgetPassenger(i);
 					continue;
 				}
 
@@ -2023,7 +2028,7 @@ extend class FishyPlatform
 				//when they activate lines.
 				if (!mo || mo.bDestroyed)
 				{
-					ForgetPassenger(i--);
+					ForgetPassenger(i);
 					continue;
 				}
 				mo.bNoDropoff = moOldNoDropoff;
@@ -2053,7 +2058,7 @@ extend class FishyPlatform
 				//This passenger will be 'solid' for the others
 				mo.A_ChangeLinkFlags(YES_BMAP);
 				PassengerPostMove(mo, false);
-				ForgetPassenger(i--);
+				ForgetPassenger(i);
 
 				if (teleMove)
 					continue;
@@ -2081,7 +2086,7 @@ extend class FishyPlatform
 					//See if the ones we moved already will collide with this one
 					//and if yes, move them back to their old positions.
 					//(If the platform's "blocked" then move everyone back unconditionally.)
-					for (int iOther = 0; iOther <= i; ++iOther)
+					for (int iOther = passengers.Size() - 1; iOther >= i; --iOther)
 					{
 						let otherMo = passengers[iOther];
 						if (!blocked && ( !CollisionFlagChecks(otherMo, mo) ||
@@ -2093,7 +2098,8 @@ extend class FishyPlatform
 						}
 
 						//Put 'otherMo' back at its old position
-						vector3 otherOldPos = (preMovePos[iOther*3], preMovePos[iOther*3 + 1], preMovePos[iOther*3 + 2]);
+						int iPreMovePos = (passengers.Size() - 1 - iOther) * 3;
+						vector3 otherOldPos = (preMovePos[iPreMovePos], preMovePos[iPreMovePos + 1], preMovePos[iPreMovePos + 2]);
 						plat = FishyPlatform(otherMo);
 						if (!plat)
 							otherMo.SetOrigin(otherOldPos, true);
@@ -2102,9 +2108,8 @@ extend class FishyPlatform
 
 						otherMo.A_ChangeLinkFlags(YES_BMAP);
 						PassengerPostMove(otherMo, false);
-						preMovePos.Delete(iOther*3, 3);
-						ForgetPassenger(iOther--);
-						i--;
+						preMovePos.Delete(iPreMovePos, 3);
+						ForgetPassenger(iOther);
 
 						if (!blocked)
 						{
@@ -2134,7 +2139,7 @@ extend class FishyPlatform
 
 		//Anyone left in the 'passengers' array has moved successfully.
 		//Adjust their angles and velocities.
-		for (int i = 0; i < passengers.Size(); ++i)
+		for (int i = passengers.Size() - 1; i > -1; --i)
 		{
 			let mo = passengers[i];
 
@@ -2172,13 +2177,15 @@ extend class FishyPlatform
 		// fall off of other actors just isn't good enough.
 
 		double top = pos.z + height;
-		for (int i = 0; i < passengers.Size(); ++i)
+		vector3 velJump = (double.nan, double.nan, double.nan);
+
+		for (int i = passengers.Size() - 1; i > -1; --i)
 		{
 			let mo = passengers[i];
 			if (!mo || mo.bDestroyed || //Got Thing_Remove()'d?
 				mo.bNoBlockmap || !IsCarriable(mo))
 			{
-				ForgetPassenger(i--);
+				ForgetPassenger(i);
 				continue;
 			}
 
@@ -2193,9 +2200,12 @@ extend class FishyPlatform
 				//Add velocity to the passenger we just lost track of.
 				//It's likely to be a player that has jumped away.
 				if (options & OPTFLAG_ADDVELJUMP)
-					mo.vel += level.Vec3Diff(oldPos, pos);
-
-				ForgetPassenger(i--);
+				{
+					if (velJump != velJump) //NaN check
+						velJump = level.Vec3Diff(oldPos, pos);
+					mo.vel += velJump;
+				}
+				ForgetPassenger(i);
 				continue;
 			}
 
@@ -2393,11 +2403,11 @@ extend class FishyPlatform
 		if (!portTwin || portTwin.portTwin != self)
 			return;
 
-		int oldPortTwinSize = portTwin.passengers.Size();
+		int oldPortTwinLastIndex = portTwin.passengers.Size() - 1;
 
 		//This is never called by the portal copy
 		if (!portTwin.bNoBlockmap)
-		for (int i = 0; i < passengers.Size(); ++i)
+		for (int i = passengers.Size() - 1; i > -1; --i)
 		{
 			//If any of our passengers have passed through a portal,
 			//check if they're on the twin's side of that portal.
@@ -2405,7 +2415,7 @@ extend class FishyPlatform
 			let mo = passengers[i];
 			if (!mo || mo.bDestroyed)
 			{
-				ForgetPassenger(i--);
+				ForgetPassenger(i);
 				continue;
 			}
 
@@ -2416,19 +2426,18 @@ extend class FishyPlatform
 				if (plat && plat.group && plat.group.carrier == self)
 					plat.group.carrier = portTwin;
 
-				passengers.Delete(i--);
+				passengers.Delete(i);
 				portTwin.passengers.Push(mo);
 			}
 		}
 
-		for (int i = 0; i < oldPortTwinSize; ++i)
+		for (int i = oldPortTwinLastIndex; i > -1; --i)
 		{
 			//Same deal but in reverse
 			let mo = portTwin.passengers[i];
 			if (!mo || mo.bDestroyed)
 			{
-				portTwin.ForgetPassenger(i--);
-				--oldPortTwinSize;
+				portTwin.ForgetPassenger(i);
 				continue;
 			}
 
@@ -2439,8 +2448,7 @@ extend class FishyPlatform
 				if (plat && plat.group && plat.group.carrier == portTwin)
 					plat.group.carrier = self;
 
-				portTwin.passengers.Delete(i--);
-				--oldPortTwinSize;
+				portTwin.passengers.Delete(i);
 				passengers.Push(mo);
 			}
 		}
@@ -2620,7 +2628,7 @@ extend class FishyPlatform
 	{
 		double top = pos.z + height;
 
-		for (int i = 0; i < stuckActors.Size(); ++i)
+		for (int i = stuckActors.Size() - 1; i > -1; --i)
 		{
 			let mo = stuckActors[i];
 			if (!mo || mo.bDestroyed || //Thing_Remove()'d?
@@ -2628,7 +2636,7 @@ extend class FishyPlatform
 				!OverlapZ(self, mo) || !OverlapXY(self, mo) || //No overlap?
 				!self.CanCollideWith(mo, false) || !mo.CanCollideWith(self, true) ) //No collision?
 			{
-				stuckActors.Delete(i--);
+				stuckActors.Delete(i);
 				continue;
 			}
 
@@ -2649,7 +2657,7 @@ extend class FishyPlatform
 						mo.SetZ(top);
 						mo.CheckPortalTransition(); //Handle sector portals properly
 					}
-					stuckActors.Delete(i--);
+					stuckActors.Delete(i);
 				}
 				PassengerPostMove(mo, fits);
 
