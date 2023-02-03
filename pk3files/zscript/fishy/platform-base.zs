@@ -673,11 +673,11 @@ extend class FishyPlatform
 				plat.groupRoll = plat.roll;
 			}
 		}
-		else if (newMembers.Size())
+		else
 		{
 			//Only set up the new members' group info relative
 			//to the origin.
-			for (int i = 0; i < newMembers.Size(); ++i)
+			for (int i = newMembers.Size() - 1; i > -1; --i)
 			{
 				plat = newMembers[i];
 				if (plat)
@@ -1524,7 +1524,7 @@ extend class FishyPlatform
 		//Try to stand on the highest stuck actor if our 'maxStepHeight' allows it
 		Actor highestMo = null;
 		if (!ignoreObs)
-		for (int i = 0; i < stuckActors.Size(); ++i)
+		for (int i = stuckActors.Size() - 1; i > -1; --i)
 		{
 			let mo = stuckActors[i];
 			if (!mo)
@@ -1544,7 +1544,7 @@ extend class FishyPlatform
 			result = true;
 		}
 
-		for (int i = 0; i < tryZFix.Size(); ++i)
+		for (int i = tryZFix.Size() - 1; i > -1; --i)
 		{
 			let mo = tryZFix[i];
 			PassengerPreMove(mo);
@@ -1574,7 +1574,7 @@ extend class FishyPlatform
 			PassengerPostMove(mo, fits);
 		}
 
-		for (int i = 0; i < tryZFixItems.Size(); ++i)
+		for (int i = tryZFixItems.Size() - 1; i > -1; --i)
 		{
 			let mo = tryZFixItems[i];
 			PassengerPreMove(mo);
@@ -1589,7 +1589,7 @@ extend class FishyPlatform
 			PassengerPostMove(mo, fits);
 		}
 
-		for (int i = 0; i < corpses.Size(); ++i)
+		for (int i = corpses.Size() - 1; i > -1; --i)
 			corpses[i].Grind(false);
 
 		if (newPass.Size() || miscActors.Size())
@@ -1606,7 +1606,7 @@ extend class FishyPlatform
 
 			//Go through the other detected platforms (and our groupmates)
 			//and see if we can steal some of their passengers.
-			for (int iPlat = 0; (newPass.Size() || miscActors.Size()) && iPlat < otherPlats.Size(); ++iPlat)
+			for (int iPlat = otherPlats.Size() - 1; iPlat > -1 && (newPass.Size() || miscActors.Size()); --iPlat)
 			{
 				let plat = otherPlats[iPlat];
 				if (!plat.passengers.Size())
@@ -1638,7 +1638,7 @@ extend class FishyPlatform
 				let mo = passengers[i];
 				if (!mo)
 				{
-					//In this instance it's detrimental to go back-to-front on the 'passengers' array
+					//In this case it's detrimental to go back-to-front on the 'passengers' array
 					//because of the below for loop. (Potential new passengers get added and we need
 					//to compare anything that's still in 'miscActors' with these new passengers.)
 					//Decrement 'i' so that when this loop increments it again it points to
@@ -2762,7 +2762,7 @@ extend class FishyPlatform
 
 			//Get all passengers that are platforms and call their GetNewPassengers() now.
 			//That should allow them to take some of our other passengers.
-			for (int iPass = 0; iPass < plat.passengers.Size(); ++iPass)
+			for (int iPass = plat.passengers.Size() - 1; iPass > -1; --iPass)
 			{
 				let platPass = FishyPlatform(plat.passengers[iPass]);
 				if (!platPass || platPass.bNoBlockmap) //They shouldn't have NOBLOCKMAP now - this is taken care of below
@@ -2777,7 +2777,7 @@ extend class FishyPlatform
 
 			//Do the same for our portal twin
 			if (plat.portTwin && !plat.portTwin.bNoBlockmap)
-			for (int iPass = 0; iPass < plat.portTwin.passengers.Size(); ++iPass)
+			for (int iPass = plat.portTwin.passengers.Size() - 1; iPass > -1; --iPass)
 			{
 				let platPass = FishyPlatform(plat.portTwin.passengers[iPass]);
 				if (!platPass || platPass.bNoBlockmap) //They shouldn't have NOBLOCKMAP now - this is taken care of below
@@ -3302,8 +3302,8 @@ extend class FishyPlatform
 		}
 
 		//Platform will be the activator of each special
-		for (int i = 0; i < specList.Size(); i += 6)
-			level.ExecuteSpecial(specList[i], self, null, false, specList[i+1], specList[i+2], specList[i+3], specList[i+4], specList[i+5]);
+		for (int i = specList.Size() - 1; i > -1; i -= 6)
+			level.ExecuteSpecial(specList[i-5], self, null, false, specList[i-4], specList[i-3], specList[i-2], specList[i-1], specList[i]);
 	}
 
 	//============================
@@ -3420,11 +3420,11 @@ extend class FishyPlatform
 		if (passengers.Size())
 		{
 			pushForce = level.Vec3Diff(startPos, endPos);
-			for (int i = 0; i < passengers.Size(); ++i)
+			for (int i = passengers.Size() - 1; i > -1; --i)
 			{
 				let mo = passengers[i];
 				if (!mo || mo.bDestroyed)
-					ForgetPassenger(i--);
+					ForgetPassenger(i);
 				else
 					mo.vel += pushForce;
 			}
@@ -3438,11 +3438,11 @@ extend class FishyPlatform
 			if (lastUPort)
 				pushForce = TranslatePortalVector(pushForce, lastUPort, false, false);
 
-			for (int i = 0; i < portTwin.passengers.Size(); ++i)
+			for (int i = portTwin.passengers.Size() - 1; i > -1; --i)
 			{
 				let mo = portTwin.passengers[i];
 				if (!mo || mo.bDestroyed)
-					portTwin.ForgetPassenger(i--);
+					portTwin.ForgetPassenger(i);
 				else
 					mo.vel += pushForce;
 			}
