@@ -1742,19 +1742,18 @@ extend class FishyPlatform
 	{
 		//For cases where the search tic rate must be ignored.
 		//(Handle portal twin and groupmates, too.)
-		GetNewPassengers(false, true);
-		if (portTwin)
-			portTwin.GetNewPassengers(false, true);
-
-		if (group)
-		for (int iPlat = 0; iPlat < group.members.Size(); ++iPlat)
+		for (int i = -1; i == -1 || (group && i < group.members.Size()); ++i)
 		{
-			let plat = group.GetMember(iPlat);
-			if (plat && plat != self)
+			let plat = (i == -1) ? self : group.GetMember(i);
+			if (i > -1 && (!plat || plat == self)) //Already handled self
+				continue;
+
+			for (int iTwins = 0; iTwins < 2; ++iTwins)
 			{
+				if (iTwins > 0 && !(plat = plat.portTwin))
+					break;
+
 				plat.GetNewPassengers(false, true);
-				if (plat.portTwin)
-					plat.portTwin.GetNewPassengers(false, true);
 			}
 		}
 	}
@@ -1786,33 +1785,23 @@ extend class FishyPlatform
 		// At this moment there're no way to inject code or override
 		// CanCollideWith() with pre-existing or unknown actor classes.
 
-		for (int iPass = passengers.Size() - 1; iPass > -1; --iPass)
+		for (int iTwins = 0; iTwins < 2; ++iTwins)
 		{
-			let mo = passengers[iPass];
-			if (mo && !mo.bNoBlockmap) //If it has NOBLOCKMAP now, assume it's an inventory item that got picked up
-			{
-				PassengerPreMove(mo);
-				mo.A_ChangeLinkFlags(NO_BMAP);
-			}
-			else
-			{
-				ForgetPassenger(iPass);
-			}
-		}
+			let plat = (iTwins == 0) ? self : portTwin;
 
-		//We have to do the same for our portal twin's passengers
-		if (portTwin)
-		for (int iPass = portTwin.passengers.Size() - 1; iPass > -1; --iPass)
-		{
-			let mo = portTwin.passengers[iPass];
-			if (mo && !mo.bNoBlockmap)
+			if (plat)
+			for (int iPass = plat.passengers.Size() - 1; iPass > -1; --iPass)
 			{
-				portTwin.PassengerPreMove(mo);
-				mo.A_ChangeLinkFlags(NO_BMAP);
-			}
-			else
-			{
-				portTwin.ForgetPassenger(iPass);
+				let mo = plat.passengers[iPass];
+				if (mo && !mo.bNoBlockmap) //If it has NOBLOCKMAP now, assume it's an inventory item that got picked up
+				{
+					plat.PassengerPreMove(mo);
+					mo.A_ChangeLinkFlags(NO_BMAP);
+				}
+				else
+				{
+					plat.ForgetPassenger(iPass);
+				}
 			}
 		}
 	}
@@ -1823,24 +1812,19 @@ extend class FishyPlatform
 	private void LinkPassengers (bool moved)
 	{
 		//Link them back into the blockmap after they have been moved
-		for (int iPass = passengers.Size() - 1; iPass > -1; --iPass)
+		for (int iTwins = 0; iTwins < 2; ++iTwins)
 		{
-			let mo = passengers[iPass];
-			if (mo && mo.bNoBlockmap)
-				mo.A_ChangeLinkFlags(YES_BMAP);
-			if (mo)
-				PassengerPostMove(mo, moved);
-		}
+			let plat = (iTwins == 0) ? self : portTwin;
 
-		//We have to do the same for our portal twin's passengers
-		if (portTwin)
-		for (int iPass = portTwin.passengers.Size() - 1; iPass > -1; --iPass)
-		{
-			let mo = portTwin.passengers[iPass];
-			if (mo && mo.bNoBlockmap)
-				mo.A_ChangeLinkFlags(YES_BMAP);
-			if (mo)
-				portTwin.PassengerPostMove(mo, moved);
+			if (plat)
+			for (int iPass = plat.passengers.Size() - 1; iPass > -1; --iPass)
+			{
+				let mo = plat.passengers[iPass];
+				if (mo && mo.bNoBlockmap)
+					mo.A_ChangeLinkFlags(YES_BMAP);
+				if (mo)
+					plat.PassengerPostMove(mo, moved);
+			}
 		}
 	}
 
@@ -1854,7 +1838,7 @@ extend class FishyPlatform
 		if (!passengers.Size())
 			return true; //No passengers? Nothing to do
 
-		FishyPlatformGroup grp = bPortCopy ? portTwin.group : self.group;
+		let grp = bPortCopy ? portTwin.group : self.group;
 		if (!grp || !grp.origin || !(grp.origin.options & OPTFLAG_DIFFPASSCOLL))
 			UnlinkPassengers();
 
@@ -2760,34 +2744,25 @@ extend class FishyPlatform
 			if (i > -1 && (!plat || plat == self)) //Already handled self
 				continue;
 
-			//Get all passengers that are platforms and call their GetNewPassengers() now.
-			//That should allow them to take some of our other passengers.
-			for (int iPass = plat.passengers.Size() - 1; iPass > -1; --iPass)
+			for (int iTwins = 0; iTwins < 2; ++iTwins)
 			{
-				let platPass = FishyPlatform(plat.passengers[iPass]);
-				if (!platPass || platPass.bNoBlockmap) //They shouldn't have NOBLOCKMAP now - this is taken care of below
-					continue;
-				platPass.GetNewPassengers(moveType == MOVE_TELEPORT);
+				if (iTwins > 0 && !(plat = plat.portTwin))
+					break;
 
-				//If passengers get stolen the array size will shrink
-				//and this one's position in the array might have changed.
-				//So take that into account.
-				iPass = plat.passengers.Find(platPass);
-			}
+				//Get all passengers that are platforms and call their GetNewPassengers() now.
+				//That should allow them to take some of our other passengers.
+				for (int iPass = plat.passengers.Size() - 1; iPass > -1; --iPass)
+				{
+					let platPass = FishyPlatform(plat.passengers[iPass]);
+					if (!platPass || platPass.bNoBlockmap) //They shouldn't have NOBLOCKMAP now - this is taken care of below
+						continue;
+					platPass.GetNewPassengers(moveType == MOVE_TELEPORT);
 
-			//Do the same for our portal twin
-			if (plat.portTwin && !plat.portTwin.bNoBlockmap)
-			for (int iPass = plat.portTwin.passengers.Size() - 1; iPass > -1; --iPass)
-			{
-				let platPass = FishyPlatform(plat.portTwin.passengers[iPass]);
-				if (!platPass || platPass.bNoBlockmap) //They shouldn't have NOBLOCKMAP now - this is taken care of below
-					continue;
-				platPass.GetNewPassengers(moveType == MOVE_TELEPORT);
-
-				//If passengers get stolen the array size will shrink
-				//and this one's position in the array might have changed.
-				//So take that into account.
-				iPass = plat.portTwin.passengers.Find(platPass);
+					//If passengers get stolen the array size will shrink
+					//and this one's position in the array might have changed.
+					//So take that into account.
+					iPass = plat.passengers.Find(platPass);
+				}
 			}
 		}
 
@@ -3316,28 +3291,18 @@ extend class FishyPlatform
 
 		vel = (0, 0, 0);
 
-		if (!group || !group.origin)
+		if (!group || !group.origin || group.origin == self)
+		for (int i = -1; i == -1 || (group && group.origin == self && i < group.members.Size()); ++i)
 		{
+			let plat = (i == -1) ? self : group.GetMember(i);
+			if (i > -1 && (!plat || plat == self)) //Already handled self
+				continue;
+
 			if (time <= 1.0) //Not reached destination?
-				Stopped(oldPos, pos);
+				plat.Stopped(plat.oldPos, plat.pos);
 
-			if (portTwin && portTwin.bNoBlockmap && portTwin.bPortCopy)
-				portTwin.Destroy();
-		}
-		else if (group.origin == self)
-		{
-			for (int iPlat = 0; iPlat < group.members.Size(); ++iPlat)
-			{
-				let plat = group.GetMember(iPlat);
-				if (plat)
-				{
-					if (time <= 1.0) //Not reached destination?
-						plat.Stopped(plat.oldPos, plat.pos);
-
-					if (plat.portTwin && plat.portTwin.bNoBlockmap && plat.portTwin.bPortCopy)
-						plat.portTwin.Destroy();
-				}
-			}
+			if (plat.portTwin && plat.portTwin.bNoBlockmap && plat.portTwin.bPortCopy)
+				plat.portTwin.Destroy();
 		}
 		bActive = false;
 	}
@@ -3417,34 +3382,29 @@ extend class FishyPlatform
 
 		vector3 pushForce = (double.nan, double.nan, double.nan); //No passengers == don't call level.Vec3Diff()
 
-		if (passengers.Size())
+		for (int iTwins = 0; iTwins < 2; ++iTwins)
 		{
-			pushForce = level.Vec3Diff(startPos, endPos);
-			for (int i = passengers.Size() - 1; i > -1; --i)
+			let plat = (iTwins == 0) ? self : portTwin;
+			if (!plat || (iTwins > 0 && plat.bNoBlockmap))
+				break;
+
+			int lastIndex = plat.passengers.Size() - 1;
+			if (lastIndex > -1)
 			{
-				let mo = passengers[i];
-				if (!mo || mo.bDestroyed)
-					ForgetPassenger(i);
-				else
-					mo.vel += pushForce;
-			}
-		}
+				if (pushForce != pushForce) //NaN check
+					pushForce = level.Vec3Diff(startPos, endPos);
 
-		if (portTwin && !portTwin.bNoBlockmap && portTwin.passengers.Size())
-		{
-			if (pushForce != pushForce) //NaN check
-				pushForce = level.Vec3Diff(startPos, endPos);
+				if (iTwins > 0 && lastUPort)
+					pushForce = TranslatePortalVector(pushForce, lastUPort, false, false);
 
-			if (lastUPort)
-				pushForce = TranslatePortalVector(pushForce, lastUPort, false, false);
-
-			for (int i = portTwin.passengers.Size() - 1; i > -1; --i)
-			{
-				let mo = portTwin.passengers[i];
-				if (!mo || mo.bDestroyed)
-					portTwin.ForgetPassenger(i);
-				else
-					mo.vel += pushForce;
+				for (int i = lastIndex; i > -1; --i)
+				{
+					let mo = plat.passengers[i];
+					if (!mo || mo.bDestroyed)
+						plat.ForgetPassenger(i);
+					else
+						mo.vel += pushForce;
+				}
 			}
 		}
 	}
