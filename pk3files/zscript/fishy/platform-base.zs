@@ -3520,13 +3520,13 @@ extend class FishyPlatform
 				{
 					group.carrier = null;
 				}
-				else for (int iPlat = 0; iPlat < group.members.Size();)
+				else for (int i = 0; i < group.members.Size();)
 				{
-					let plat = group.GetMember(iPlat);
+					let plat = group.GetMember(i);
 					if (plat && carrier.passengers.Find(plat) < carrier.passengers.Size())
 						break; //It does carry one of us
 
-					if (++iPlat >= group.members.Size())
+					if (++i >= group.members.Size())
 						group.carrier = null; //It doesn't carry any of us
 				}
 			}
@@ -3545,39 +3545,22 @@ extend class FishyPlatform
 		// the moving bridge construct in the demo map would play
 		// its lift sounds slightly out of sync. (2 actors play the sounds.)
 
-		if (!group || !group.origin)
+		if (!group || !group.origin || group.origin == self)
+		for (int i = -1; i == -1 || (group && group.origin == self && i < group.members.Size()); ++i)
 		{
-			bOnMobj = false; //Aside from standing on an actor, this can also be "true" later if hitting a lower obstacle while going down or we have stuck actors
-			HandleStuckActors();
-			HandleOldPassengers();
-			UpdateOldInfo();
-			if (portTwin && portTwin.bPortCopy)
+			let plat = (i == -1) ? self : group.GetMember(i);
+			if (i > -1 && (!plat || plat == self)) //Already handled self
+				continue;
+
+			for (int iTwins = 0; iTwins < 2; ++iTwins)
 			{
-				portTwin.bOnMobj = bOnMobj;
-				portTwin.HandleStuckActors();
-				portTwin.HandleOldPassengers();
-				portTwin.UpdateOldInfo();
-			}
-		}
-		else if (group.origin == self)
-		{
-			for (int iPlat = 0; iPlat < group.members.Size(); ++iPlat)
-			{
-				let plat = group.GetMember(iPlat);
-				if (plat)
-				{
-					plat.bOnMobj = false;
-					plat.HandleStuckActors();
-					plat.HandleOldPassengers();
-					plat.UpdateOldInfo();
-					if (plat.portTwin && plat.portTwin.bPortCopy)
-					{
-						plat.portTwin.bOnMobj = plat.bOnMobj;
-						plat.portTwin.HandleStuckActors();
-						plat.portTwin.HandleOldPassengers();
-						plat.portTwin.UpdateOldInfo();
-					}
-				}
+				if (iTwins > 0 && !(plat = plat.portTwin))
+					break;
+
+				plat.bOnMobj = (iTwins == 0) ? false : plat.portTwin.bOnMobj; //Aside from standing on an actor, this can also be "true" later if hitting a lower obstacle while going down or we have stuck actors
+				plat.HandleStuckActors();
+				plat.HandleOldPassengers();
+				plat.UpdateOldInfo();
 			}
 		}
 
@@ -3721,28 +3704,14 @@ extend class FishyPlatform
 		//Handle friction, gravity, and other misc things
 		if (!group || !group.origin || group.origin == self)
 		{
-			CheckFloorCeiling();
-			UpdateWaterLevel();
+			bool onGround = false;
+			bool yesGravity = false;
+			bool yesFriction = false;
 
-			bool getAverage = (group && group.origin && group.members.Size() > 1);
-			bool onGround = (bOnMobj || pos.z <= floorZ);
-			bool yesGravity = !bNoGravity;
-			bool yesFriction = !bNoFriction;
-
-			if (yesGravity && !onGround)
+			for (int i = -1; i == -1 || (group && group.origin == self && i < group.members.Size()); ++i)
 			{
-				Actor mo;
-				bOnMobj = ((lastGetNPTime == level.mapTime && !lastGetNPResult) ||
-					((mo = blockingMobj) && mo.pos.z <= pos.z && OverlapXY(self, mo) ) ||
-					!TestMobjZ(true) );
-				onGround = bOnMobj;
-			}
-
-			if (group && group.origin)
-			for (int iPlat = 0; iPlat < group.members.Size(); ++iPlat)
-			{
-				let plat = group.GetMember(iPlat);
-				if (!plat || plat == self)
+				let plat = (i == -1) ? self : group.GetMember(i);
+				if (i > -1 && (!plat || plat == self)) //Already handled self
 					continue;
 
 				plat.CheckFloorCeiling();
@@ -3765,46 +3734,30 @@ extend class FishyPlatform
 
 			if (yesFriction && vel != (0, 0, 0))
 			{
-				double fric;
-				if (!onGround)
-				{
-					fric = platAirFric;
-				}
-				else
-				{
-					let oldNoGrav = bNoGravity;
-					bNoGravity = false; //A little hack to make GetFriction() give us a actual friction value
-					fric = GetFriction();
-					bNoGravity = oldNoGrav;
-				}
+				//Get the average friction from the group if there is one
+				int count = 0;
+				double sum = 0;
 
-				if (getAverage)
+				for (int i = -1; i == -1 || (group && group.origin == self && i < group.members.Size()); ++i)
 				{
-					//Get the average friction from the group
-					int count = 1;
-					double sum = fric;
+					let plat = (i == -1) ? self : group.GetMember(i);
+					if (i > -1 && (!plat || plat == self)) //Already handled self
+						continue;
 
-					for (int iPlat = 0; iPlat < group.members.Size(); ++iPlat)
+					++count;
+					if (!onGround)
 					{
-						let plat = group.GetMember(iPlat);
-						if (!plat || plat == self)
-							continue;
-
-						++count;
-						if (!onGround)
-						{
-							sum += plat.platAirFric;
-						}
-						else
-						{
-							let oldNoGrav = plat.bNoGravity;
-							plat.bNoGravity = false; //A little hack to make GetFriction() give us a actual friction value
-							sum += plat.GetFriction();
-							plat.bNoGravity = oldNoGrav;
-						}
+						sum += plat.platAirFric;
 					}
-					fric = sum / count;
+					else
+					{
+						let oldNoGrav = plat.bNoGravity;
+						plat.bNoGravity = false; //A little hack to make GetFriction() give us a actual friction value
+						sum += plat.GetFriction();
+						plat.bNoGravity = oldNoGrav;
+					}
 				}
+				double fric = (count > 1) ? (sum / count) : sum;
 
 				if (!onGround)
 					vel *= fric;
@@ -3818,60 +3771,42 @@ extend class FishyPlatform
 
 			if (yesGravity && !onGround)
 			{
-				let oldNoGrav = bNoGravity;
-				bNoGravity = false;
-				double grav = GetGravity();
-				bNoGravity = oldNoGrav;
+				//Get the average gravity from the group if there is one
+				int count = 0;
+				double sum = 0;
 
-				if (getAverage)
+				for (int i = -1; i == -1 || (group && group.origin == self && i < group.members.Size()); ++i)
 				{
-					//Get the average gravity from the group
-					int count = 1;
-					double sum = grav;
+					let plat = (i == -1) ? self : group.GetMember(i);
+					if (i > -1 && (!plat || plat == self)) //Already handled self
+						continue;
 
-					for (int iPlat = 0; iPlat < group.members.Size(); ++iPlat)
-					{
-						let plat = group.GetMember(iPlat);
-						if (!plat || plat == self)
-							continue;
-
-						++count;
-						oldNoGrav = plat.bNoGravity;
-						plat.bNoGravity = false;
-						sum += plat.GetGravity();
-						plat.bNoGravity = oldNoGrav;
-					}
-					grav = sum / count;
+					++count;
+					let oldNoGrav = plat.bNoGravity;
+					plat.bNoGravity = false;
+					sum += plat.GetGravity();
+					plat.bNoGravity = oldNoGrav;
 				}
+				double grav = (count > 1) ? (sum / count) : sum;
+
 				FallAndSink(grav, oldFloorZ);
 			}
 		}
 
-		if (!group || !group.origin)
+		//Advance actor states
+		if (!group || !group.origin || group.origin == self)
+		for (int i = -1; i == -1 || (group && group.origin == self && i < group.members.Size()); ++i)
 		{
-			AdvanceStates();
-		}
-		else if (group.origin == self)
-		{
-			for (int iPlat = 0; iPlat < group.members.Size(); ++iPlat)
-			{
-				let plat = group.GetMember(iPlat);
-				if (plat)
-					plat.AdvanceStates();
-			}
-		}
-	}
+			let plat = (i == -1) ? self : group.GetMember(i);
+			if (i > -1 && (!plat || plat == self)) //Already handled self
+				continue;
 
-	//============================
-	// AdvanceStates
-	//============================
-	private void AdvanceStates ()
-	{
-		if (!CheckNoDelay())
-			return; //Freed itself (ie got destroyed)
+			if (!plat.CheckNoDelay())
+				continue; //Freed itself (ie got destroyed)
 
-		if (tics != -1 && --tics <= 0)
-			SetState(curState.nextState);
+			if (plat.tics != -1 && --plat.tics <= 0)
+				plat.SetState(plat.curState.nextState);
+		}
 	}
 
 	//============================
@@ -3908,7 +3843,7 @@ extend class FishyPlatform
 		int wLevel = waterLevel;
 		int m = mass;
 
-		if (group && group.origin && group.members.Size() > 1)
+		if (group && group.origin == self && group.members.Size() > 1)
 		{
 			//Get the average water level and average mass from the group
 			int count = 1;
