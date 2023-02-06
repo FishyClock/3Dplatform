@@ -781,8 +781,9 @@ extend class FishyPlatform
 		{
 			//If me or my twin is moving, don't
 			//collide with either one's passengers.
-			FishyPlatformGroup grp = bPortCopy ? portTwin.group : self.group;
-			for (int i = -1; i == -1 || (grp && i < grp.members.Size()); ++i)
+			let grp = bPortCopy ? portTwin.group : self.group;
+			int gSize = grp ? grp.members.Size() : 0;
+			for (int i = -1; i < gSize; ++i)
 			{
 				plat = (i == -1) ? self : grp.members[i]; //Not calling GetMember() here because that deletes null entries and nothing is supposed to change here
 
@@ -2384,56 +2385,44 @@ extend class FishyPlatform
 	//============================
 	private void ExchangePassengersWithTwin ()
 	{
+		//This function is never called by the portal copy
 		if (!portTwin || portTwin.portTwin != self)
 			return;
 
+		int myLastIndex = passengers.Size() - 1;
 		int oldPortTwinLastIndex = portTwin.passengers.Size() - 1;
 
-		//This is never called by the portal copy
-		if (!portTwin.bNoBlockmap)
-		for (int i = passengers.Size() - 1; i > -1; --i)
+		for (int iTwins = 0; iTwins < 2; ++iTwins)
 		{
-			//If any of our passengers have passed through a portal,
-			//check if they're on the twin's side of that portal.
-			//If so, give them to our twin.
-			let mo = passengers[i];
-			if (!mo || mo.bDestroyed)
+			let plat = (iTwins == 0) ? self : portTwin;
+			if (!plat)
+				break;
+
+			if (iTwins == 0 && portTwin.bNoBlockmap)
+				continue; //Don't give anything to the portal copy if it's not in use
+
+			for (int i = (iTwins == 0) ? myLastIndex : oldPortTwinLastIndex; i > -1; --i)
 			{
-				ForgetPassenger(i);
-				continue;
-			}
+				//If any of our passengers have passed through a portal,
+				//check if they're on the twin's side of that portal.
+				//If so, give them to our twin.
+				let mo = plat.passengers[i];
+				if (!mo || mo.bDestroyed)
+				{
+					plat.ForgetPassenger(i);
+					continue;
+				}
 
-			if (mo.Distance3D(portTwin) < mo.Distance3D(self) &&
-				portTwin.passengers.Find(mo) >= portTwin.passengers.Size())
-			{
-				let plat = FishyPlatform(mo);
-				if (plat && plat.group && plat.group.carrier == self)
-					plat.group.carrier = portTwin;
+				if (plat.portTwin.passengers.Find(mo) >= plat.portTwin.passengers.Size() &&
+					mo.Distance3D(plat.portTwin) < mo.Distance3D(plat))
+				{
+					let platPass = FishyPlatform(mo);
+					if (platPass && platPass.group && platPass.group.carrier == plat)
+						platPass.group.carrier = plat.portTwin;
 
-				passengers.Delete(i);
-				portTwin.passengers.Push(mo);
-			}
-		}
-
-		for (int i = oldPortTwinLastIndex; i > -1; --i)
-		{
-			//Same deal but in reverse
-			let mo = portTwin.passengers[i];
-			if (!mo || mo.bDestroyed)
-			{
-				portTwin.ForgetPassenger(i);
-				continue;
-			}
-
-			if (mo.Distance3D(self) < mo.Distance3D(portTwin) &&
-				passengers.Find(mo) >= passengers.Size())
-			{
-				let plat = FishyPlatform(mo);
-				if (plat && plat.group && plat.group.carrier == portTwin)
-					plat.group.carrier = self;
-
-				portTwin.passengers.Delete(i);
-				passengers.Push(mo);
+					plat.passengers.Delete(i);
+					plat.portTwin.passengers.Push(mo);
+				}
 			}
 		}
 	}
@@ -3654,14 +3643,10 @@ extend class FishyPlatform
 				if (finishedPath || holdTime > 0 || !bActive) //'bActive' being false can happen if CallNodeSpecials() ended up calling Deactivate() on self
 				{
 					//Stopped() must be called before PlatMove() in this case
-					if (!group)
+					for (int i = -1; i == -1 || (group && i < group.members.Size()); ++i)
 					{
-						Stopped(oldPos, pos);
-					}
-					else for (int iPlat = 0; iPlat < group.members.Size(); ++iPlat)
-					{
-						let plat = group.GetMember(iPlat);
-						if (plat)
+						let plat = (i == -1) ? self : group.GetMember(i);
+						if (i == -1 || (plat && plat != self)) //Already handled self
 							plat.Stopped(plat.oldPos, plat.pos);
 					}
 				}
@@ -3840,28 +3825,23 @@ extend class FishyPlatform
 			return;
 
 		double startVelZ = vel.z;
-		int wLevel = waterLevel;
-		int m = mass;
 
-		if (group && group.origin == self && group.members.Size() > 1)
+		//Get the average water level and average mass from the group if there is one
+		int count = 0;
+		int sums[2] = {0, 0};
+
+		for (int i = -1; i == -1 || (group && group.origin == self && i < group.members.Size()); ++i)
 		{
-			//Get the average water level and average mass from the group
-			int count = 1;
-			int sums[2] = {wLevel, m};
+			let plat = (i == -1) ? self : group.GetMember(i);
+			if (i > -1 && (!plat || plat == self)) //Already handled self
+				continue;
 
-			for (int iPlat = 0; iPlat < group.members.Size(); ++iPlat)
-			{
-				let plat = group.GetMember(iPlat);
-				if (!plat || plat == self)
-					continue;
-
-				++count;
-				sums[0] += plat.waterLevel;
-				sums[1] += plat.mass;
-			}
-			wLevel = sums[0] / count;
-			m = sums[1] / count;
+			++count;
+			sums[0] += plat.waterLevel;
+			sums[1] += plat.mass;
 		}
+		int wLevel = (count > 1) ? (sums[0] / count) : sums[0];
+		int m = (count > 1) ? (sums[1] / count) : sums[1];
 
 		if (wLevel == 0)
 		{
