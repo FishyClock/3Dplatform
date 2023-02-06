@@ -185,7 +185,8 @@ function void FishyPlat_SetNodePath (int platTid, int nodeTid)
 	/*********************************************************************************
 	**Finds all platforms with tid "platTId" and makes them target the first found
 	interpolation point with tid "nodeTid". Specifically, this is the path to follow when Thing_Activate()-ing
-	the platform. It won't stop/change an active platform.**
+	the platform. It won't stop/change an active platform.
+	When SetNodePath and SetOptions are used together, SetOptions should be called first.**
 
 	- platTid = TID of the platform(s) whose path to set. If 0 then this is the script activator.
 
@@ -197,7 +198,8 @@ function void FishyPlat_SetNodePath (int platTid, int nodeTid)
 function void FishyPlat_SetOptions (int platTid, int toSet, int toClear)
 {
 	/*********************************************************************************
-	**Finds all platforms with tid "platTId" and sets and/or clears their options (thing argument 2).**
+	**Finds all platforms with tid "platTId" and sets and/or clears their options (thing argument 2).
+	When SetNodePath and SetOptions are used together, SetOptions should be called first.**
 
 	- platTid = TID of the platform(s) whose options to set/clear. If 0 then this is the script activator.
 
