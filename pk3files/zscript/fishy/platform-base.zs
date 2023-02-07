@@ -3713,7 +3713,7 @@ extend class FishyPlatform
 
 				for (int iTwins = 0; iTwins < 2; ++iTwins)
 				{
-					if (iTwins > 0 && !(plat = plat.portTwin))
+					if (iTwins > 0 && (!(plat = plat.portTwin) || plat.bNoBlockmap)) //NOBLOCKMAP means it's currently not in use
 						break;
 
 					plat.CheckFloorCeiling();
