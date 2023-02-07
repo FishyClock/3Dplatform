@@ -368,7 +368,7 @@ extend class FishyPlatform
 	Array<Actor> stuckActors;
 	Line lastUPort;
 	private FishyPlatform portTwin; //Helps with collision when dealing with unlinked line portals
-	protected bool bPortCopy;
+	private bool bPortCopy;
 	double portDelta;
 	int acsFlags;
 	transient int lastGetNPTime; //Make sure there's only one GetNewPassengers() blockmap search per tic
@@ -523,6 +523,16 @@ extend class FishyPlatform
 
 		if (options & OPTFLAG_STARTACTIVE)
 			Activate(self);
+	}
+
+	//============================
+	// IsPortalCopy
+	//============================
+	bool IsPortalCopy ()
+	{
+		//A getter function that's mostly useful for subclasses.
+		//I want 'bPortCopy' to stay private.
+		return bPortCopy;
 	}
 
 	//============================

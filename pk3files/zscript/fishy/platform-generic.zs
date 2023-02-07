@@ -44,7 +44,7 @@ class FishyPlatformGeneric : FishyPlatform
 
 	override void PostBeginPlay ()
 	{
-		if (!bPortCopy) //Make sure this isn't a invisible portal copy
+		if (!IsPortalCopy())
 		{
 			A_ChangeModel(
 				user_cm_modeldef,
