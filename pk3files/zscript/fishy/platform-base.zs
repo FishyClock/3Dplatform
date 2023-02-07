@@ -262,27 +262,8 @@ class FishyPlatformGroup play
 				Add(plat);
 		}
 
-		if (!origin && otherGroup.origin)
-			SetGroupOrigin(otherGroup.origin);
-
 		if (!carrier && otherGroup.carrier)
 			carrier = otherGroup.carrier;
-	}
-
-	void SetGroupOrigin (FishyPlatform ori, bool setMirrorPos = true)
-	{
-		origin = ori;
-		for (int i = 0; i < members.Size(); ++i)
-		{
-			let plat = GetMember(i);
-			if (plat)
-			{
-				if (setMirrorPos)
-					plat.groupMirrorPos = plat.pos;
-				if (!(plat.options & plat.OPTFLAG_MIRROR) && plat != origin)
-					plat.SetOrbitInfo();
-			}
-		}
 	}
 }
 
@@ -479,7 +460,7 @@ extend class FishyPlatform
 				let plat = group.GetMember(i);
 				if (plat && (plat.bActive || plat.vel != (0, 0, 0)))
 				{
-					group.SetGroupOrigin(plat, false);
+					SetGroupOrigin(plat, false);
 					plat.PlatMove(plat.pos, plat.angle, plat.pitch, plat.roll, MOVE_TELEPORT);
 					break;
 				}
@@ -639,7 +620,15 @@ extend class FishyPlatform
 				else if (plat.group != group) //Both are in different groups?
 				{
 					if (doUpdateGroupInfo && gotOrigin)
-						newMembers.Append(group.members);
+					{
+						//Depending on who has an origin the other group's
+						//members will have to have their group info updated.
+						//(It's fine if both groups have an origin.)
+						if (!plat.group.origin && group.origin)
+							newMembers.Append(plat.group.members);
+						else
+							newMembers.Append(group.members);
+					}
 					plat.group.MergeWith(group);
 				}
 				//else - nothing happens because it's the same group or plat == self
@@ -700,11 +689,29 @@ extend class FishyPlatform
 	//============================
 	// SetOrbitInfo
 	//============================
-	void SetOrbitInfo ()
+	private void SetOrbitInfo ()
 	{
 		groupOrbitOffset = level.Vec3Diff(group.origin.groupOrbitPos, groupOrbitPos);
-		double difference = DeltaAngle(group.origin.groupAngle, groupAngle);
-		groupOrbitAngDiff = (cos(difference), sin(difference));
+		groupOrbitAngDiff = DeltaAngle(group.origin.groupAngle, groupAngle).ToVector();
+	}
+
+	//============================
+	// SetGroupOrigin
+	//============================
+	private void SetGroupOrigin (FishyPlatform ori, bool setMirrorPos = true)
+	{
+		group.origin = ori;
+		for (int i = 0; i < group.members.Size(); ++i)
+		{
+			let plat = group.GetMember(i);
+			if (plat)
+			{
+				if (setMirrorPos)
+					plat.groupMirrorPos = plat.pos;
+				if (!(plat.options & OPTFLAG_MIRROR) && plat != group.origin)
+					plat.SetOrbitInfo();
+			}
+		}
 	}
 
 	//============================
@@ -733,7 +740,7 @@ extend class FishyPlatform
 		else //Set up for proper orbiting
 		{
 			quat qRot = GetQuatRotation(-delta, -piDelta, -roDelta, ori.groupAngle);
-			qRot = quat(-qRot.x, -qRot.y, -qRot.z, +qRot.w); //This would be qRot.Conjugate(); if not for the JIT error
+			qRot.xyz = -qRot.xyz; //This would be qRot.Conjugate(); if not for the JIT error
 			vector3 offset = qRot * level.Vec3Diff(ori.pos, pos);
 			groupOrbitPos = level.Vec3Offset(ori.groupOrbitPos, offset);
 
@@ -1740,7 +1747,7 @@ extend class FishyPlatform
 
 			let newOri = FishyPlatform(passengers[i]);
 			if (plat.group.origin != newOri)
-				plat.group.SetGroupOrigin(newOri);
+				plat.SetGroupOrigin(newOri);
 		}
 		lastGetNPResult = result;
 		return result;
@@ -2667,7 +2674,7 @@ extend class FishyPlatform
 
 		FishyPlatform plat;
 		if (group && group.origin != self)
-			group.SetGroupOrigin(self);
+			SetGroupOrigin(self);
 
 		if (moveType != MOVE_QUICK)
 		for (int i = -1; i == -1 || (group && i < group.members.Size()); ++i)
@@ -3328,7 +3335,7 @@ extend class FishyPlatform
 			{
 				bActive = true;
 				if (group && group.origin != self)
-					group.SetGroupOrigin(self);
+					SetGroupOrigin(self);
 				MustGetNewPassengers(); //Ignore search tic rate; do a search now
 				return;
 			}
@@ -3350,7 +3357,7 @@ extend class FishyPlatform
 				}
 				bActive = true;
 				if (group && group.origin != self)
-					group.SetGroupOrigin(self);
+					SetGroupOrigin(self);
 
 				if (!bGoToNode)
 				{
@@ -3504,7 +3511,7 @@ extend class FishyPlatform
 
 			if ((!group.origin || (!group.origin.bActive && group.origin.vel == (0, 0, 0))) && (bActive || vel != (0, 0, 0)))
 			{
-				group.SetGroupOrigin(self);
+				SetGroupOrigin(self);
 			}
 			else if (group.origin && group.origin != self)
 			{
@@ -3941,7 +3948,7 @@ extend class FishyPlatform
 		holdTime = 0;
 		bActive = true;
 		if (group && group.origin != self)
-			group.SetGroupOrigin(self);
+			SetGroupOrigin(self);
 		portDelta = 0;
 		acsFlags = (OPTFLAG_ANGLE | OPTFLAG_PITCH | OPTFLAG_ROLL);
 		pPrev = pos;
