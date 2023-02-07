@@ -262,6 +262,9 @@ class FishyPlatformGroup play
 				Add(plat);
 		}
 
+		if (!origin && otherGroup.origin)
+			origin = otherGroup.origin;
+
 		if (!carrier && otherGroup.carrier)
 			carrier = otherGroup.carrier;
 	}
