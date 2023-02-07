@@ -2694,11 +2694,13 @@ extend class FishyPlatform
 				//Take into account SetActorFlag() shenanigans.
 				//For sanity's sake just copy some
 				//of the flags that are defined in
-				//the "default" block plus CANNOTPUSH and PUSHABLE.
+				//the "default" block plus CANNOTPUSH, PUSHABLE
+				//and NOFRICTION.
 				//INTERPOLATEANGLES is a render flag so skip it.
 
 				plat.portTwin.bActLikeBridge = plat.bActLikeBridge;
 				plat.portTwin.bNoGravity = plat.bNoGravity;
+				plat.portTwin.bNoFriction = plat.bNoFriction;
 				plat.portTwin.bCanPass = plat.bCanPass;
 				plat.portTwin.bSolid = plat.bSolid;
 				plat.portTwin.bShootable = plat.bShootable;
@@ -3709,27 +3711,33 @@ extend class FishyPlatform
 				if (i > -1 && (!plat || plat == self)) //Already handled self
 					continue;
 
-				plat.CheckFloorCeiling();
-				plat.UpdateWaterLevel();
-
-				//Find a member who is gravity bound and/or is "on the ground" and/or doesn't ignore friction
-				onGround |= (plat.bOnMobj || plat.pos.z <= plat.floorZ);
-				yesGravity |= !plat.bNoGravity;
-				yesFriction |= !plat.bNoFriction;
-
-				if (yesGravity && !onGround)
+				for (int iTwins = 0; iTwins < 2; ++iTwins)
 				{
-					Actor mo;
-					plat.bOnMobj = ((plat.lastGetNPTime == level.mapTime && !plat.lastGetNPResult) ||
-						((mo = plat.blockingMobj) && mo.pos.z <= plat.pos.z && OverlapXY(plat, mo)) ||
-						!plat.TestMobjZ(true) );
-					onGround = plat.bOnMobj;
+					if (iTwins > 0 && !(plat = plat.portTwin))
+						break;
+
+					plat.CheckFloorCeiling();
+					plat.UpdateWaterLevel();
+
+					//Find a member who is gravity bound and/or is "on the ground" and/or doesn't ignore friction
+					onGround |= (plat.bOnMobj || plat.pos.z <= plat.floorZ);
+					yesGravity |= !plat.bNoGravity;
+					yesFriction |= !plat.bNoFriction;
+
+					if (yesGravity && !onGround)
+					{
+						Actor mo;
+						plat.bOnMobj = ((plat.lastGetNPTime == level.mapTime && !plat.lastGetNPResult) ||
+							((mo = plat.blockingMobj) && mo.pos.z <= plat.pos.z && OverlapXY(plat, mo)) ||
+							!plat.TestMobjZ(true) );
+						onGround = plat.bOnMobj;
+					}
 				}
 			}
 
 			if (yesFriction && vel != (0, 0, 0))
 			{
-				//Get the average friction from the group if there is one
+				//Get the average friction from the group if there is a group
 				int count = 0;
 				double sum = 0;
 
@@ -3766,7 +3774,7 @@ extend class FishyPlatform
 
 			if (yesGravity && !onGround)
 			{
-				//Get the average gravity from the group if there is one
+				//Get the average gravity from the group if there is a group
 				int count = 0;
 				double sum = 0;
 
@@ -3836,7 +3844,7 @@ extend class FishyPlatform
 
 		double startVelZ = vel.z;
 
-		//Get the average water level and average mass from the group if there is one
+		//Get the average water level and average mass from the group if there is a group
 		int count = 0;
 		int sums[2] = {0, 0};
 
@@ -3890,11 +3898,13 @@ extend class FishyPlatform
 	//============================
 	bool IsActive ()
 	{
+		//Portal copies should check their twin
+		let plat = bPortCopy ? portTwin : self;
+
 		//When checking group members we only care about the origin.
 		//Either "every member is active" or "every member is not active."
-		let plat = self;
-		if (group && group.origin)
-			plat = group.origin;
+		if (plat.group && plat.group.origin)
+			plat = plat.group.origin;
 
 		return (plat.bActive || plat.vel != (0, 0, 0));
 	}
@@ -3904,11 +3914,13 @@ extend class FishyPlatform
 	//============================
 	bool HasMoved (bool posOnly = false)
 	{
+		//Portal copies should check their twin
+		let plat = bPortCopy ? portTwin : self;
+
 		//When checking group members we only care about the origin.
 		//Either "every member has moved" or "every member has not moved."
-		let plat = self;
-		if (group && group.origin)
-			plat = group.origin;
+		if (plat.group && plat.group.origin)
+			plat = plat.group.origin;
 
 		return ((plat.bActive || plat.vel != (0, 0, 0)) && (
 				plat.pos != plat.oldPos ||
