@@ -262,9 +262,6 @@ class FishyPlatformGroup play
 				Add(plat);
 		}
 
-		if (!origin && otherGroup.origin)
-			origin = otherGroup.origin;
-
 		if (!carrier && otherGroup.carrier)
 			carrier = otherGroup.carrier;
 	}
@@ -622,17 +619,16 @@ extend class FishyPlatform
 				}
 				else if (plat.group != group) //Both are in different groups?
 				{
+					//Depending on who has an origin the other group's
+					//members will have to have their group info updated.
+					//If both have an origin then our group's origin
+					//overrides the other detected group's origin by default.
+					let group1 = group.origin ? group : plat.group;
+					let group2 = group.origin ? plat.group : group;
+
 					if (doUpdateGroupInfo && gotOrigin)
-					{
-						//Depending on who has an origin the other group's
-						//members will have to have their group info updated.
-						//(It's fine if both groups have an origin.)
-						if (!plat.group.origin && group.origin)
-							newMembers.Append(plat.group.members);
-						else
-							newMembers.Append(group.members);
-					}
-					plat.group.MergeWith(group);
+						newMembers.Append(group2.members);
+					group1.MergeWith(group2);
 				}
 				//else - nothing happens because it's the same group or plat == self
 			}
