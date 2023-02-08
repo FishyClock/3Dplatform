@@ -863,7 +863,7 @@ extend class FishyPlatform
 	//============================
 	// FitsAtPosition
 	//============================
-	static bool FitsAtPosition (Actor mo, vector3 testPos, bool ignoreActors = false)
+	static bool FitsAtPosition (Actor mo, vector3 testPos, bool ignoreActors = false, bool onlyCheckMove = false)
 	{
 		//Unlike TestMobjLocation(), CheckMove() takes into account
 		//actors that have the flags FLOORHUGGER, CEILINGHUGGER
@@ -876,9 +876,9 @@ extend class FishyPlatform
 		mo.SetZ(testPos.z); //Because setting Z has an effect on CheckMove()'s outcome
 
 		FCheckPosition tm;
-		bool result = (mo.CheckMove(testPos.xy, 0, tm) &&
-			testPos.z >= tm.floorZ &&				//This is something that TestMobjLocation() checks
-			testPos.z + mo.height <= tm.ceilingZ);	//and that CheckMove() does not account for.
+		bool result = (mo.CheckMove(testPos.xy, 0, tm) && (onlyCheckMove ||
+			(testPos.z >= tm.floorZ &&					//This is something that TestMobjLocation() checks
+			testPos.z + mo.height <= tm.ceilingZ) ) );	//and that CheckMove() does not account for.
 
 		mo.bThruActors = oldThruActors;
 		mo.SetZ(oldZ);
@@ -996,6 +996,14 @@ extend class FishyPlatform
 			fits = FitsAtPosition(pushed, level.Vec3Offset(pushed.pos, pushForce));
 			if (!fits)
 			{
+				Line bLine = pushed.blockingLine;
+				if (bLine && bLine.special && pushed.bCanPushWalls) //Check if blocking line has a push special
+				{
+					bLine.Activate(pushed, IsBehindLine(pushed.pos.xy, bLine), SPAC_Push);
+					if (!pushed || pushed.bDestroyed)
+						return; //Actor 'pushed' was destroyed
+				}
+			
 				if (crushDamage > 0 && !CrushObstacle(pushed, false, false, pusher))
 					return; //Actor 'pushed' was destroyed
 				deliveredOuchies = true;
@@ -1038,20 +1046,28 @@ extend class FishyPlatform
 		if (!fits && pushForce.xy != (0, 0))
 		{
 			//Handle horizontal obstacle pushing - (what happens if it can't be pushed because a wall or a solid actor is in the way)
-			fits = FitsAtPosition(pushed, level.Vec3Offset(pushed.pos, pushForce));
-			if (!fits && !deliveredOuchies)
-			{
-				if (crushDamage > 0 && !CrushObstacle(pushed, false, false, pusher))
-					return; //Actor 'pushed' was destroyed
-				deliveredOuchies = true;
-
-				pushAng = VectorAngle(pushForce.x, pushForce.y);
-				vector2 diff = level.Vec2Diff(pushPoint, pushed.pos.xy);
-				angToPushed = VectorAngle(diff.x, diff.y);
-			}
-
+			fits = FitsAtPosition(pushed, level.Vec3Offset(pushed.pos, pushForce), false, true);
 			if (!fits)
 			{
+				Line bLine = pushed.blockingLine;
+				if (bLine && bLine.special && pushed.bCanPushWalls) //Check if blocking line has a push special
+				{
+					bLine.Activate(pushed, IsBehindLine(pushed.pos.xy, bLine), SPAC_Push);
+					if (!pushed || pushed.bDestroyed)
+						return; //Actor 'pushed' was destroyed
+				}
+
+				if (!deliveredOuchies)
+				{
+					if (crushDamage > 0 && !CrushObstacle(pushed, false, false, pusher))
+						return; //Actor 'pushed' was destroyed
+					deliveredOuchies = true;
+
+					pushAng = VectorAngle(pushForce.x, pushForce.y);
+					vector2 diff = level.Vec2Diff(pushPoint, pushed.pos.xy);
+					angToPushed = VectorAngle(diff.x, diff.y);
+				}
+
 				//Can't push obstacle in the direction we're going, so try to move it aside instead
 				double delta = DeltaAngle(pushAng, angToPushed);
 				pushForce.xy = RotateVector(pushForce.xy, (delta >= 0) ? 90 : -90);
