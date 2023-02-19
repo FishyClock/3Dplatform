@@ -144,6 +144,16 @@ Model DemoFirebluSegmentTiny
 	FrameIndex MODL A 0 0
 }
 
+Model TESTNastyHeart
+{
+	USEACTORPITCH
+	USEACTORROLL
+
+	Path "models"
+	Model 0 "DemoFirebluSegment.obj"
+	FrameIndex MODL A 0 0
+}
+
 //This actor needs a modeldef entry or else
 //it can't use A_ChangeModel() properly.
 Model FishyPlatformGeneric

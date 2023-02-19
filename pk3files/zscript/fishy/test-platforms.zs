@@ -178,3 +178,74 @@ extend class TESTPlat
 		}
 	}
 }
+
+//Example enemy/shootable platform
+class TESTNastyHeart : FishyPlatform
+{
+	Default
+	{
+		Health 300;
+		Radius 30;
+		Height 16;
+		PainChance 200;
+		SeeSound "caco/sight";
+		PainSound "caco/pain";
+		DeathSound "brain/pain";
+		-NODAMAGE;
+		-NOBLOOD;
+		-NOTAUTOAIMED;
+		+MISSILEMORE;
+		+MISSILEEVENMORE;
+		Obituary "%o succumbed to FIREBLU <3";
+	}
+
+	States
+	{
+	Spawn:
+		MODL A 10 A_LookEx(fov: 360); //"Wake up" as soon as player is in sight
+		Loop;
+	See:
+		MODL A 4
+		{
+			//For some reason CHF_DONTTURN doesn't actually stop turning *sigh*
+			let ang = angle;
+			A_Chase(flags: CHF_DONTMOVE|CHF_DONTTURN);
+			angle = ang;
+		}
+		Loop;
+	Missile:
+		MODL A 5 A_SpawnProjectile("CacodemonBall", 0);
+		MODL A 5
+		{
+			if(random[NastyHeart](1, 3) == 3) //One in three chance to shoot additional imp ball
+				A_SpawnProjectile("DoomImpBall", 0);
+		}
+		Goto See;
+	Pain:
+		MODL A 10
+		{
+			A_StartSound(PainSound, CHAN_BODY, pitch: 1.0);
+			A_StartSound(PainSound, CHAN_VOICE, pitch: 0.8);
+		}
+		Goto See;
+	Death:
+		TNT1 A 1
+		{
+			A_StopSound(CHAN_BODY);
+			A_StartSound(DeathSound, CHAN_VOICE);
+
+			//Shoot out 20 soul spheres
+			double toAdd = 360.0 / 20;
+			for (double i = 0.0; i < 360.0; i += toAdd)
+			{
+				let sphere = Spawn("Soulsphere", pos, ALLOW_REPLACE);
+				if (sphere)
+				{
+					sphere.angle = i;
+					sphere.VelFromAngle(15);
+				}
+			}
+		}
+		Stop;
+	}
+}

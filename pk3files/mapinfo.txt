@@ -26,6 +26,7 @@ DoomEdNums
 	15507 = TESTPushable1	//Ditto
 	15508 = TESTPushable2	//Ditto
 	15509 = TESTNoDeathSeq	//Ditto
+	15510 = TESTNastyHeart
 }
 
 map MAP01 "Fishy's 3D Platforms: Demo"
@@ -54,10 +55,15 @@ map SPEED "Platform racing"
 {
 }
 
+map PLATATAK "Fireblu Heartache"
+{
+}
+
 clearEpisodes
 episode MAP01 { name = "Demo map" }
 episode TEST01 { name = "Test map #1" }
 episode TEST03 { name = "Test map #2" }
 episode TEST02 { name = "Stress test" }
 episode SPEED { name = "Speed test" }
+episode PLATATAK { name = "Hostile test" }
 episode VMABORT { name = "VM abort test" }
