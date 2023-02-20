@@ -205,13 +205,7 @@ class TESTNastyHeart : FishyPlatform
 		MODL A 10 A_LookEx(fov: 360); //"Wake up" as soon as player is in sight
 		Loop;
 	See:
-		MODL A 4
-		{
-			//For some reason CHF_DONTTURN doesn't actually stop turning *sigh*
-			let ang = angle;
-			A_Chase(flags: CHF_DONTMOVE|CHF_DONTTURN);
-			angle = ang;
-		}
+		MODL A 4 A_Chase(null, "Missile", CHF_DONTMOVE | CHF_DONTTURN | CHF_NODIRECTIONTURN);
 		Loop;
 	Missile:
 		MODL A 5 A_SpawnProjectile("CacodemonBall", 0);
