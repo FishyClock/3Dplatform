@@ -1197,7 +1197,7 @@ extend class FishyPlatform
 	//============================
 	// SetInterpolationCoordinates
 	//============================
-	private void SetInterpolationCoordinates ()
+	private void SetInterpolationCoordinates (vector3 currPos, vector3 currAngs)
 	{
 		InterpolationPoint nextNode = !currNode ? null :
 			bGoToNode ? currNode : currNode.next;
@@ -1209,32 +1209,32 @@ extend class FishyPlatform
 		//All checked angles have to be adjusted.
 		if (prevNode && !bGoToNode)
 		{
-			pPrev = pos + (noPosChange ? (0, 0, 0) : Vec3To(prevNode)); //Make it portal aware in a way so TryMove() can handle it
+			pPrev = currPos + (noPosChange ? (0, 0, 0) : level.Vec3Diff(currPos, prevNode.pos)); //Make it portal aware in a way so TryMove() can handle it
 			pPrevAngs = (
 			Normalize180(prevNode.angle + portDelta),
 			Normalize180(prevNode.pitch),
 			Normalize180(prevNode.roll));
 		}
 
-		pCurr = pos; //This is deliberately not "currNode.pos" because we might have crossed a portal while following our path
+		pCurr = currPos; //This is deliberately not "currNode.pos" because we might have crossed a portal while following our path
 		if (!prevNode || bGoToNode)
 		{
 			pCurrAngs = (
-			Normalize180(angle), //This is deliberately not "currNode.angle/pitch/roll" for the same reason
-			Normalize180(pitch),
-			Normalize180(roll));
+			Normalize180(currAngs.x), //This is deliberately not "currNode.angle/pitch/roll" for the same reason
+			Normalize180(currAngs.y),
+			Normalize180(currAngs.z));
 		}
 		else
 		{
 			pCurrAngs = pPrevAngs + (
-			DeltaAngle(pPrevAngs.x, angle),
-			DeltaAngle(pPrevAngs.y, pitch),
-			DeltaAngle(pPrevAngs.z, roll));
+			DeltaAngle(pPrevAngs.x, currAngs.x),
+			DeltaAngle(pPrevAngs.y, currAngs.y),
+			DeltaAngle(pPrevAngs.z, currAngs.z));
 		}
 
 		if (nextNode)
 		{
-			pNext = pos + (noPosChange ? (0, 0, 0) : Vec3To(nextNode)); //Make it portal aware in a way so TryMove() can handle it
+			pNext = currPos + (noPosChange ? (0, 0, 0) : level.Vec3Diff(currPos, nextNode.pos)); //Make it portal aware in a way so TryMove() can handle it
 			pNextAngs = pCurrAngs + (
 			DeltaAngle(pCurrAngs.x, nextNode.angle + portDelta),
 			DeltaAngle(pCurrAngs.y, nextNode.pitch),
@@ -1242,7 +1242,7 @@ extend class FishyPlatform
 
 			if (nextNode.next && !bGoToNode)
 			{
-				pLast = pos +(noPosChange ? (0, 0, 0) :  Vec3To(nextNode.next)); //Make it portal aware in a way so TryMove() can handle it
+				pLast = currPos + (noPosChange ? (0, 0, 0) : level.Vec3Diff(currPos, nextNode.next.pos)); //Make it portal aware in a way so TryMove() can handle it
 				pLastAngs = pNextAngs + (
 				DeltaAngle(pNextAngs.x, nextNode.next.angle + portDelta),
 				DeltaAngle(pNextAngs.y, nextNode.next.pitch),
@@ -3386,7 +3386,7 @@ extend class FishyPlatform
 				{
 					MustGetNewPassengers(); //Ignore search tic rate; do a search now
 				}
-				SetInterpolationCoordinates();
+				SetInterpolationCoordinates(pos, (angle, pitch, roll));
 				SetTimeFraction();
 				SetHoldTime();
 				time = 0;
@@ -3685,7 +3685,7 @@ extend class FishyPlatform
 					}
 				}
 
-				if (!bRanActivationRoutine)
+				if ((finishedPath || holdTime > 0) && !bRanActivationRoutine)
 				{
 					//Make sure we're exactly at our intended position.
 					//(It doesn't matter if we can't fit at this "intended position"
@@ -3704,7 +3704,7 @@ extend class FishyPlatform
 				}
 				else if (!bRanActivationRoutine)
 				{
-					SetInterpolationCoordinates();
+					SetInterpolationCoordinates(pNext, pNextAngs);
 					SetTimeFraction();
 					time -= 1.0;
 
