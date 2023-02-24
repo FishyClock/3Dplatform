@@ -4256,6 +4256,7 @@ extend class FishyPlatform
 		ActorIterator it = platTid ? level.CreateActorIterator(platTid, "FishyPlatform") : null;
 		for (let plat = FishyPlatform(it ? it.Next() : act); plat; plat = it ? FishyPlatform(it.Next()) : null)
 		{
+			plat.GetNewPassengers(false, true); //Take into account idle platforms because those don't look for passengers
 			int pSize = plat.passengers.Size();
 			for (int i = passList.Size() - 1; i > -1; --i)
 			{
