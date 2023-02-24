@@ -4220,6 +4220,51 @@ extend class FishyPlatform
 		let plat = FishyPlatform(it ? it.Next() : act);
 		return plat ? plat.platAirFric : 0;
 	}
+
+	//============================
+	// ACSFuncHasPassenger
+	//============================
+	static bool ACSFuncHasPassenger (Actor act, int platTid, int passTid)
+	{
+		if ((!platTid && !passTid) || //No point if both are zero.
+			(!act && (!platTid || !passTid)) ) //If there's no activator then we can't do anything if one of the TIDs is zero.
+		{
+			return false;
+		}
+
+		//Iterate only once when looking for anything with 'passTid'
+		//in case there are multiple platforms with 'platTid'
+		//that we have to go through.
+		//(In other words, avoid creating multiple iterators for 'passTid'.)
+		Array<Actor> passList;
+		if (!passTid)
+		{
+			passList.Push(act);
+		}
+		else
+		{
+			let it = level.CreateActorIterator(passTid);
+			Actor mo;
+			while (mo = Actor(it.Next()))
+				passList.Push(mo);
+		}
+
+		if (!passList.Size())
+			return false; //Nothing to look for; don't create an iterator for 'platTid'
+
+		//Now we go through the platforms and see if any of them has someone in 'passList'
+		ActorIterator it = platTid ? level.CreateActorIterator(platTid, "FishyPlatform") : null;
+		for (let plat = FishyPlatform(it ? it.Next() : act); plat; plat = it ? FishyPlatform(it.Next()) : null)
+		{
+			int pSize = plat.passengers.Size();
+			for (int i = passList.Size() - 1; i > -1; --i)
+			{
+				if (plat.passengers.Find(passList[i]) < pSize)
+					return true;
+			}
+		}
+		return false;
+	}
 } //End of FishyPlatform class definition
 
 /******************************************************************************

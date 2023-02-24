@@ -304,3 +304,17 @@ function int/*fixed*/ FishyPlat_GetAirFriction (int platTid)
 	*********************************************************************************/
 	return ScriptCall("FishyPlatform", "ACSFuncGetAirFriction", platTid);
 }
+
+function bool FishyPlat_HasPassenger (int platTid, int passTid)
+{
+	/*********************************************************************************
+	**Returns "true" if any platform with "platTid" has a passenger with "passTid".**
+
+	- platTid = TID of the platform(s) whose passengers to check. If 0 then this is the script activator.
+
+	- passTid = TID of the passanger(s) to check for. If 0 then this is the script activator.
+
+	NOTE: If both TIDs are zero then this returns "false". (A platform can't be its own passenger.)
+	*********************************************************************************/
+	return ScriptCall("FishyPlatform", "ACSFuncHasPassenger", platTid, passTid);
+}
