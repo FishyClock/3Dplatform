@@ -4256,12 +4256,22 @@ extend class FishyPlatform
 		ActorIterator it = platTid ? level.CreateActorIterator(platTid, "FishyPlatform") : null;
 		for (let plat = FishyPlatform(it ? it.Next() : act); plat; plat = it ? FishyPlatform(it.Next()) : null)
 		{
-			plat.GetNewPassengers(false, true); //Take into account idle platforms because those don't look for passengers
-			int pSize = plat.passengers.Size();
-			for (int i = passList.Size() - 1; i > -1; --i)
+			//If there's a portal twin (copy), we're going to check its passengers, too
+			for (int iTwins = 0; iTwins < 2; ++iTwins)
 			{
-				if (plat.passengers.Find(passList[i]) < pSize)
-					return true;
+				if (iTwins > 0 && !(plat = plat.portTwin))
+					break;
+
+				plat.GetNewPassengers(false, true); //Take into account idle platforms because those don't look for passengers
+				int pSize = plat.passengers.Size();
+				if (!pSize)
+					continue; //This platform has no passengers
+
+				for (int i = passList.Size() - 1; i > -1; --i)
+				{
+					if (plat.passengers.Find(passList[i]) < pSize)
+						return true;
+				}
 			}
 		}
 		return false;
