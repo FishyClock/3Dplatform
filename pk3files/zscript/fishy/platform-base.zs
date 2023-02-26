@@ -3532,6 +3532,7 @@ extend class FishyPlatform
 			{
 				group.origin.vel += vel; //Any member's received velocity is passed on to the origin
 				vel = (0, 0, 0);
+				bActive = false; //Non-origin members aren't supposed to be "active"
 			}
 
 			//We need to check if the 'carrier' is actually carrying anyone in this group
@@ -3539,14 +3540,15 @@ extend class FishyPlatform
 				group.GetMember(0) == self)
 			{
 				let carrier = group.carrier;
-				if (!carrier.passengers.Size())
+				int carrierPSize = carrier.passengers.Size();
+				if (!carrierPSize)
 				{
 					group.carrier = null;
 				}
 				else for (int i = 0; i < group.members.Size();)
 				{
 					let plat = group.GetMember(i);
-					if (plat && carrier.passengers.Find(plat) < carrier.passengers.Size())
+					if (plat && carrier.passengers.Find(plat) < carrierPSize)
 						break; //It does carry one of us
 
 					if (++i >= group.members.Size())
