@@ -79,22 +79,22 @@ class FishyPlatform : Actor abstract
 
 		//$Arg0 Interpolation Point
 		//$Arg0Type 14
-		//$Arg0Tooltip Must be 'Platform Interpolation Point' or GZDoom's 'Interpolation Point' class.\nWhichever is more convenient.\n'Interpolation Special' works with both.\nNOTE: A negative 'Travel Time' is interpreted as speed in map units per tic. (This works on both interpolation point classes.)\nNOTE: Check the 'Custom' tab for more options.
+		//$Arg0Tooltip Must be 'Platform Interpolation Point' or GZDoom's 'Interpolation Point' class.\nWhichever is more convenient.\n'Interpolation Special' works with both.\nNOTE: A negative 'Travel Time' is interpreted as speed in map units per tic. (This works on both interpolation point classes.)
 
 		//$Arg1 Options
 		//$Arg1Type 12
 		//$Arg1Enum {1 = "Linear path <- Does nothing for non-origin group members"; 2 = "Use point angle <- ACS commands don't need this / Group move: Rotate angle"; 4 = "Use point pitch <- ACS commands don't need this / Group move: Rotate pitch"; 8 = "Use point roll <- ACS commands don't need this / Group move: Rotate roll"; 16 = "Face movement direction <- Does nothing for non-origin group members"; 32 = "Don't clip against geometry and other platforms"; 64 = "Start active"; 128 = "Group move: Mirror group origin's movement"; 256 = "Add velocity to passengers when they jump away"; 512 = "Add velocity to passengers when stopping (and not blocked)"; 1024 = "Interpolation point is destination"; 2048 = "Resume path when activated again"; 4096 = "Always do 'crush damage' when pushing obstacles"; 8192 = "Pitch/roll changes don't affect passengers"; 16384 = "Passengers can push obstacles"; 32768 = "All passengers get temp NOBLOCKMAP'd before moving platform group <- Set on group origin";}
-		//$Arg1Tooltip 'Group move' affects movement imposed by the group origin. (It only has an effect on non-origin group members.)\nThe 'group origin' is the platform that other members move with and orbit around.\nActivating any group member will turn it into the group origin.\nFlag 32768 is for cases where you want all passengers from the entire group to not collide with each other and to not collide with other platforms in the group (when moving everyone).\nNOTE: Check the 'Custom' tab for more options.
+		//$Arg1Tooltip 'Group move' affects movement imposed by the group origin. (It only has an effect on non-origin group members.)\nThe 'group origin' is the platform that other members move with and orbit around.\nActivating any group member will turn it into the group origin.\nFlag 32768 is for cases where you want all passengers from the entire group to not collide with each other and to not collide with other platforms in the group (when moving everyone).
 
 		//$Arg2 Platform(s) To Group With
 		//$Arg2Type 14
 
 		//$Arg3 Crush Damage
-		//$Arg3Tooltip If an obstacle is pushed against a wall,\nthe damage is applied once per 4 tics.\nNOTE: Check the 'Custom' tab for more options.
+		//$Arg3Tooltip If an obstacle is pushed against a wall,\nthe damage is applied once per 4 tics.
 
 		//$Arg4 Special Holder
 		//$Arg4Type 14
-		//$Arg4Tooltip Another actor that holds the thing action special and arguments for this platform.\n(The platform will copy the special+args for itself.)\nNOTE: Check the 'Custom' tab for more options.
+		//$Arg4Tooltip Another actor that holds the thing action special and arguments for this platform.\n(The platform will copy the special+args for itself.)
 
 		+INTERPOLATEANGLES;
 		+ACTLIKEBRIDGE;
@@ -111,8 +111,6 @@ class FishyPlatform : Actor abstract
 		+NOTAUTOAIMED;
 
 		FishyPlatform.AirFriction 0.99;
-		FishyPlatform.PassengerLookTics 1;
-		FishyPlatform.PortalLookTics 1;
 	}
 
 	//===New flags===//
@@ -122,29 +120,6 @@ class FishyPlatform : Actor abstract
 	//===New properties===//
 	double platAirFric; //For platforms that have +PUSHABLE and +NOGRAVITY. (The pre-existing 'friction' property + sector friction are for gravity bound pushables instead.)
 	property AirFriction: platAirFric;
-
-	//===New properties that are also user variables (can be set from UDB in the "Custom" tab when editing Thing)===//
-	int user_passengerLookTics; //The amount of tics between searching for passengers (via BlockThingsIterator) - Set to 0 (or a negative value) to never look for passengers.
-	property PassengerLookTics: user_passengerLookTics;
-
-	int user_portalLookTics; //The amount of tics between searching for non-static line portals (via BlockLinesIterator) - Set to 0 (or a negative value) to never look for portals.
-	property PortalLookTics: user_portalLookTics;
-
-	private void HandleUserVars () //Called in the PostBeginPlay() override - after the user vars get set
-	{
-		if (bPortCopy) //Is this a invisible portal copy? (Portal copies are used for collision when crossing unlinked/non-static line portals)
-		{
-			user_passengerLookTics = portTwin.user_passengerLookTics;
-			return;
-		}
-
-		//If these are set to 0 in UDB then use the property version. (Else use the user var version.)
-		//To disable searches in UDB, set it to a negative value (eg -1).
-		if (!user_passengerLookTics)
-			user_passengerLookTics = default.user_passengerLookTics;
-		if (!user_portalLookTics)
-			user_portalLookTics = default.user_portalLookTics;
-	}
 }
 
 class FishyPlatformNode : InterpolationPoint
@@ -431,7 +406,6 @@ extend class FishyPlatform
 	override void PostBeginPlay ()
 	{
 		Super.PostBeginPlay();
-		HandleUserVars();
 		if (bPortCopy)
 			return;
 
@@ -1447,12 +1421,14 @@ extend class FishyPlatform
 			return lastGetNPResult; //Already called in this tic
 		lastGetNPTime = level.mapTime;
 
-		if (user_passengerLookTics <= 0 || //Passenger, stuck actor, and corpse blockmap searching is disabled?
-			(!ignoreObs && !ignoreTicRate && (level.mapTime % user_passengerLookTics) ) ) //'ignoreObs' is used in "tele moves"; those shouldn't skip searching.
+		//This is disabled until GZDoom gets a hypothetical CollidedWith() function
+		/*
+		if (!ignoreObs && !ignoreTicRate && (level.mapTime % someArbitraryTicRate) ) //'ignoreObs' is used in "tele moves"; those shouldn't skip searching.
 		{
 			lastGetNPResult = true;
 			return true;
 		}
+		*/
 
 		double top = pos.z + height;
 		Array<Actor> miscActors; //The actors on top of or stuck inside confirmed passengers (We'll move those, too)
@@ -2276,8 +2252,7 @@ extend class FishyPlatform
 			return; //Already called in this tic
 		lastGetUPTime = level.mapTime;
 
-		bool noIterator = (user_portalLookTics <= 0 || //Line portal blockmap searching is disabled?
-			(level.mapTime % user_portalLookTics) );
+		bool noIterator = false; //(level.mapTime % someArbitraryTicRate); - disabled for now
 
 		//Our bounding box
 		double size = radius + EXTRA_SIZE; //Pretend we're a bit bigger
