@@ -398,6 +398,7 @@ extend class FishyPlatform
 		lastGetNPTime = -1;
 		lastGetNPResult = false;
 		lastGetUPTime = -1;
+		pCurr = (double.nan, double.nan, double.nan);
 	}
 
 	//============================
@@ -3076,7 +3077,7 @@ extend class FishyPlatform
 	//============================
 	// Interpolate
 	//============================
-	private bool Interpolate ()
+	private bool Interpolate (bool teleMove = false)
 	{
 		//A heavily modified version of the
 		//original function from PathFollower.
@@ -3180,7 +3181,7 @@ extend class FishyPlatform
 
 		//Result == 2 means everyone moved. 1 == this platform moved but not all its groupmates moved.
 		//(If this platform isn't in a group then the result is likewise 2 if it moved.)
-		int result = PlatMove(newPos, newAngle, newPitch, newRoll, MOVE_NORMAL);
+		int result = PlatMove(newPos, newAngle, newPitch, newRoll, teleMove);
 		if (result && pos != newPos) //Crossed a portal?
 			AdjustInterpolationCoordinates(newPos, pos, DeltaAngle(newAngle, angle));
 
@@ -3367,7 +3368,11 @@ extend class FishyPlatform
 				{
 					MustGetNewPassengers(); //Ignore search tic rate; do a search now
 				}
-				SetInterpolationCoordinates(pos, (angle, pitch, roll));
+
+				vector3 startAngs = (bGoToNode ? angle : currNode.angle,
+					bGoToNode ? pitch : currNode.pitch,
+					bGoToNode ? roll : currNode.roll);
+				SetInterpolationCoordinates(pos, startAngs);
 				SetTimeFraction();
 				SetHoldTime();
 				time = 0;
@@ -4063,7 +4068,10 @@ extend class FishyPlatform
 	{
 		ActorIterator it = platTid ? level.CreateActorIterator(platTid, "FishyPlatform") : null;
 		for (let plat = FishyPlatform(it ? it.Next() : act); plat; plat = it ? FishyPlatform(it.Next()) : null)
-			plat.SetUpPath(nodeTid, false);
+		{
+			if (plat.SetUpPath(nodeTid, false) && !plat.bActive)
+				plat.pCurr = (double.nan, double.nan, double.nan); //Tell ACSFuncInterpolate() to call SetInterpolationCoordinates()
+		}
 	}
 
 	//============================
@@ -4258,6 +4266,49 @@ extend class FishyPlatform
 			}
 		}
 		return false;
+	}
+
+	//============================
+	// ACSFuncInterpolate
+	//============================
+	static int ACSFuncInterpolate (Actor act, int platTid, double newTime, bool teleMove)
+	{
+		newTime = clamp(newTime, 0.0, 1.0); //Because this only makes sense if the range is between 0.0 and 1.0
+		int count = 0;
+
+		ActorIterator it = platTid ? level.CreateActorIterator(platTid, "FishyPlatform") : null;
+		for (let plat = FishyPlatform(it ? it.Next() : act); plat; plat = it ? FishyPlatform(it.Next()) : null)
+		{
+			if (plat.pCurr != plat.pCurr) //NaN check
+			{
+				plat.bGoToNode = (plat.options & OPTFLAG_GOTONODE);
+				plat.currNode = plat.firstNode;
+				plat.prevNode = plat.firstPrevNode;
+				if (!plat.currNode || (!plat.currNode.next && !plat.bGoToNode))
+					continue; //Not enough nodes
+
+				vector3 startPos = (plat.bGoToNode ||
+								(plat.currNode is "FishyPlatformNode" && FishyPlatformNode(plat.currNode).user_nopositionchange) ) ?
+								plat.pos : plat.currNode.pos;
+				vector3 startAngs = (plat.bGoToNode ? plat.angle : plat.currNode.angle,
+					plat.bGoToNode ? plat.pitch : plat.currNode.pitch,
+					plat.bGoToNode ? plat.roll : plat.currNode.roll);
+				plat.SetInterpolationCoordinates(startPos, startAngs);
+			}
+
+			let oldTime = plat.time;
+			plat.time = newTime;
+			if (plat.Interpolate(teleMove))
+			{
+				plat.reachedTime = newTime;
+				++count;
+			}
+			else
+			{
+				plat.time = oldTime;
+			}
+		}
+		return count;
 	}
 } //End of FishyPlatform class definition
 
