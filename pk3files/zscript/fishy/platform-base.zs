@@ -564,6 +564,14 @@ extend class FishyPlatform
 				firstPrevNode = null;
 			}
 		}
+
+		if (!bActive)
+		{
+			//For ACSFuncNextNode() and ACSFuncPrevNode()
+			currNode = firstNode;
+			prevNode = firstPrevNode;
+			bGoToNode = optGoToNode;
+		}
 		return true;
 	}
 
@@ -4288,6 +4296,9 @@ extend class FishyPlatform
 				if (!plat.currNode || (!plat.currNode.next && !plat.bGoToNode))
 					continue; //Not enough nodes
 
+				plat.portDelta = 0;
+				plat.acsFlags = 0;
+
 				vector3 startPos = (plat.bGoToNode ||
 								(plat.currNode is "FishyPlatformNode" && FishyPlatformNode(plat.currNode).user_nopositionchange) ) ?
 								plat.pos : plat.currNode.pos;
@@ -4318,6 +4329,86 @@ extend class FishyPlatform
 			{
 				platList[i].time = oldTime;
 			}
+		}
+		return count;
+	}
+
+	//============================
+	// ACSFuncNextNode
+	//============================
+	static int ACSFuncNextNode (Actor act, int platTid)
+	{
+		int count = 0;
+
+		ActorIterator it = platTid ? level.CreateActorIterator(platTid, "FishyPlatform") : null;
+		for (let plat = FishyPlatform(it ? it.Next() : act); plat; plat = it ? FishyPlatform(it.Next()) : null)
+		{
+			if (!plat.currNode)
+				continue; //No current? Then there can't be a next one
+
+			if (plat.bGoToNode)
+			{
+				plat.bGoToNode = false;
+			}
+			else
+			{
+				if (!plat.currNode.next || (!plat.currNode.next.next && !(plat.options & OPTFLAG_LINEAR)))
+					continue;
+				plat.prevNode = plat.currNode;
+				plat.currNode = plat.currNode.next;
+			}
+
+			//In case the platform is active and/or uses OPTFLAG_RESUMEPATH
+			vector3 startPos = (plat.currNode is "FishyPlatformNode" && FishyPlatformNode(plat.currNode).user_nopositionchange) ?
+							plat.pos : plat.currNode.pos;
+			plat.SetInterpolationCoordinates(startPos, (plat.currNode.angle, plat.currNode.pitch, plat.currNode.roll));
+			plat.SetTimeFraction();
+			plat.SetHoldTime();
+			plat.time = 0;
+			plat.reachedTime = 0;
+			++count;
+		}
+		return count;
+	}
+
+	//============================
+	// ACSFuncPrevNode
+	//============================
+	static int ACSFuncPrevNode (Actor act, int platTid)
+	{
+		int count = 0;
+
+		ActorIterator it = platTid ? level.CreateActorIterator(platTid, "FishyPlatform") : null;
+		for (let plat = FishyPlatform(it ? it.Next() : act); plat; plat = it ? FishyPlatform(it.Next()) : null)
+		{
+			if (!plat.prevNode || plat.bGoToNode)
+				continue;
+
+			InterpolationPoint nextPrevNode = null;
+			for (let node = plat.firstPrevNode ? plat.firstPrevNode : plat.firstNode; node; node = node.next)
+			{
+				if (node.next == plat.prevNode)
+				{
+					if (node != plat.firstPrevNode || (plat.options & OPTFLAG_LINEAR))
+						nextPrevNode = node;
+					break;
+				}
+			}
+
+			if (!nextPrevNode)
+				continue;
+			plat.currNode = plat.prevNode;
+			plat.prevNode = nextPrevNode;
+
+			//In case the platform is active and/or uses OPTFLAG_RESUMEPATH
+			vector3 startPos = (plat.currNode is "FishyPlatformNode" && FishyPlatformNode(plat.currNode).user_nopositionchange) ?
+							plat.pos : plat.currNode.pos;
+			plat.SetInterpolationCoordinates(startPos, (plat.currNode.angle, plat.currNode.pitch, plat.currNode.roll));
+			plat.SetTimeFraction();
+			plat.SetHoldTime();
+			plat.time = 0;
+			plat.reachedTime = 0;
+			++count;
 		}
 		return count;
 	}

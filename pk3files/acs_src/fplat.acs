@@ -343,3 +343,31 @@ function int FishyPlat_Interpolate (int platTid, int/*fixed*/ time, bool teleMov
 	*********************************************************************************/
 	return ScriptCall("FishyPlatform", "ACSFuncInterpolate", platTid, time, teleMove);
 }
+
+function int FishyPlat_NextNode (int platTid)
+{
+	/*********************************************************************************
+	** For each platform with "platTid", sets the platform's "current" interpolation point to its "next" interpolation point.
+	Returns how many platforms have a "next" point and have switched to it.**
+
+	- platTID = TID of the platform(s) who will switch to the "next" point. If 0 then this is the script activator.
+
+	NOTE: If the platform follows a spline path and there is no interpolation point after the "next" one
+	then nothing changes and it won't count as a success.
+	*********************************************************************************/
+	return ScriptCall("FishyPlatform", "ACSFuncNextNode", platTid);
+}
+
+function int FishyPlat_PrevNode (int platTid)
+{
+	/*********************************************************************************
+	** For each platform with "platTid", sets the platform's "current" interpolation point to its "previous" interpolation point.
+	Returns how many platforms have a "previous" point and have switched to it.**
+
+	- platTID = TID of the platform(s) who will switch to the "previous" point. If 0 then this is the script activator.
+
+	NOTE: If the platform follows a spline path and there is no interpolation point before the "previous" one
+	then nothing changes and it won't count as a success.
+	*********************************************************************************/
+	return ScriptCall("FishyPlatform", "ACSFuncPrevNode", platTid);
+}
