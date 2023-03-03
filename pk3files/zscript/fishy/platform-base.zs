@@ -295,6 +295,7 @@ extend class FishyPlatform
 	const YES_BMAP = 0; //For A_ChangeLinkFlags()
 	const NO_BMAP = 1;
 	const EXTRA_SIZE = 20; //For line collision checking (when looking for unlinked line portals)
+	const INTERNALFLAG_ACSMOVE = 1; //When reaching destination, disregard any set nodes and pretend we're finished
 
 	vector3 oldPos;
 	double oldAngle;
@@ -3663,8 +3664,9 @@ extend class FishyPlatform
 				//ACS movement functions set 'time', 'timeFrac', 'holdTime' etc just like Activate() - so we might as well pretend Activate() was called
 				bRanActivationRoutine |= bRanACSSetupRoutine;
 
-				bool finishedPath = bRanACSSetupRoutine ? false : //The ACS side operates without interpolation nodes. ('currNode' and 'prevNode' get nulled.)
-					(!currNode || !currNode.next || //Reached our last node?
+				bool finishedPath = bRanACSSetupRoutine ? false : //The ACS side operates without interpolation nodes.
+					((acsFlags & INTERNALFLAG_ACSMOVE) || //Finished ACS induced movement?
+					!currNode || !currNode.next || //Reached our last node?
 					(!goneToNode && !(options & OPTFLAG_LINEAR) && (!currNode.next.next || !prevNode) ) ); //Finished spline path?
 
 				if (!bRanActivationRoutine && !finishedPath)
@@ -3952,8 +3954,6 @@ extend class FishyPlatform
 	//============================
 	private void CommonACSSetup ()
 	{
-		currNode = null; //Deactivate when done moving
-		prevNode = null;
 		time = 0;
 		reachedTime = 0;
 		holdTime = 0;
@@ -3961,7 +3961,7 @@ extend class FishyPlatform
 		if (group && group.origin != self)
 			SetGroupOrigin(self, setNonOriginInactive: true);
 		portDelta = 0;
-		acsFlags = (OPTFLAG_ANGLE | OPTFLAG_PITCH | OPTFLAG_ROLL);
+		acsFlags = (INTERNALFLAG_ACSMOVE | OPTFLAG_ANGLE | OPTFLAG_PITCH | OPTFLAG_ROLL);
 		pPrev = pos;
 		pCurr = pos;
 		pCurrAngs = (
@@ -4352,8 +4352,12 @@ extend class FishyPlatform
 			}
 			else
 			{
-				if (!plat.currNode.next || (!plat.currNode.next.next && !(plat.options & OPTFLAG_LINEAR)))
+				if (!plat.currNode.next ||
+					!plat.currNode.next.next ||
+					(!plat.currNode.next.next.next && !(plat.options & OPTFLAG_LINEAR) ) )
+				{
 					continue;
+				}
 				plat.prevNode = plat.currNode;
 				plat.currNode = plat.currNode.next;
 			}
@@ -4384,21 +4388,31 @@ extend class FishyPlatform
 			if (!plat.prevNode || plat.bGoToNode)
 				continue;
 
-			InterpolationPoint nextPrevNode = null;
-			for (let node = plat.firstPrevNode ? plat.firstPrevNode : plat.firstNode; node; node = node.next)
+			let theVeryFirst = plat.firstPrevNode ? plat.firstPrevNode : plat.firstNode;
+			if (theVeryFirst == plat.prevNode)
 			{
-				if (node.next == plat.prevNode)
-				{
-					if (node != plat.firstPrevNode || (plat.options & OPTFLAG_LINEAR))
-						nextPrevNode = node;
-					break;
-				}
+				if (!(plat.options & OPTFLAG_LINEAR)) //Don't accept it if spline path
+					continue;
+				plat.currNode = plat.prevNode;
+				plat.prevNode = null;
 			}
+			else
+			{
+				InterpolationPoint nextPrevNode = null;
+				for (let node = theVeryFirst; node; node = node.next)
+				{
+					if (node.next == plat.prevNode)
+					{
+						nextPrevNode = node;
+						break;
+					}
+				}
 
-			if (!nextPrevNode)
-				continue;
-			plat.currNode = plat.prevNode;
-			plat.prevNode = nextPrevNode;
+				if (!nextPrevNode)
+					continue;
+				plat.currNode = plat.prevNode;
+				plat.prevNode = nextPrevNode;
+			}
 
 			//In case the platform is active and/or uses OPTFLAG_RESUMEPATH
 			vector3 startPos = (plat.currNode is "FishyPlatformNode" && FishyPlatformNode(plat.currNode).user_nopositionchange) ?

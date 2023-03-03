@@ -352,8 +352,9 @@ function int FishyPlat_NextNode (int platTid)
 
 	- platTID = TID of the platform(s) who will switch to the "next" point. If 0 then this is the script activator.
 
-	NOTE: If the platform follows a spline path and there is no interpolation point after the "next" one
-	then nothing changes and it won't count as a success.
+	NOTE: The platform will only switch to the "next" point if the following conditions are met:
+	If the "next" point isn't the last one (path doesn't loop).
+	Or if the path is a spline and the "next-next" point isn't the last one (path doesn't loop).
 	*********************************************************************************/
 	return ScriptCall("FishyPlatform", "ACSFuncNextNode", platTid);
 }
@@ -366,8 +367,8 @@ function int FishyPlat_PrevNode (int platTid)
 
 	- platTID = TID of the platform(s) who will switch to the "previous" point. If 0 then this is the script activator.
 
-	NOTE: If the platform follows a spline path and there is no interpolation point before the "previous" one
-	then nothing changes and it won't count as a success.
+	NOTE: The platform will only switch to the "previous" one if the following condition is met:
+	If the path is a spline and the "previous" point isn't the first one (path doesn't loop).
 	*********************************************************************************/
 	return ScriptCall("FishyPlatform", "ACSFuncPrevNode", platTid);
 }
