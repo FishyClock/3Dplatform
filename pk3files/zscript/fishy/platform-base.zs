@@ -4275,6 +4275,7 @@ extend class FishyPlatform
 	{
 		newTime = clamp(newTime, 0.0, 1.0); //Because this only makes sense if the range is between 0.0 and 1.0
 		int count = 0;
+		Array<FishyPlatform> platList;
 
 		ActorIterator it = platTid ? level.CreateActorIterator(platTid, "FishyPlatform") : null;
 		for (let plat = FishyPlatform(it ? it.Next() : act); plat; plat = it ? FishyPlatform(it.Next()) : null)
@@ -4296,16 +4297,26 @@ extend class FishyPlatform
 				plat.SetInterpolationCoordinates(startPos, startAngs);
 			}
 
-			let oldTime = plat.time;
-			plat.time = newTime;
-			if (plat.Interpolate(teleMove))
+			//If the platform has the right actor flags, Interpolate() can
+			//end up activating a line that removes/destroys the platform which
+			//in turn messes up the iterator. Therefore do not call Interpolate()
+			//while we're iterating right now.
+			platList.Push(plat);
+		}
+
+		for (int i = platList.Size() - 1; i > -1; --i)
+		{
+			let oldTime = platList[i].time;
+			platList[i].time = newTime;
+			if (platList[i].Interpolate(teleMove))
 			{
-				plat.reachedTime = newTime;
+				if (platList[i] && !platList[i].bDestroyed) //Make sure it wasn't Thing_Remove()'d
+					platList[i].reachedTime = newTime;
 				++count;
 			}
-			else
+			else if (platList[i] && !platList[i].bDestroyed) //Ditto
 			{
-				plat.time = oldTime;
+				platList[i].time = oldTime;
 			}
 		}
 		return count;
