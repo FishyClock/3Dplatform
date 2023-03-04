@@ -329,7 +329,7 @@ function int FishyPlat_Interpolate (int platTid, int/*fixed*/ time, bool teleMov
 	- platTid = TID of the platform(s) whose position to set. If 0 then this is the script activator.
 
 	- time = Determines where the platform(s) should be. The accepted range is from 0.0 to 1.0
-	0.0 represents the "starting" interpolation point's location (as well as angle/pitch/roll - depending on platform's options)
+	0.0 represents the "current" interpolation point's location (as well as angle/pitch/roll - depending on platform's options)
 	1.0 represents the "next" interpolation point's location (as well as angle/pitch/roll - depending on platform's options)
 	So a value of 0.5 would be at the middle between the two points.
 
@@ -348,13 +348,16 @@ function int FishyPlat_NextNode (int platTid)
 {
 	/*********************************************************************************
 	** For each platform with "platTid", sets the platform's "current" interpolation point to its "next" interpolation point.
-	Returns how many platforms have a "next" point and have switched to it.**
+	(Does nothing if there is no "next" point.)
+	Returns how many platforms have switched to their "next" point.**
 
 	- platTID = TID of the platform(s) who will switch to the "next" point. If 0 then this is the script activator.
 
-	NOTE: The platform will only switch to the "next" point if the following conditions are met:
-	If the "next" point isn't the last one (path doesn't loop).
-	Or if the path is a spline and the "next-next" point isn't the last one (path doesn't loop).
+	NOTE: The following applies for non-looping paths:
+	If the "next" point is the last one then it won't switch.
+	If the path is a spline and the point after the "next" point is the last one then it won't switch.
+
+	NOTE: Switching interpolation points will not trigger interpolation specials.
 	*********************************************************************************/
 	return ScriptCall("FishyPlatform", "ACSFuncNextNode", platTid);
 }
@@ -363,12 +366,15 @@ function int FishyPlat_PrevNode (int platTid)
 {
 	/*********************************************************************************
 	** For each platform with "platTid", sets the platform's "current" interpolation point to its "previous" interpolation point.
-	Returns how many platforms have a "previous" point and have switched to it.**
+	(Does nothing if there is no "previous" point.)
+	Returns how many platforms have switched to their "previous" point.**
 
 	- platTID = TID of the platform(s) who will switch to the "previous" point. If 0 then this is the script activator.
 
-	NOTE: The platform will only switch to the "previous" one if the following condition is met:
-	If the path is a spline and the "previous" point isn't the first one (path doesn't loop).
+	NOTE: The following applies for non-looping paths:
+	If the path is a spline and the "previous" point is the first one then it won't switch.
+
+	NOTE: Switching interpolation points will not trigger interpolation specials.
 	*********************************************************************************/
 	return ScriptCall("FishyPlatform", "ACSFuncPrevNode", platTid);
 }

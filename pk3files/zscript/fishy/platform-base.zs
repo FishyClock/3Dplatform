@@ -518,16 +518,16 @@ extend class FishyPlatform
 		}
 
 		bool optGoToNode = (options & OPTFLAG_GOTONODE);
+		bool optLinear = (options & OPTFLAG_LINEAR);
 
-		if (options & OPTFLAG_LINEAR)
+		if (optLinear)
 		{
 			//Linear path; need 2 nodes unless the first node is the destination
 			if (!optGoToNode && !firstNode.next)
 			{
-				Console.Printf(prefix .. "\ckPath needs at least 2 nodes. (Interpolation point tid: " .. nodeTid .. ".)");
+				Console.Printf(prefix .. "\ckLinear path needs at least 2 nodes. (Interpolation point tid: " .. nodeTid .. ".)");
 				return false;
 			}
-			firstPrevNode = null;
 		}
 		else //Spline path; need 4 nodes unless the first node is the destination
 		{
@@ -536,34 +536,39 @@ extend class FishyPlatform
 				!firstNode.next.next ||
 				!firstNode.next.next.next) )
 			{
-				Console.Printf(prefix .. "\ckPath needs at least 4 nodes. (Interpolation point tid: " .. nodeTid .. ".)");
+				Console.Printf(prefix .. "\ckSpline path needs at least 4 nodes. (Interpolation point tid: " .. nodeTid .. ".)");
 				return false;
 			}
+		}
 
-			//In case the first node isn't the destination.
-			//If the first node is in a loop, we can start there.
-			//Otherwise, we need to start at the second node in the path.
-			let node = firstNode;
-			Array<InterpolationPoint> checkedNodes;
-			while (node.next && node.next != firstNode && checkedNodes.Find(node) >= checkedNodes.Size())
-			{
-				checkedNodes.Push(node);
-				node = node.next;
-			}
+		//Check if the path loops
+		let node = firstNode;
+		Array<InterpolationPoint> checkedNodes;
+		while (node.next && node.next != firstNode && checkedNodes.Find(node) >= checkedNodes.Size())
+		{
+			checkedNodes.Push(node);
+			node = node.next;
+		}
 
-			if (node.next == firstNode)
-			{
-				firstPrevNode = node;
-			}
-			else if (!optGoToNode)
-			{
-				firstPrevNode = firstNode;
-				firstNode = firstNode.next;
-			}
-			else
-			{
-				firstPrevNode = null;
-			}
+		if (node.next == firstNode)
+		{
+			firstPrevNode = node; //The path loops back to our first node
+		}
+		else if (!optGoToNode && !optLinear)
+		{
+			//Non-looping spline path and the
+			//first node is not the destination.
+			//
+			//Spline paths need to start at the
+			//second node.
+			firstPrevNode = firstNode;
+			firstNode = firstNode.next;
+		}
+		else
+		{
+			//Non-looping linear path or the
+			//first node is the destination.
+			firstPrevNode = null;
 		}
 
 		if (!bActive)
@@ -4388,31 +4393,20 @@ extend class FishyPlatform
 			if (!plat.prevNode || plat.bGoToNode)
 				continue;
 
-			let theVeryFirst = plat.firstPrevNode ? plat.firstPrevNode : plat.firstNode;
-			if (theVeryFirst == plat.prevNode)
+			InterpolationPoint nextPrevNode = null;
+			for (let node = plat.firstPrevNode ? plat.firstPrevNode : plat.firstNode; node; node = node.next)
 			{
-				if (!(plat.options & OPTFLAG_LINEAR)) //Don't accept it if spline path
-					continue;
-				plat.currNode = plat.prevNode;
-				plat.prevNode = null;
-			}
-			else
-			{
-				InterpolationPoint nextPrevNode = null;
-				for (let node = theVeryFirst; node; node = node.next)
+				if (node.next == plat.prevNode)
 				{
-					if (node.next == plat.prevNode)
-					{
-						nextPrevNode = node;
-						break;
-					}
+					nextPrevNode = node;
+					break;
 				}
-
-				if (!nextPrevNode)
-					continue;
-				plat.currNode = plat.prevNode;
-				plat.prevNode = nextPrevNode;
 			}
+
+			if (!nextPrevNode && !(plat.options & OPTFLAG_LINEAR))
+				continue;
+			plat.currNode = plat.prevNode;
+			plat.prevNode = nextPrevNode;
 
 			//In case the platform is active and/or uses OPTFLAG_RESUMEPATH
 			vector3 startPos = (plat.currNode is "FishyPlatformNode" && FishyPlatformNode(plat.currNode).user_nopositionchange) ?
