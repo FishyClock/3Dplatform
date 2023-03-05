@@ -314,8 +314,9 @@ extend class FishyPlatform
 	double timeFrac;
 	int holdTime;
 	bool bActive;
-	transient bool bRanActivationRoutine; //Used to check if Activate() was called on self through CallNodeSpecials().
+	transient bool bRanActivationRoutine; //Used to check if SetInterpolationCoordinates() or "resume path" Activate() was called on self through CallNodeSpecials().
 	transient bool bRanACSSetupRoutine; //Used to check if CommonACSSetup() was called on self through CallNodeSpecials().
+	transient bool bTimeAlreadySet; //Used to check if 'time' was set on self through CallNodeSpecials().
 	transient bool bInMove; //No collision between a platform and its passengers during said platform's move.
 	transient bool bMoved; //Used for PassengerPostMove() when everyone has finished (or tried) moving in this tic.
 	InterpolationPoint currNode, firstNode;
@@ -3391,6 +3392,7 @@ extend class FishyPlatform
 				SetHoldTime();
 				time = 0;
 				reachedTime = 0;
+				bTimeAlreadySet = true;
 			}
 		}
 	}
@@ -3623,10 +3625,10 @@ extend class FishyPlatform
 			time += timeFrac;
 			if (time > 1.0) //Reached destination?
 			{
-				//These two will end up "true" if Activate() or CommonACSSetup() get called
-				//because of CallNodeSpecials() and we need to take that into account here.
-				bRanActivationRoutine = false;
-				bRanACSSetupRoutine = false;
+				//Take into account certain functions that can get called on self through CallNodeSpecials().
+				bRanActivationRoutine = false; //SetInterpolationCoordinates() or Activate() was called.
+				bRanACSSetupRoutine = false; //CommonACSSetup() was called.
+				bTimeAlreadySet = false; //The 'time' variable has been changed.
 
 				bool goneToNode = bGoToNode;
 				if (bGoToNode)
@@ -3709,11 +3711,12 @@ extend class FishyPlatform
 				{
 					SetInterpolationCoordinates(pNext, pNextAngs);
 					SetTimeFraction();
-					time -= 1.0;
+					if (!bTimeAlreadySet)
+						time -= 1.0;
 
 					//Don't go faster than the next point's travel time/speed would allow it.
 					//This can happen if the previous speed was very high.
-					if (time > timeFrac)
+					if (time > timeFrac && !bTimeAlreadySet)
 						time = timeFrac;
 
 					reachedTime = time;
@@ -3962,6 +3965,7 @@ extend class FishyPlatform
 		time = 0;
 		reachedTime = 0;
 		holdTime = 0;
+		bTimeAlreadySet = true;
 		bActive = true;
 		if (group && group.origin != self)
 			SetGroupOrigin(self, setNonOriginInactive: true);
@@ -4311,6 +4315,9 @@ extend class FishyPlatform
 					plat.bGoToNode ? plat.pitch : plat.currNode.pitch,
 					plat.bGoToNode ? plat.roll : plat.currNode.roll);
 				plat.SetInterpolationCoordinates(startPos, startAngs);
+				plat.SetTimeFraction();
+				plat.SetHoldTime();
+				plat.bRanActivationRoutine = true;
 			}
 
 			//If the platform has the right actor flags, Interpolate() can
@@ -4327,7 +4334,10 @@ extend class FishyPlatform
 			if (platList[i].Interpolate(teleMove))
 			{
 				if (platList[i] && !platList[i].bDestroyed) //Make sure it wasn't Thing_Remove()'d
+				{
 					platList[i].reachedTime = newTime;
+					platList[i].bTimeAlreadySet = true;
+				}
 				++count;
 			}
 			else if (platList[i] && !platList[i].bDestroyed) //Ditto
@@ -4375,6 +4385,8 @@ extend class FishyPlatform
 			plat.SetHoldTime();
 			plat.time = 0;
 			plat.reachedTime = 0;
+			plat.bTimeAlreadySet = true;
+			plat.bRanActivationRoutine = true;
 			++count;
 		}
 		return count;
@@ -4416,6 +4428,8 @@ extend class FishyPlatform
 			plat.SetHoldTime();
 			plat.time = 0;
 			plat.reachedTime = 0;
+			plat.bTimeAlreadySet = true;
+			plat.bRanActivationRoutine = true;
 			++count;
 		}
 		return count;
