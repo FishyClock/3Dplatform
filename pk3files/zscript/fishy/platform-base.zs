@@ -317,6 +317,7 @@ extend class FishyPlatform
 	transient bool bRanActivationRoutine; //Used to check if SetInterpolationCoordinates() or "resume path" Activate() was called on self through CallNodeSpecials().
 	transient bool bRanACSSetupRoutine; //Used to check if CommonACSSetup() was called on self through CallNodeSpecials().
 	transient bool bTimeAlreadySet; //Used to check if 'time' was set on self through CallNodeSpecials().
+	transient bool bSwitchedNodes; ////Used to check if ACSFuncNext/PrevNode() was called on self through CallNodeSpecials() and the nodes have changed.
 	transient bool bInMove; //No collision between a platform and its passengers during said platform's move.
 	transient bool bMoved; //Used for PassengerPostMove() when everyone has finished (or tried) moving in this tic.
 	InterpolationPoint currNode, firstNode;
@@ -3592,7 +3593,11 @@ extend class FishyPlatform
 		}
 
 		if (!group || group.origin == self)
+		{
 			PlatVelMove();
+			if (bDestroyed)
+				return; //Abort if we got Thing_Remove()'d
+		}
 
 		//Handle path following
 		while (bActive && (!group || group.origin == self))
@@ -3604,7 +3609,11 @@ extend class FishyPlatform
 				break;
 			}
 
-			if (!Interpolate())
+			bool interpolated = Interpolate();
+			if (bDestroyed)
+				return; //Abort if we got Thing_Remove()'d
+
+			if (!interpolated)
 			{
 				if (stuckActors.Size() || (portTwin && !portTwin.bNoBlockmap && portTwin.stuckActors.Size()))
 					break; //Don't bother
@@ -3614,7 +3623,10 @@ extend class FishyPlatform
 				{
 					let oldTime = time;
 					time = reachedTime + timeFrac * 0.125;
-					if (Interpolate())
+					interpolated = Interpolate();
+					if (bDestroyed)
+						return; //Abort if we got Thing_Remove()'d
+					if (interpolated)
 						reachedTime = time;
 					time = oldTime;
 				}
@@ -3629,6 +3641,7 @@ extend class FishyPlatform
 				bRanActivationRoutine = false; //SetInterpolationCoordinates() or Activate() was called.
 				bRanACSSetupRoutine = false; //CommonACSSetup() was called.
 				bTimeAlreadySet = false; //The 'time' variable has been changed.
+				bSwitchedNodes = false; //ACSFuncNext/PrevNode() have changed the nodes.
 
 				bool goneToNode = bGoToNode;
 				if (bGoToNode)
@@ -3721,6 +3734,13 @@ extend class FishyPlatform
 
 					reachedTime = time;
 					vel = (0, 0, 0);
+				}
+
+				if (bSwitchedNodes && !finishedPath && holdTime > 0)
+				{
+					Interpolate(); //If we're pausing, try to be at the "current" node
+					if (bDestroyed)
+						return; //Abort if we got Thing_Remove()'d
 				}
 			}
 			break;
@@ -4387,6 +4407,7 @@ extend class FishyPlatform
 			plat.reachedTime = 0;
 			plat.bTimeAlreadySet = true;
 			plat.bRanActivationRoutine = true;
+			plat.bSwitchedNodes = true;
 			++count;
 		}
 		return count;
@@ -4430,6 +4451,7 @@ extend class FishyPlatform
 			plat.reachedTime = 0;
 			plat.bTimeAlreadySet = true;
 			plat.bRanActivationRoutine = true;
+			plat.bSwitchedNodes = true;
 			++count;
 		}
 		return count;
