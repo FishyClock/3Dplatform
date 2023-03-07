@@ -400,6 +400,8 @@ extend class FishyPlatform
 		lastGetNPTime = -1;
 		lastGetNPResult = false;
 		lastGetUPTime = -1;
+		options = -1;
+		crushDamage = -1;
 		pCurr = (double.nan, double.nan, double.nan);
 	}
 
@@ -412,8 +414,11 @@ extend class FishyPlatform
 		if (bPortCopy)
 			return;
 
-		options = args[ARG_OPTIONS];
-		crushDamage = args[ARG_CRUSHDMG];
+		if (options == -1) //Not already set through ACS?
+			options = args[ARG_OPTIONS];
+		if (crushDamage == -1) //Ditto
+			crushDamage = args[ARG_CRUSHDMG];
+
 		bool noPrefix = (args[ARG_GROUPTID] && !SetUpGroup(args[ARG_GROUPTID], false));
 
 		//Having a group origin at this point implies the group is already on the move.
@@ -4122,7 +4127,8 @@ extend class FishyPlatform
 			//
 			// And changing 'OPTFLAG_STARTACTIVE' after it has called PostBeginPlay() is utterly pointless.
 
-			int oldFlags = plat.options;
+			//-1 means the platform hasn't called PostBeginPlay() yet
+			int oldFlags = (plat.options != -1) ? plat.options : 0;
 			int newFlags = (oldFlags & ~toClear) | toSet;
 			plat.options = newFlags;
 

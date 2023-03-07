@@ -185,12 +185,13 @@ function void FishyPlat_SetNodePath (int platTid, int nodeTid)
 	/*********************************************************************************
 	**Finds all platforms with tid "platTid" and makes them target the first found
 	interpolation point with tid "nodeTid". Specifically, this is the path to follow when Thing_Activate()-ing
-	the platform. It won't stop/change an active platform.
-	When SetNodePath and SetOptions are used together, SetOptions should be called first.**
+	the platform. It won't stop/change an active platform.**
 
 	- platTid = TID of the platform(s) whose path to set. If 0 then this is the script activator.
 
 	- nodeTid = TID of the interpolation point for platform(s) to target.
+
+	NOTE: When SetNodePath and SetOptions are used together, SetOptions should be called first.
 	*********************************************************************************/
 	ScriptCall("FishyPlatform", "ACSFuncSetNodePath", platTid, nodeTid);
 }
@@ -198,14 +199,15 @@ function void FishyPlat_SetNodePath (int platTid, int nodeTid)
 function void FishyPlat_SetOptions (int platTid, int toSet, int toClear)
 {
 	/*********************************************************************************
-	**Finds all platforms with tid "platTid" and sets and/or clears their options (thing argument 2).
-	When SetNodePath and SetOptions are used together, SetOptions should be called first.**
+	**Finds all platforms with tid "platTid" and sets and/or clears their options (thing argument 2).**
 
 	- platTid = TID of the platform(s) whose options to set/clear. If 0 then this is the script activator.
 
 	- toSet = the option-flags (bitfield) to set. (Please use the FPLAT_OPTFLAG_* macros, see above.)
 
 	- toClear = the option-flags (bitfield) to clear.
+
+	NOTE: When SetNodePath and SetOptions are used together, SetOptions should be called first.
 	*********************************************************************************/
 	ScriptCall("FishyPlatform", "ACSFuncSetOptions", platTid, toSet, toClear);
 }
