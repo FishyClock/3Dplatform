@@ -198,15 +198,6 @@ class FishyPlatformGroup play
 	FishyPlatform origin;	//The member that thinks for the other members when it ticks.
 	FishyPlatform carrier;	//A non-member that carries one member of this group. Used for passenger theft checks.
 
-	static FishyPlatformGroup Create ()
-	{
-		let group = new("FishyPlatformGroup");
-		group.members.Clear();
-		group.origin = null;
-		group.carrier = null;
-		return group;
-	}
-
 	void Add (FishyPlatform plat)
 	{
 		plat.group = self;
@@ -372,33 +363,13 @@ extend class FishyPlatform
 		oldAngle = angle;
 		oldPitch = pitch;
 		oldRoll = roll;
-		group = null;
 		groupMirrorPos = pos;
 		groupOrbitPos = pos;
 		groupAngle = angle;
 		groupPitch = pitch;
 		groupRoll = roll;
-		groupOrbitOffset = (0, 0, 0);
-		groupOrbitAngDiff = (0, 0);
 		time = 1.1;
-		reachedTime = 0;
-		timeFrac = 0;
-		holdTime = 0;
-		bActive = false;
-		bInMove = false;
-		bMoved = false;
-		currNode = firstNode = null;
-		prevNode = firstPrevNode = null;
-		bGoToNode = false;
-		passengers.Clear();
-		stuckActors.Clear();
-		lastUPort = null;
-		portTwin = null;
-		bPortCopy = false;
-		portDelta = 0;
-		acsFlags = 0;
 		lastGetNPTime = -1;
-		lastGetNPResult = false;
 		lastGetUPTime = -1;
 		options = -1;
 		crushDamage = -1;
@@ -635,7 +606,7 @@ extend class FishyPlatform
 			}
 			else if (plat != self) //Neither are in a group
 			{
-				let newGroup = FishyPlatformGroup.Create();
+				let newGroup = new("FishyPlatformGroup");
 				newGroup.Add(self);
 				newGroup.Add(plat);
 			}
