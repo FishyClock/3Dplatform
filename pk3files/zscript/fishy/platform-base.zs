@@ -373,7 +373,7 @@ extend class FishyPlatform
 		lastGetUPTime = -1;
 		options = -1;
 		crushDamage = -1;
-		pCurr = (double.nan, double.nan, double.nan);
+		pCurr.x = double.nan;
 	}
 
 	//============================
@@ -904,7 +904,7 @@ extend class FishyPlatform
 	//============================
 	// PushObstacle
 	//============================
-	private void PushObstacle (Actor pushed, vector3 pushForce = (double.nan, double.nan, double.nan), Actor pusher = null, vector2 pushPoint = (double.nan, double.nan))
+	private void PushObstacle (Actor pushed, vector3 pushForce = (double.nan, 0, 0), Actor pusher = null, vector2 pushPoint = (double.nan, 0))
 	{
 		//Under certain cases, 'pusher' can be a generic non-platform actor
 		if (!pusher)
@@ -2167,7 +2167,7 @@ extend class FishyPlatform
 		// fall off of other actors just isn't good enough.
 
 		double top = pos.z + height;
-		vector3 velJump = (double.nan, double.nan, double.nan);
+		vector3 velJump = (double.nan, 0, 0);
 
 		for (int i = passengers.Size() - 1; i > -1; --i)
 		{
@@ -3187,8 +3187,8 @@ extend class FishyPlatform
 		double piDelta = DeltaAngle(groupPitch, pitch);
 		double roDelta = DeltaAngle(groupRoll, roll);
 
-		vector3 mirOfs = (double.nan, double.nan, double.nan);
-		quat qRot = quat(double.nan, double.nan, double.nan, double.nan);
+		vector3 mirOfs = (double.nan, 0, 0);
+		quat qRot = quat(double.nan, 0, 0, 0);
 
 		for (int iPlat = 0; iPlat < group.members.Size(); ++iPlat)
 		{
@@ -3380,7 +3380,7 @@ extend class FishyPlatform
 		if (!(options & OPTFLAG_ADDVELSTOP))
 			return;
 
-		vector3 pushForce = (double.nan, double.nan, double.nan); //No passengers == don't call level.Vec3Diff()
+		vector3 pushForce = (double.nan, 0, 0); //No passengers == don't call level.Vec3Diff()
 
 		for (int iTwins = 0; iTwins < 2; ++iTwins)
 		{
@@ -4080,7 +4080,7 @@ extend class FishyPlatform
 		for (let plat = FishyPlatform(it ? it.Next() : act); plat; plat = it ? FishyPlatform(it.Next()) : null)
 		{
 			if (plat.SetUpPath(nodeTid, false) && !plat.bActive)
-				plat.pCurr = (double.nan, double.nan, double.nan); //Tell ACSFuncInterpolate() to call SetInterpolationCoordinates()
+				plat.pCurr.x = double.nan; //Tell ACSFuncInterpolate() to call SetInterpolationCoordinates()
 		}
 	}
 
