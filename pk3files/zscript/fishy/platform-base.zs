@@ -1870,6 +1870,7 @@ extend class FishyPlatform
 			let mo = passengers[i];
 			let moOldPos = mo.pos;
 			let moOldNoDropoff = mo.bNoDropoff;
+			let moOldNoGrav = mo.bNoGravity;
 			let plat = FishyPlatform(mo);
 
 			vector3 offset = level.Vec3Diff(startPos, moOldPos);
@@ -1907,6 +1908,7 @@ extend class FishyPlatform
 			if (plat)
 			{
 				mo.bNoDropoff = false;
+				mo.bNoGravity = true; //Needed so sloped sectors don't block 'mo'
 				let moOldAngle = mo.angle;
 				let moNewAngle = mo.angle + delta;
 				int result = plat.PlatMove(moNewPos, moNewAngle, mo.pitch, mo.roll, teleMove);
@@ -1928,6 +1930,7 @@ extend class FishyPlatform
 					if (mo && !mo.bDestroyed)
 					{
 						mo.bNoDropoff = moOldNoDropoff;
+						mo.bNoGravity = moOldNoGrav;
 						mo.A_ChangeLinkFlags(YES_BMAP);
 						PassengerPostMove(mo, result);
 					}
@@ -1945,6 +1948,7 @@ extend class FishyPlatform
 					mo.A_ChangeLinkFlags(NO_BMAP); //Undo SetActorFlag() shenanigans
 
 				mo.bNoDropoff = moOldNoDropoff;
+				mo.bNoGravity = moOldNoGrav;
 				mo.angle = moOldAngle; //The angle change is supposed to happen later
 			}
 			else if (teleMove)
@@ -1977,6 +1981,7 @@ extend class FishyPlatform
 				//NODROPOFF overrides TryMove()'s second argument,
 				//but the passenger should be treated like a flying object.
 				mo.bNoDropoff = false;
+				mo.bNoGravity = true; //Needed so sloped sectors don't block 'mo'
 				moved = true;
 				for (int step = 0; step < maxSteps; ++step)
 				{
@@ -2025,6 +2030,7 @@ extend class FishyPlatform
 					continue;
 				}
 				mo.bNoDropoff = moOldNoDropoff;
+				mo.bNoGravity = moOldNoGrav;
 			}
 
 			if (moved)
