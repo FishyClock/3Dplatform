@@ -1087,7 +1087,7 @@ extend class FishyPlatform
 				double ang = ((options | acsFlags) & OPTFLAG_ANGLE) ? abs(pNextAngs.x - pCurrAngs.x) : 0;
 				double pi =  ((options | acsFlags) & OPTFLAG_PITCH) ? abs(pNextAngs.y - pCurrAngs.y) : 0;
 				double ro =  ((options | acsFlags) & OPTFLAG_ROLL)  ? abs(pNextAngs.z - pCurrAngs.z) : 0;
-				distance = max(max(ang, pi), ro);
+				distance = max(ang, pi, ro);
 			}
 
 			if (distance <= speed || (distance /= speed) < 1.1)
