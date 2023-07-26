@@ -309,6 +309,7 @@ extend class FishyPlatform
 	bool bGoToNode;
 	Array<Actor> passengers;
 	Array<Actor> stuckActors;
+	Array<Actor> idleSearchActors; //Actors to help step up/down on us when idle
 	Line lastUPort;
 	private FishyPlatform portTwin; //Helps with collision when dealing with unlinked line portals
 	private bool bPortCopy;
@@ -3817,6 +3818,59 @@ extend class FishyPlatform
 				double grav = (count > 1) ? (sum / count) : sum;
 
 				FallAndSink(grav, oldFloorZ);
+			}
+
+			//Help nearby monsters to step up/down on platform
+			for (int i = -1; i == -1 || (group && group.origin == self && i < group.members.Size()); ++i)
+			{
+				let plat = (i == -1) ? self : group.GetMember(i);
+				if (i > -1 && (!plat || plat == self)) //Already handled self
+					continue;
+
+				for (int iTwins = 0; iTwins < 2; ++iTwins)
+				{
+					if (iTwins > 0 && !(plat = plat.portTwin))
+						break;
+
+					//If GetNewPassengers() wasn't called then we're likely stationary
+					//in which case we can get away with creating one BTI every 64 tics
+					//instead of creating one BTI every single tic when moving.
+					if (plat.lastGetNPTime != level.mapTime && !(level.mapTime & 63))
+					{
+						plat.idleSearchActors.Clear();
+						let it = BlockThingsIterator.Create(plat, plat.radius * 4); //Larger size to compensate for 64 tic interval (greater chance of catching things)
+						while (it.Next())
+						{
+							let mo = it.thing;
+							if (mo.bCanPass && //Anything with this flag can be assumed to move on its own (not velocity movement like projectiles)
+								!mo.player && //Players don't need assistance
+								mo != plat)
+							{
+								plat.idleSearchActors.Push(mo);
+							}
+						}
+					}
+
+					double top = plat.pos.z + plat.height;
+					for (uint iMo = plat.idleSearchActors.Size(); iMo-- > 0;)
+					{
+						let mo = plat.idleSearchActors[iMo];
+						if (!(mo.floorZ ~== top) && //Make sure the 'floorZ' hack is really necessary
+							(mo.tics == 0 || mo.tics == 1) && //About to change states (might call A_Chase or A_Wander)
+							( (top >= mo.pos.z && top - mo.pos.z <= mo.maxStepHeight) || (mo.pos.z >= top && (mo.bDropoff || mo.pos.z - top <= mo.maxDropoffHeight) ) ) ) //Can step up/down on us
+						{
+							double blockDist = plat.radius + mo.radius;
+							vector2 vec = level.Vec2Diff(plat.pos.xy, mo.pos.xy);
+							vec = (abs(vec.x), abs(vec.y));
+
+							if ((vec.x >= blockDist || vec.y >= blockDist) && //We want the actor to not overlap on the xy plane, but
+								vec.x < blockDist + mo.speed && vec.y < blockDist + mo.speed) //it should overlap if we take the actor's speed property into account.
+							{
+								mo.floorZ = top; //A little hack that stops monsters from "bumping into" the platform actor and walking around it
+							}
+						}
+					}
+				}
 			}
 		}
 
