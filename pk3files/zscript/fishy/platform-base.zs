@@ -1429,10 +1429,11 @@ extend class FishyPlatform
 		//actors during iteration can mess up the iterator.
 		Array<Actor> corpses;
 
-		//Three things to do here when iterating:
+		//Four things to do here when iterating:
 		//1) Gather eligible passengers.
 		//2) Gather stuck actors.
 		//3) Gather corpses for "grinding."
+		//4) Help nearby monsters step/walk on us (if their maxStepHeight/maxDropoffHeight property allows it).
 		bool result = true;
 
 		let it = BlockThingsIterator.Create(self);
@@ -1456,7 +1457,8 @@ extend class FishyPlatform
 
 			//Check XY overlap
 			double blockDist = radius + mo.radius;
-			if (abs(it.position.x - mo.pos.x) < blockDist && abs(it.position.y - mo.pos.y) < blockDist)
+			double xDist = abs(it.position.x - mo.pos.x), yDist = abs(it.position.y - mo.pos.y);
+			if (xDist < blockDist && yDist < blockDist)
 			{
 				if (plat && (plat.bInMove || (plat.portTwin && plat.portTwin.bInMove) ) ) //This is probably the platform that's carrying/moving us
 				{
@@ -1519,6 +1521,14 @@ extend class FishyPlatform
 				{
 					bOnMobj = true;
 				}
+			}
+			//No XY overlap, check if 'mo' needs assistance in stepping up/down on us
+			else if (mo.bCanPass && !mo.player && !(mo.floorZ ~== top) &&
+				(mo.tics == 0 || mo.tics == 1) && //About to change states (might call A_Chase or A_Wander)
+				( (top >= mo.pos.z && top - mo.pos.z <= mo.maxStepHeight) || (mo.pos.z >= top && (mo.bDropoff || mo.pos.z - top <= mo.maxDropoffHeight) ) ) && //Can step up/down on us
+				xDist < blockDist + mo.speed && yDist < blockDist + mo.speed ) //There is overlap if we include mo's speed property
+			{
+				mo.floorZ = top; //Makes 'mo' walk on top of us instead of usually walking around as if bumped into a wall
 			}
 
 			if (canCarry && !oldPass && mo.bOnMobj)
@@ -3820,7 +3830,8 @@ extend class FishyPlatform
 				FallAndSink(grav, oldFloorZ);
 			}
 
-			//Help nearby monsters to step up/down on platform
+			//When not moving, this is the part where we help nearby monsters to step up/down on platform.
+			//Otherwise that's taken care of in GetNewPassengers().
 			for (int i = -1; i == -1 || (group && group.origin == self && i < group.members.Size()); ++i)
 			{
 				let plat = (i == -1) ? self : group.GetMember(i);
