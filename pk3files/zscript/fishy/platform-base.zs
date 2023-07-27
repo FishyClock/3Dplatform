@@ -3866,7 +3866,7 @@ extend class FishyPlatform
 					for (uint iMo = plat.idleSearchActors.Size(); iMo-- > 0;)
 					{
 						let mo = plat.idleSearchActors[iMo];
-						if (!(mo.floorZ ~== top) && //Make sure the 'floorZ' hack is really necessary
+						if (mo && !(mo.floorZ ~== top) && //Make sure the 'floorZ' hack is really necessary
 							(mo.tics == 0 || mo.tics == 1) && //About to change states (might call A_Chase or A_Wander)
 							( (top >= mo.pos.z && top - mo.pos.z <= mo.maxStepHeight) || (mo.pos.z >= top && (mo.bDropoff || mo.pos.z - top <= mo.maxDropoffHeight) ) ) ) //Can step up/down on us
 						{
