@@ -309,7 +309,7 @@ extend class FishyPlatform
 	bool bGoToNode;
 	Array<Actor> passengers;
 	Array<Actor> stuckActors;
-	Array<Actor> idleSearchActors; //Actors to help step up/down on us when idle
+	Array<Actor> idleSearchActors; //Actors to help step up on us when idle
 	Line lastUPort;
 	private FishyPlatform portTwin; //Helps with collision when dealing with unlinked line portals
 	private bool bPortCopy;
@@ -1433,7 +1433,7 @@ extend class FishyPlatform
 		//1) Gather eligible passengers.
 		//2) Gather stuck actors.
 		//3) Gather corpses for "grinding."
-		//4) Help nearby monsters step/walk on us (if their maxStepHeight/maxDropoffHeight property allows it).
+		//4) Help nearby monsters step/walk on us (if their maxStepHeight property allows it).
 		bool result = true;
 
 		let it = BlockThingsIterator.Create(self);
@@ -1522,11 +1522,11 @@ extend class FishyPlatform
 					bOnMobj = true;
 				}
 			}
-			//No XY overlap, check if 'mo' needs assistance in stepping up/down on us
+			//No XY overlap, check if 'mo' needs assistance in stepping up on us
 			else if (mo.bCanPass && !mo.player && !(mo.floorZ ~== top) &&
 				(mo.tics == 0 || mo.tics == 1) && //About to change states (might call A_Chase or A_Wander)
-				( (top >= mo.pos.z && top - mo.pos.z <= mo.maxStepHeight) || (mo.pos.z >= top && (mo.bDropoff || mo.pos.z - top <= mo.maxDropoffHeight) ) ) && //Can step up/down on us
-				xDist < blockDist + mo.speed && yDist < blockDist + mo.speed ) //There is overlap if we include mo's speed property
+				top >= mo.pos.z && top - mo.pos.z <= mo.maxStepHeight && //Can step up on us
+				xDist < blockDist + mo.speed && yDist < blockDist + mo.speed) //There is overlap if we include mo's speed property
 			{
 				mo.floorZ = top; //Makes 'mo' walk on top of us instead of usually walking around as if bumped into a wall
 			}
@@ -3830,7 +3830,7 @@ extend class FishyPlatform
 				FallAndSink(grav, oldFloorZ);
 			}
 
-			//When not moving, this is the part where we help nearby monsters to step up/down on platform.
+			//When not moving, this is the part where we help nearby monsters to step up on platform.
 			//Otherwise that's taken care of in GetNewPassengers().
 			for (int i = -1; i == -1 || (group && group.origin == self && i < group.members.Size()); ++i)
 			{
@@ -3868,7 +3868,7 @@ extend class FishyPlatform
 						let mo = plat.idleSearchActors[iMo];
 						if (mo && !(mo.floorZ ~== top) && //Make sure the 'floorZ' hack is really necessary
 							(mo.tics == 0 || mo.tics == 1) && //About to change states (might call A_Chase or A_Wander)
-							( (top >= mo.pos.z && top - mo.pos.z <= mo.maxStepHeight) || (mo.pos.z >= top && (mo.bDropoff || mo.pos.z - top <= mo.maxDropoffHeight) ) ) ) //Can step up/down on us
+							top >= mo.pos.z && top - mo.pos.z <= mo.maxStepHeight) //Can step up on us
 						{
 							double blockDist = plat.radius + mo.radius;
 							vector2 vec = level.Vec2Diff(plat.pos.xy, mo.pos.xy);
