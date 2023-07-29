@@ -281,6 +281,8 @@ extend class FishyPlatform
 	const NO_BMAP = 1;
 	const EXTRA_SIZE = 20; //For line collision checking (when looking for unlinked line portals)
 	const INTERNALFLAG_ACSMOVE = 1; //When reaching destination, disregard any set nodes and pretend we're finished
+	const BMAP_SEARCH_INTERVAL = 35; //See GetNewBmapResults() for comments about this
+	const BMAP_RADIUS_MULTIPLIER = 2; //Ditto
 
 	vector3 oldPos;
 	double oldAngle;
@@ -307,9 +309,12 @@ extend class FishyPlatform
 	InterpolationPoint currNode, firstNode;
 	InterpolationPoint prevNode, firstPrevNode;
 	bool bGoToNode;
+	Array<Actor> nearbyActors; //The actors detected in the last blockmap search
+	Array<Line> nearbyUPorts; //The unlinked line portals detected in the last blockmap search
+	int noBmapSearchTics;
+	vector3 oldBmapSearchPos;
 	Array<Actor> passengers;
 	Array<Actor> stuckActors;
-	Array<Actor> idleSearchActors; //Actors to help step up on us when idle
 	Line lastUPort;
 	private FishyPlatform portTwin; //Helps with collision when dealing with unlinked line portals
 	private bool bPortCopy;
@@ -385,6 +390,11 @@ extend class FishyPlatform
 		if (crushDamage == -1) //Ditto
 			crushDamage = args[ARG_CRUSHDMG];
 
+		//In case the mapper placed walking monsters on the platform
+		//get something for HandleOldPassengers() to monitor.
+		GetNewBmapResults();
+		GetNewPassengers(true);
+
 		bool noPrefix = (args[ARG_GROUPTID] && !SetUpGroup(args[ARG_GROUPTID], false));
 
 		//Having a group origin at this point implies the group is already on the move.
@@ -414,10 +424,6 @@ extend class FishyPlatform
 				}
 			}
 		}
-
-		//In case the mapper placed walking monsters on the platform
-		//get something for HandleOldPassengers() to monitor.
-		GetNewPassengers(true);
 
 		//We use our thing arguments to define our behaviour.
 		//Our actual thing special and arguments have to be defined in another actor (eg. a Mapspot).
@@ -1391,17 +1397,110 @@ extend class FishyPlatform
 		// The "usual checks" being:
 		// Is it within XY and Z range, is it a corpse,
 		// is it solid, is it carriable, is it a stuck actor, etc, etc.
+		return false;
+	}
+
+	//============================
+	// GetNewBmapResults
+	//============================
+	private void GetNewBmapResults ()
+	{
+		// Just creating one BTI or one BLI per tic takes up unnecessary processing time (according to "profilethinkers")
+		// and creates a lot of garbage for the GC (according to "stat gc").
+		// To mitigate that, the iterators will be created once per some arbitrary number of tics.
 		//
-		// Important note: because this is called during a BTI search
-		// please don't spawn/destroy actors here because that tends to
-		// mess up the iterator.
+		// Since this is done at an interval the search radius should be larger too
+		// to give a better chance of catching things.
+		nearbyActors.Clear();
+		nearbyUPorts.Clear();
+
+		if (bPortCopy && bNoBlockmap)
+			return; //A portal copy that's not in use shouldn't do anything here
+
+		let iteratorRadius = radius * BMAP_RADIUS_MULTIPLIER;
+
+		let bti = BlockThingsIterator.Create(self, iteratorRadius);
+		while (bti.Next())
+		{
+			//Only accept this actor if it has certain attributes
+			let mo = bti.thing;
+			if ((mo.bCanPass || //Can move by itself (relevant for MaybeGiveStepUpAssistance())
+				(mo.bCorpse && !mo.bDontGib) || //A corpse (relevant for corpse grinding)
+				(mo.bSpecial && mo is "Inventory") || //Item that can be picked up (relevant for Z position correction)
+				IsCarriable(mo) || //A potential passenger
+				(CollisionFlagChecks(self, mo) && self.CanCollideWith(mo, false) && mo.CanCollideWith(self, true) ) ) && //A solid actor
+				mo != self && mo != portTwin ) //Ignore self and portal twin
+			{
+				//We don't want the resulting array size to be too large because
+				//it's a waste of time checking so many actors that are simply out of reach.
+				//But do be a little overboard with our 'blockDist'.
+				double blockDist = iteratorRadius + mo.radius + mo.speed + mo.vel.xy.Length();
+				if (abs(bti.position.x - mo.pos.x) < blockDist && abs(bti.position.y - mo.pos.y) < blockDist)
+					nearbyActors.Push(mo);
+			}
+		}
+
+		if (!bPortCopy) //Portal copies don't need to look for portals
+		{
+			let bli = BlockLinesIterator.Create(self, iteratorRadius);
+			while (bli.Next())
+			{
+				Line port = bli.curLine;
+				Line dest;
+				if (!port.IsLinePortal() || !(dest = port.GetPortalDestination()))
+					continue; //Not a line portal
+
+				//To be a linked/static line portal, the portal groups must be non-zero
+				//and they must be different. This check is not a guarantee, though.
+				if (port.frontSector.portalGroup && dest.frontSector.portalGroup &&
+					port.frontSector.portalGroup != dest.frontSector.portalGroup)
+				{
+					//The angle difference between the two lines must be exactly 180
+					if (!DeltaAngle(180 +
+						VectorAngle(port.delta.x, port.delta.y),
+						VectorAngle(dest.delta.x, dest.delta.y)))
+					{
+						continue; //Assume this is a static/linked portal and skip it
+					}
+				}
+				nearbyUPorts.Push(port);
+			}
+		}
+
+		noBmapSearchTics = BMAP_SEARCH_INTERVAL;
+		oldBmapSearchPos = pos; //If we're too far away from this position then this function will be called earlier (see Tick())
+	}
+
+	//============================
+	// MaybeGiveStepUpAssistance
+	//============================
+	private bool MaybeGiveStepUpAssistance (Actor mo)
+	{
+		double top = pos.z + height;
+		if (mo.bCanPass && //Assume it can move by itself (not velocity movement like a projectile)
+			!mo.player && //Players don't need assistance
+			mo.floorZ < top && //Make sure the 'floorZ' hack is really necessary
+			(mo.tics == 0 || mo.tics == 1) && //About to change states (might call A_Chase or A_Wander)
+			top >= mo.pos.z && top - mo.pos.z <= mo.maxStepHeight) //Can step up on us
+		{
+			double blockDist = radius + mo.radius;
+			vector2 vec = level.Vec2Diff(pos.xy, mo.pos.xy);
+			vec = (abs(vec.x), abs(vec.y));
+
+			if ((vec.x >= blockDist || vec.y >= blockDist) && //We want the actor to not overlap on the xy plane, but
+				vec.x < blockDist + mo.speed && vec.y < blockDist + mo.speed) //it should overlap if we take the actor's speed property into account.
+			{
+				mo.floorZ = top; //A little hack that stops monsters from "bumping into" the platform actor and walking around it
+				return true;
+			}
+		}
 		return false;
 	}
 
 	//============================
 	// GetNewPassengers
 	//============================
-	private bool GetNewPassengers (bool ignoreObs, bool ignoreTicRate = false)
+	private bool GetNewPassengers (bool ignoreObs)
 	{
 		// In addition to fetching passengers, this is where corpses get crushed, too. Items won't get destroyed.
 		// Returns false if one or more actors are completely stuck inside platform unless 'ignoreObs' is true.
@@ -1410,42 +1509,29 @@ extend class FishyPlatform
 			return lastGetNPResult; //Already called in this tic
 		lastGetNPTime = level.mapTime;
 
-		//This is disabled until GZDoom gets a hypothetical CollidedWith() function
-		/*
-		if (!ignoreObs && !ignoreTicRate && (level.mapTime % someArbitraryTicRate) ) //'ignoreObs' is used in "tele moves"; those shouldn't skip searching.
-		{
-			lastGetNPResult = true;
-			return true;
-		}
-		*/
-
 		double top = pos.z + height;
 		Array<Actor> miscActors; //The actors on top of or stuck inside confirmed passengers (We'll move those, too)
 		Array<Actor> newPass; //Potential new passengers, usually (but not always) detected on top of us
-		Array<Actor> tryZFix, tryZFixItems;
 		Array<FishyPlatform> otherPlats;
 
-		//Call Grind() after we're done iterating because destroying
-		//actors during iteration can mess up the iterator.
-		Array<Actor> corpses;
-
-		//Four things to do here when iterating:
+		//Four things to do here when iterating thru 'nearbyActors' array:
 		//1) Gather eligible passengers.
 		//2) Gather stuck actors.
-		//3) Gather corpses for "grinding."
+		//3) Turn corpses into gibs.
 		//4) Help nearby monsters step/walk on us (if their maxStepHeight property allows it).
 		bool result = true;
 
-		let it = BlockThingsIterator.Create(self);
-		while (it.Next())
+		for (uint iActors = nearbyActors.Size(); iActors-- > 0;)
 		{
-			let mo = it.thing;
+			let mo = nearbyActors[iActors];
+			if (!mo || mo.bDestroyed)
+			{
+				nearbyActors.Delete(iActors);
+				continue;
+			}
 
 			if (SpecialBTIActor(mo))
 				continue; //Already handled
-
-			if (mo == self || mo == portTwin)
-				continue;
 
 			let plat = FishyPlatform(mo);
 			if (plat)
@@ -1455,156 +1541,96 @@ extend class FishyPlatform
 			bool canCarry = ((!portTwin || portTwin.passengers.Find(mo) >= portTwin.passengers.Size()) && //Don't take your twin's passengers here
 						IsCarriable(mo));
 
-			//Check XY overlap
-			double blockDist = radius + mo.radius;
-			double xDist = abs(it.position.x - mo.pos.x), yDist = abs(it.position.y - mo.pos.y);
-			if (xDist < blockDist && yDist < blockDist)
+			if (plat && (plat.bInMove || (plat.portTwin && plat.portTwin.bInMove) ) ) //This is probably the platform that's carrying/moving us
 			{
-				if (plat && (plat.bInMove || (plat.portTwin && plat.portTwin.bInMove) ) ) //This is probably the platform that's carrying/moving us
-				{
-					if (!ignoreObs && !bOnMobj &&
-						(abs(pos.z - (mo.pos.z + mo.height)) <= TOP_EPSILON || //Are we standing on 'mo'?
-						OverlapZ(self, mo) ) )
-					{
-						bOnMobj = true;
-					}
-					continue;
-				}
-
-				//'ignoreObs' makes anything above our 'top' legit unless there's a 3D floor in the way.
-				if (mo.pos.z >= top - TOP_EPSILON && (ignoreObs || mo.pos.z <= top + TOP_EPSILON) && //On top of us?
-					mo.floorZ <= top + TOP_EPSILON) //No 3D floor above our 'top' that's below 'mo'?
-				{
-					if (canCarry && !oldPass)
-						newPass.Push(mo);
-					continue;
-				}
-
-				if (OverlapZ(self, mo))
-				{
-					if (mo.bCorpse && !mo.bDontGib && mo.tics == -1) //Let dying actors finish their death sequence
-					{
-						if (!ignoreObs)
-							corpses.Push(mo);
-					}
-					else if (CollisionFlagChecks(self, mo) &&
-						self.CanCollideWith(mo, false) && mo.CanCollideWith(self, true) )
-					{
-						//Try to correct 'mo' Z so it can ride us, too.
-						//But only if its 'maxStepHeight' allows it.
-						if (canCarry && top - mo.pos.z <= mo.maxStepHeight)
-						{
-							tryZFix.Push(mo);
-						}
-						else if (!ignoreObs)
-						{
-							result = false;
-							bOnMobj = true;
-							if (stuckActors.Find(mo) >= stuckActors.Size())
-								stuckActors.Push(mo);
-						}
-					}
-					else if (mo is "Inventory" && mo.bSpecial) //Item that can be picked up?
-					{
-						//Try to correct 'mo' Z so it can ride us, too.
-						//But only if its 'maxStepHeight' allows it.
-						if (canCarry && top - mo.pos.z <= mo.maxStepHeight)
-							tryZFixItems.Push(mo);
-					}
-					continue;
-				}
-
 				if (!ignoreObs && !bOnMobj &&
-					abs(pos.z - (mo.pos.z + mo.height)) <= TOP_EPSILON && //Are we standing on 'mo'?
-					CollisionFlagChecks(self, mo) &&
-					self.CanCollideWith(mo, false) && mo.CanCollideWith(self, true) )
+					(abs(pos.z - (mo.pos.z + mo.height)) <= TOP_EPSILON || //Are we standing on 'mo'?
+					OverlapZ(self, mo) ) && OverlapXY(self, mo) )
 				{
 					bOnMobj = true;
 				}
-			}
-			//No XY overlap, check if 'mo' needs assistance in stepping up on us
-			else if (mo.bCanPass && !mo.player && !(mo.floorZ ~== top) &&
-				(mo.tics == 0 || mo.tics == 1) && //About to change states (might call A_Chase or A_Wander)
-				top >= mo.pos.z && top - mo.pos.z <= mo.maxStepHeight && //Can step up on us
-				xDist < blockDist + mo.speed && yDist < blockDist + mo.speed) //There is overlap if we include mo's speed property
-			{
-				mo.floorZ = top; //Makes 'mo' walk on top of us instead of usually walking around as if bumped into a wall
-			}
-
-			if (canCarry && !oldPass && mo.bOnMobj)
-				miscActors.Push(mo); //We'll compare this later against the passengers
-		}
-
-		//Try to stand on the highest stuck actor if our 'maxStepHeight' allows it
-		Actor highestMo = null;
-		if (!ignoreObs)
-		for (int i = stuckActors.Size() - 1; i > -1; --i)
-		{
-			let mo = stuckActors[i];
-			if (!mo)
 				continue;
-
-			if (!highestMo || highestMo.pos.z + highestMo.height < mo.pos.z + mo.height)
-				highestMo = mo;
-		}
-
-		double moTop;
-		if (highestMo && (moTop = highestMo.pos.z + highestMo.height) - pos.z <= maxStepHeight &&
-			FitsAtPosition(self, (pos.xy, moTop), true))
-		{
-			PlatMove((pos.xy, moTop), angle, pitch, roll, MOVE_QUICK);
-			top = pos.z + height;
-			stuckActors.Delete(stuckActors.Find(highestMo));
-			result = true;
-		}
-
-		for (int i = tryZFix.Size() - 1; i > -1; --i)
-		{
-			let mo = tryZFix[i];
-			PassengerPreMove(mo);
-			bool fits = FitsAtPosition(mo, (mo.pos.xy, top), true);
-			if (fits)
-			{
-				if (mo is "FishyPlatform")
-				{
-					FishyPlatform(mo).PlatMove((mo.pos.xy, top), mo.angle, mo.pitch, mo.roll, MOVE_QUICK);
-				}
-				else
-				{
-					mo.SetZ(top);
-					mo.CheckPortalTransition(); //Handle sector portals properly
-				}
-
-				if (passengers.Find(mo) >= passengers.Size())
-					newPass.Push(mo);
 			}
-			else if (!ignoreObs)
+
+			//'ignoreObs' makes anything above our 'top' legit unless there's a 3D floor in the way.
+			if (mo.pos.z >= top - TOP_EPSILON && (ignoreObs || mo.pos.z <= top + TOP_EPSILON) && //On top of us?
+				mo.floorZ <= top + TOP_EPSILON) //No 3D floor above our 'top' that's below 'mo'?
 			{
-				result = false;
+				if (canCarry && !oldPass)
+				{
+					if (OverlapXY(self, mo))
+						newPass.Push(mo);
+					else
+						miscActors.Push(mo); //We'll compare this later against the passengers
+				}
+				continue;
+			}
+
+			if (OverlapZ(self, mo) && OverlapXY(self, mo))
+			{
+				if (mo.bCorpse && !mo.bDontGib && mo.tics == -1) //Let dying actors finish their death sequence
+				{
+					if (!ignoreObs)
+						mo.Grind(false);
+					continue;
+				}
+
+				bool solidMo = (CollisionFlagChecks(self, mo) &&
+					self.CanCollideWith(mo, false) && mo.CanCollideWith(self, true) );
+
+				if (solidMo ||
+					(mo.bSpecial && mo is "Inventory") ) //Item that can be picked up?
+				{
+					//Try to correct 'mo' Z so it can ride us, too.
+					//But only if its 'maxStepHeight' allows it.
+					bool fits = false;
+					bool callPostMove = false;
+					if (canCarry && top - mo.pos.z <= mo.maxStepHeight)
+					{
+						PassengerPreMove(mo);
+						fits = FitsAtPosition(mo, (mo.pos.xy, top), true);
+						callPostMove = true;
+						if (fits)
+						{
+							if (mo is "FishyPlatform")
+							{
+								FishyPlatform(mo).PlatMove((mo.pos.xy, top), mo.angle, mo.pitch, mo.roll, MOVE_QUICK);
+							}
+							else
+							{
+								mo.SetZ(top);
+								mo.CheckPortalTransition(); //Handle sector portals properly
+							}
+
+							if (passengers.Find(mo) >= passengers.Size())
+								newPass.Push(mo);
+						}
+					}
+					if (solidMo && !fits && !ignoreObs)
+					{
+						result = false;
+						bOnMobj = true;
+						if (stuckActors.Find(mo) >= stuckActors.Size())
+							stuckActors.Push(mo);
+					}
+					if (callPostMove)
+						PassengerPostMove(mo, fits);
+				}
+				continue;
+			}
+
+			if (!ignoreObs && !bOnMobj &&
+				abs(pos.z - (mo.pos.z + mo.height)) <= TOP_EPSILON && //Are we standing on 'mo'?
+				CollisionFlagChecks(self, mo) &&
+				self.CanCollideWith(mo, false) && mo.CanCollideWith(self, true) && OverlapXY(self, mo))
+			{
 				bOnMobj = true;
-				if (stuckActors.Find(mo) >= stuckActors.Size())
-					stuckActors.Push(mo);
+				continue;
 			}
-			PassengerPostMove(mo, fits);
-		}
 
-		for (int i = tryZFixItems.Size() - 1; i > -1; --i)
-		{
-			let mo = tryZFixItems[i];
-			PassengerPreMove(mo);
-			bool fits = FitsAtPosition(mo, (mo.pos.xy, top), true);
-			if (fits)
-			{
-				mo.SetZ(top);
-				mo.CheckPortalTransition(); //Handle sector portals properly
-				if (passengers.Find(mo) >= passengers.Size())
-					newPass.Push(mo);
-			}
-			PassengerPostMove(mo, fits);
+			if (!MaybeGiveStepUpAssistance(mo) && canCarry && !oldPass && mo.bOnMobj)
+				miscActors.Push(mo);
 		}
-
-		for (int i = corpses.Size() - 1; i > -1; --i)
-			corpses[i].Grind(false);
 
 		if (newPass.Size() || miscActors.Size())
 		{
@@ -1660,7 +1686,7 @@ extend class FishyPlatform
 					ForgetPassenger(i--);
 					continue;
 				}
-				moTop = mo.pos.z + mo.height;
+				double moTop = mo.pos.z + mo.height;
 
 				for (int iOther = miscActors.Size() - 1; iOther > -1; --iOther)
 				{
@@ -1767,7 +1793,8 @@ extend class FishyPlatform
 				if (iTwins > 0 && !(plat = plat.portTwin))
 					break;
 
-				plat.GetNewPassengers(false, true);
+				plat.GetNewBmapResults();
+				plat.GetNewPassengers(false);
 			}
 		}
 	}
@@ -2257,8 +2284,6 @@ extend class FishyPlatform
 			return; //Already called in this tic
 		lastGetUPTime = level.mapTime;
 
-		bool noIterator = false; //(level.mapTime % someArbitraryTicRate); - disabled for now
-
 		//Our bounding box
 		double size = radius + EXTRA_SIZE; //Pretend we're a bit bigger
 		double minX1 = pos.x - size;
@@ -2266,42 +2291,13 @@ extend class FishyPlatform
 		double minY1 = pos.y - size;
 		double maxY1 = pos.y + size;
 
-		BlockLinesIterator it = (lastUPort || noIterator) ? null : BlockLinesIterator.Create(self, size);
-		while (lastUPort || (it && it.Next()))
+		for (uint iPorts = nearbyUPorts.Size(); iPorts-- > 0;)
 		{
-			Line port = lastUPort ? lastUPort : it.curLine;
-			Line dest;
-			if (!port.IsLinePortal() || !(dest = port.GetPortalDestination()))
+			let port = nearbyUPorts[iPorts];
+			if (!port.IsLinePortal()) //Make sure it's still a line portal
 			{
-				if (lastUPort)
-				{
-					lastUPort = null;
-					if (!noIterator)
-						it = BlockLinesIterator.Create(self, size);
-				}
+				nearbyUPorts.Delete(iPorts);
 				continue;
-			}
-
-			//To be a linked/static line portal, the portal groups must be non-zero
-			//and they must be different.
-			//This check is not a guarantee and I wish there was a
-			//IsLinkedLinePortal() function but at the time of typing there isn't one.
-			if (port.frontSector.portalGroup && dest.frontSector.portalGroup &&
-				port.frontSector.portalGroup != dest.frontSector.portalGroup)
-			{
-				//The angle difference between the two lines must be exactly 180
-				if (!DeltaAngle(180 +
-					VectorAngle(port.delta.x, port.delta.y),
-					VectorAngle(dest.delta.x, dest.delta.y)))
-				{
-					if (lastUPort)
-					{
-						lastUPort = null;
-						if (!noIterator)
-							it = BlockLinesIterator.Create(self, size);
-					}
-					continue; //We don't want linked/static line portals
-				}
 			}
 
 			//Line bounding box.
@@ -2314,42 +2310,32 @@ extend class FishyPlatform
 			if (minX1 >= maxX2 || minX2 >= maxX1 ||
 				minY1 >= maxY2 || minY2 >= maxY1)
 			{
-				if (lastUPort)
-				{
-					lastUPort = null;
-					if (!noIterator)
-						it = BlockLinesIterator.Create(self, size);
-				}
 				continue; //BBoxes not intersecting
 			}
 
 			if (IsBehindLine(pos.xy, port))
-			{
-				if (lastUPort)
-				{
-					lastUPort = null;
-					if (!noIterator)
-						it = BlockLinesIterator.Create(self, size);
-				}
 				continue; //Center point not in front of line
-			}
 
 			bool cornerResult = IsBehindLine((minX1, minY1), port);
 			if (cornerResult == IsBehindLine((minX1, maxY1), port) &&
 				cornerResult == IsBehindLine((maxX1, minY1), port) &&
 				cornerResult == IsBehindLine((maxX1, maxY1), port))
 			{
-				if (lastUPort)
-				{
-					lastUPort = null;
-					if (!noIterator)
-						it = BlockLinesIterator.Create(self, size);
-				}
 				continue; //All corners on one side; there's no intersection with line
 			}
-			lastUPort = port;
-			break;
+
+			if (lastUPort != port)
+			{
+				lastUPort = port;
+
+				//Swap entries so next time 'lastUPort' is checked first
+				uint lastIndex = nearbyUPorts.Size() - 1;
+				nearbyUPorts[iPorts] = nearbyUPorts[lastIndex];
+				nearbyUPorts[lastIndex] = port;
+			}
+			return;
 		}
+		lastUPort = null;
 	}
 
 	//============================
@@ -2569,6 +2555,10 @@ extend class FishyPlatform
 				}
 			}
 		}
+
+		if (!moved && blockingMobj)
+			noBmapSearchTics = 0; //Try to get 'blockingMobj' in the next blockmap search
+
 		return moved;
 	}
 
@@ -2579,16 +2569,17 @@ extend class FishyPlatform
 	{
 		//A slimmed down version of GetNewPassengers()
 		//that only looks for stuck actors.
-		let it = BlockThingsIterator.Create(self);
-		while (it.Next())
+		for (uint iActors = nearbyActors.Size(); iActors-- > 0;)
 		{
-			let mo = it.thing;
+			let mo = nearbyActors[iActors];
+			if (!mo || mo.bDestroyed)
+			{
+				nearbyActors.Delete(iActors);
+				continue;
+			}
 
 			if (SpecialBTIActor(mo))
 				continue; //Already handled
-
-			if (mo == self)
-				continue;
 
 			if (!CollisionFlagChecks(self, mo))
 				continue;
@@ -2600,12 +2591,8 @@ extend class FishyPlatform
 			if (plat && (plat.bInMove || (plat.portTwin && plat.portTwin.bInMove) ) )
 				continue; //This is likely the platform that carries us; ignore it
 
-			double blockDist = radius + mo.radius;
-			if (abs(it.position.x - mo.pos.x) >= blockDist || abs(it.position.y - mo.pos.y) >= blockDist)
-				continue; //No XY overlap
-
-			if (!OverlapZ(self, mo))
-				continue;
+			if (!OverlapZ(self, mo) || !OverlapXY(self, mo))
+				continue; //No overlap
 
 			if (self.CanCollideWith(mo, false) && mo.CanCollideWith(self, true))
 				stuckActors.Push(mo); //Got one
@@ -2618,8 +2605,10 @@ extend class FishyPlatform
 	private void HandleStuckActors ()
 	{
 		double top = pos.z + height;
+		Actor highestMo = null;
+		Array<Actor> delayedPush;
 
-		for (int i = stuckActors.Size() - 1; i > -1; --i)
+		for (uint i = stuckActors.Size(); i-- > 0;)
 		{
 			let mo = stuckActors[i];
 			if (!mo || mo.bDestroyed || //Thing_Remove()'d?
@@ -2657,8 +2646,28 @@ extend class FishyPlatform
 				else
 					ForgetPassenger(index); //Stuck actors can't be passengers
 			}
-			PushObstacle(mo);
+
+			if (!highestMo || highestMo.pos.z + highestMo.height < mo.pos.z + mo.height)
+			{
+				highestMo = mo;
+				delayedPush.Push(mo);
+			}
+			if (mo != highestMo) //We'll push 'highestMo' later
+				PushObstacle(mo);
 		}
+
+		//Try to stand on the highest stuck actor if our 'maxStepHeight' allows it
+		double moTop;
+		if (highestMo && (moTop = highestMo.pos.z + highestMo.height) - pos.z <= maxStepHeight &&
+			FitsAtPosition(self, (pos.xy, moTop), true))
+		{
+			PlatMove((pos.xy, moTop), angle, pitch, roll, MOVE_QUICK);
+			stuckActors.Delete(stuckActors.Find(highestMo));
+			delayedPush.Delete(delayedPush.Find(highestMo));
+		}
+
+		for (uint i = delayedPush.Size(); i-- > 0;)
+			PushObstacle(delayedPush[i]);
 
 		if (stuckActors.Size())
 			bOnMobj = true;
@@ -2683,6 +2692,9 @@ extend class FishyPlatform
 			plat = (i == -1) ? self : group.GetMember(i);
 			if (i > -1 && (!plat || plat == self)) //Already handled self
 				continue;
+
+			if (!plat.noBmapSearchTics)
+				plat.GetNewBmapResults();
 
 			if (moveType == MOVE_NORMAL)
 			{
@@ -2736,6 +2748,9 @@ extend class FishyPlatform
 				{
 					plat.portTwin.A_ChangeLinkFlags(NO_BMAP); //No collision while not needed (don't destroy it - not here)
 				}
+
+				if (!plat.portTwin.noBmapSearchTics)
+					plat.portTwin.GetNewBmapResults();
 			}
 
 			if (!plat.GetNewPassengers(moveType == MOVE_TELEPORT) ||
@@ -3573,6 +3588,18 @@ extend class FishyPlatform
 				if (iTwins > 0 && !(plat = plat.portTwin))
 					break;
 
+				//Don't update the blockmap results while...
+				if (plat.noBmapSearchTics > 0 && //The interval isn't over and...
+					(plat.pos ~== plat.oldBmapSearchPos || //We're still at the same position last time GetNewBmapResults() was called or...
+					(abs(plat.pos.z - plat.oldBmapSearchPos.z) < plat.height && //The Z difference is less than our height and...
+					(plat.pos.xy - plat.oldBmapSearchPos.xy).Length() < plat.radius ) ) ) //The XY difference is less than our radius
+				{
+					--plat.noBmapSearchTics;
+				}
+				else
+				{
+					plat.GetNewBmapResults();
+				}
 				plat.bOnMobj = (iTwins == 0) ? false : plat.portTwin.bOnMobj; //Aside from standing on an actor, this can also be "true" later if hitting a lower obstacle while going down or we have stuck actors
 				plat.HandleStuckActors();
 				plat.HandleOldPassengers();
@@ -3830,8 +3857,6 @@ extend class FishyPlatform
 				FallAndSink(grav, oldFloorZ);
 			}
 
-			//When not moving, this is the part where we help nearby monsters to step up on platform.
-			//Otherwise that's taken care of in GetNewPassengers().
 			for (int i = -1; i == -1 || (group && group.origin == self && i < group.members.Size()); ++i)
 			{
 				let plat = (i == -1) ? self : group.GetMember(i);
@@ -3843,43 +3868,15 @@ extend class FishyPlatform
 					if (iTwins > 0 && !(plat = plat.portTwin))
 						break;
 
-					//If GetNewPassengers() wasn't called then we're likely stationary
-					//in which case we can get away with creating one BTI every 64 tics
-					//instead of creating one BTI every single tic when moving.
-					if (plat.lastGetNPTime != level.mapTime && !(level.mapTime & 63))
+					//Call MaybeGiveStepUpAssistance() here unless GetNewPassengers() already did
+					if (plat.lastGetNPTime != level.mapTime)
+					for (uint iActors = plat.nearbyActors.Size(); iActors-- > 0;)
 					{
-						plat.idleSearchActors.Clear();
-						let it = BlockThingsIterator.Create(plat, plat.radius * 4); //Larger size to compensate for 64 tic interval (greater chance of catching things)
-						while (it.Next())
-						{
-							let mo = it.thing;
-							if (mo.bCanPass && //Anything with this flag can be assumed to move on its own (not velocity movement like projectiles)
-								!mo.player && //Players don't need assistance
-								mo != plat)
-							{
-								plat.idleSearchActors.Push(mo);
-							}
-						}
-					}
-
-					double top = plat.pos.z + plat.height;
-					for (uint iMo = plat.idleSearchActors.Size(); iMo-- > 0;)
-					{
-						let mo = plat.idleSearchActors[iMo];
-						if (mo && !(mo.floorZ ~== top) && //Make sure the 'floorZ' hack is really necessary
-							(mo.tics == 0 || mo.tics == 1) && //About to change states (might call A_Chase or A_Wander)
-							top >= mo.pos.z && top - mo.pos.z <= mo.maxStepHeight) //Can step up on us
-						{
-							double blockDist = plat.radius + mo.radius;
-							vector2 vec = level.Vec2Diff(plat.pos.xy, mo.pos.xy);
-							vec = (abs(vec.x), abs(vec.y));
-
-							if ((vec.x >= blockDist || vec.y >= blockDist) && //We want the actor to not overlap on the xy plane, but
-								vec.x < blockDist + mo.speed && vec.y < blockDist + mo.speed) //it should overlap if we take the actor's speed property into account.
-							{
-								mo.floorZ = top; //A little hack that stops monsters from "bumping into" the platform actor and walking around it
-							}
-						}
+						let mo = plat.nearbyActors[iActors];
+						if (!mo || mo.bDestroyed)
+							plat.nearbyActors.Delete(iActors);
+						else
+							plat.MaybeGiveStepUpAssistance(mo);
 					}
 				}
 			}
@@ -4332,7 +4329,8 @@ extend class FishyPlatform
 				if (iTwins > 0 && !(plat = plat.portTwin))
 					break;
 
-				plat.GetNewPassengers(false, true); //Take into account idle platforms because those don't look for passengers
+				plat.GetNewBmapResults();
+				plat.GetNewPassengers(false); //Take into account idle platforms because those don't look for passengers
 				int pSize = plat.passengers.Size();
 				if (!pSize)
 					continue; //This platform has no passengers
