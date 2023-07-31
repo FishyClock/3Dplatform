@@ -312,7 +312,7 @@ extend class FishyPlatform
 	Array<Actor> nearbyActors; //The actors detected in the last blockmap search
 	Array<Line> nearbyUPorts; //The unlinked line portals detected in the last blockmap search
 	int noBmapSearchTics;
-	vector3 oldBmapSearchPos;
+	vector2 oldBmapSearchPos;
 	Array<Actor> passengers;
 	Array<Actor> stuckActors;
 	Line lastUPort;
@@ -1468,7 +1468,7 @@ extend class FishyPlatform
 		}
 
 		noBmapSearchTics = BMAP_SEARCH_INTERVAL;
-		oldBmapSearchPos = pos; //If we're too far away from this position then this function will be called earlier (see Tick())
+		oldBmapSearchPos = pos.xy; //If we're too far away from this position then this function will be called earlier (see Tick())
 	}
 
 	//============================
@@ -3590,9 +3590,7 @@ extend class FishyPlatform
 
 				//Don't update the blockmap results while...
 				if (plat.noBmapSearchTics > 0 && //The interval isn't over and...
-					(plat.pos ~== plat.oldBmapSearchPos || //We're still at the same position last time GetNewBmapResults() was called or...
-					(abs(plat.pos.z - plat.oldBmapSearchPos.z) < plat.height && //The Z difference is less than our height and...
-					(plat.pos.xy - plat.oldBmapSearchPos.xy).Length() < plat.radius ) ) ) //The XY difference is less than our radius
+					abs(plat.pos.x - plat.oldBmapSearchPos.x) < plat.radius && abs(plat.pos.y - plat.oldBmapSearchPos.y) < plat.radius ) //Not too far away from where the last blockmap search was done
 				{
 					--plat.noBmapSearchTics;
 				}
