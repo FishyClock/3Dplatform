@@ -381,10 +381,11 @@ extend class FishyPlatform
 	//============================
 	override void PostBeginPlay ()
 	{
-		Super.PostBeginPlay();
 		if (bPortCopy)
+		{
+			Super.PostBeginPlay();
 			return;
-
+		}
 		A_SetSize(radius * abs(scale.x), height * abs(scale.y));
 
 		if (options == -1) //Not already set through ACS?
@@ -452,14 +453,10 @@ extend class FishyPlatform
 		}
 
 		//Print no (additional) warnings if we're not supposed to have a interpolation point
-		if (!nodeTid)
-			return;
-
-		if (!SetUpPath(nodeTid, noPrefix))
-			return;
-
-		if (options & OPTFLAG_STARTACTIVE)
+		if (nodeTid && SetUpPath(nodeTid, noPrefix) && (options & OPTFLAG_STARTACTIVE))
 			Activate(self);
+
+		Super.PostBeginPlay();
 	}
 
 	//============================
@@ -1532,6 +1529,9 @@ extend class FishyPlatform
 				continue;
 			}
 
+			if (mo.bNoBlockmap)
+				continue;
+
 			if (SpecialBTIActor(mo))
 				continue; //Already handled
 
@@ -2579,6 +2579,9 @@ extend class FishyPlatform
 				nearbyActors.Delete(iActors);
 				continue;
 			}
+
+			if (mo.bNoBlockmap)
+				continue;
 
 			if (SpecialBTIActor(mo))
 				continue; //Already handled
