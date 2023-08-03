@@ -385,6 +385,8 @@ extend class FishyPlatform
 		if (bPortCopy)
 			return;
 
+		A_SetSize(radius * abs(scale.x), height * abs(scale.y));
+
 		if (options == -1) //Not already set through ACS?
 			options = args[ARG_OPTIONS];
 		if (crushDamage == -1) //Ditto
