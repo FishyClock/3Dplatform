@@ -2212,7 +2212,7 @@ extend class FishyPlatform
 		double top = pos.z + height;
 		vector3 velJump = (double.nan, 0, 0);
 
-		for (int i = passengers.Size() - 1; i > -1; --i)
+		for (uint i = passengers.Size(); i-- > 0;)
 		{
 			let mo = passengers[i];
 			if (!mo || mo.bDestroyed || //Got Thing_Remove()'d?
@@ -2260,6 +2260,32 @@ extend class FishyPlatform
 
 			if (Distance2D(mo) < radius - mo.speed)
 				continue; //Not close to platform's edge
+
+			//If there are nearby "bridge" actors (like another platform),
+			//let 'mo' cross over.
+			bool skipIt = false;
+			for (uint iNearby = nearbyActors.Size(); iNearby-- > 0;)
+			{
+				let otherMo = nearbyActors[iNearby];
+				if (!otherMo || !otherMo.bActLikeBridge || otherMo == mo)
+					continue;
+
+				double otherMoTop = otherMo.pos.z + otherMo.height;
+				if (mo.pos.z > otherMoTop && mo.pos.z - otherMoTop > mo.maxDropoffHeight)
+					continue; //'mo' is too high
+
+				if (otherMoTop > mo.pos.z && otherMoTop - mo.pos.z > mo.maxStepHeight)
+					continue; //'mo' is too low
+
+				if (OverlapXY(mo, otherMo))
+				{
+					skipIt = true;
+					break;
+				}
+			}
+
+			if (skipIt)
+				continue;
 
 			// Make your bog-standard idTech1 AI
 			// that uses A_Chase() or A_Wander()
