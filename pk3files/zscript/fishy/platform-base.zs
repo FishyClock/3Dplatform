@@ -77,7 +77,7 @@ class FishyPlatform : Actor abstract
 
 		//$Arg1 Options
 		//$Arg1Type 12
-		//$Arg1Enum {1 = "Linear path <- Does nothing for non-origin group members"; 2 = "Use point angle <- ACS commands don't need this / Group move: Rotate angle"; 4 = "Use point pitch <- ACS commands don't need this / Group move: Rotate pitch"; 8 = "Use point roll <- ACS commands don't need this / Group move: Rotate roll"; 16 = "Face movement direction <- Does nothing for non-origin group members"; 32 = "Don't clip against geometry and other platforms"; 64 = "Start active"; 128 = "Group move: Mirror group origin's movement"; 256 = "Add velocity to passengers when they jump away"; 512 = "Add velocity to passengers when stopping (and not blocked)"; 1024 = "Interpolation point is destination"; 2048 = "Resume path when activated again"; 4096 = "Always do 'crush damage' when pushing obstacles"; 8192 = "Pitch/roll changes don't affect passengers"; 16384 = "Passengers can push obstacles"; 32768 = "All passengers get temp NOBLOCKMAP'd before moving platform group <- Set on group origin";}
+		//$Arg1Enum {1 = "Linear path <- Does nothing for non-origin group members"; 2 = "Use point angle <- ACS commands don't need this / Group move: Rotate angle"; 4 = "Use point pitch <- ACS commands don't need this / Group move: Rotate pitch"; 8 = "Use point roll <- ACS commands don't need this / Group move: Rotate roll"; 16 = "Face movement direction <- Does nothing for non-origin group members"; 32 = "Don't clip against geometry and other platforms"; 64 = "Start active"; 128 = "Group move: Mirror group origin's movement"; 256 = "Add velocity to passengers when they jump away"; 512 = "Add velocity to passengers when stopping (and not blocked)"; 1024 = "Interpolation point is destination"; 2048 = "Resume path when activated again"; 4096 = "Always do 'crush damage' when pushing obstacles"; 8192 = "Pitch/roll changes don't affect passengers"; 16384 = "Passengers can push obstacles"; 32768 = "All passengers get temp NOBLOCKMAP'd before moving platform group <- Set on group origin"; 65536 = "When moving, allow walking monsters to cross unto other platforms";}
 		//$Arg1Tooltip 'Group move' affects movement imposed by the group origin. (It only has an effect on non-origin group members.)\nThe 'group origin' is the platform that other members move with and orbit around.\nActivating any group member will turn it into the group origin.\nFlag 32768 is for cases where you want all passengers from the entire group to not collide with each other and to not collide with other platforms in the group (when moving everyone).
 
 		//$Arg2 Platform(s) To Group With
@@ -254,6 +254,7 @@ extend class FishyPlatform
 		OPTFLAG_NOPITCHROLL		= (1<<13),
 		OPTFLAG_PASSCANPUSH		= (1<<14),
 		OPTFLAG_DIFFPASSCOLL	= (1<<15),
+		OPTFLAG_PASSCANCROSS	= (1<<16),
 
 		//FishyPlatformNode args that we check
 		NODEARG_TRAVELTIME		= 1, //Also applies to InterpolationPoint
@@ -2211,6 +2212,7 @@ extend class FishyPlatform
 
 		double top = pos.z + height;
 		vector3 velJump = (double.nan, 0, 0);
+		bool passengerCanCross = (options & OPTFLAG_PASSCANCROSS);
 
 		for (uint i = passengers.Size(); i-- > 0;)
 		{
@@ -2264,6 +2266,7 @@ extend class FishyPlatform
 			//If there are nearby "bridge" actors (like another platform),
 			//let 'mo' cross over.
 			bool skipIt = false;
+			if (passengerCanCross)
 			for (uint iNearby = nearbyActors.Size(); iNearby-- > 0;)
 			{
 				let otherMo = nearbyActors[iNearby];

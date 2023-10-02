@@ -38,6 +38,7 @@
 #libdefine FPLAT_OPTFLAG_NOPITCHROLL	(1<<13)
 #libdefine FPLAT_OPTFLAG_PASSCANPUSH	(1<<14)
 #libdefine FPLAT_OPTFLAG_DIFFPASSCOLL	(1<<15)
+#libdefine FPLAT_OPTFLAG_PASSCANCROSS	(1<<16)
 
 function void FishyPlat_Move (int platTid, int/*fixed*/ x, int/*fixed*/ y, int/*fixed*/ z, bool exactPos, int travelTime)
 {
