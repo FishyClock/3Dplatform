@@ -2357,6 +2357,7 @@ extend class FishyPlatform
 			return vec, 0;
 
 		int portAlignment = isPos ? port.GetPortalAlignment() : 0;
+		double delta = port.GetPortalAngleDiff();
 
 		if (backward)
 		{
@@ -2367,12 +2368,15 @@ extend class FishyPlatform
 
 			//If this is a portal, use its alignment. Else still use the other one's.
 			if (port.IsLinePortal())
+			{
 				portAlignment = isPos ? port.GetPortalAlignment() : 0;
+				delta = port.GetPortalAngleDiff();
+			}
+			else
+			{
+				delta -= delta;
+			}
 		}
-
-		double delta = DeltaAngle(180 +
-		VectorAngle(port.delta.x, port.delta.y),
-		VectorAngle(dest.delta.x, dest.delta.y));
 
 		if (isPos)
 			vec.xy -= port.v1.p;
@@ -2383,10 +2387,10 @@ extend class FishyPlatform
 
 		switch (portAlignment)
 		{
-			case 1: //Floor
+			case LinePortal.PORG_FLOOR:
 				vec.z += dest.frontSector.floorPlane.ZatPoint(dest.v2.p) - port.frontSector.floorPlane.ZatPoint(port.v1.p);
 				break;
-			case 2: //Ceiling
+			case LinePortal.PORG_CEILING:
 				vec.z += dest.frontSector.ceilingPlane.ZatPoint(dest.v2.p) - port.frontSector.ceilingPlane.ZatPoint(port.v1.p);
 				break;
 		}
