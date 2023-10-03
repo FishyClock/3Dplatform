@@ -277,7 +277,6 @@ extend class FishyPlatform
 	};
 
 	const TOP_EPSILON = 1.0; //For Z checks (if something is on top of something else)
-	const ZS_EQUAL_EPSILON = 1.0 / 65536.0; //Because 'double.epsilon' is too small, we'll use 'EQUAL_EPSILON' from the source code
 	const YES_BMAP = 0; //For A_ChangeLinkFlags()
 	const NO_BMAP = 1;
 	const EXTRA_SIZE = 20; //For line collision checking (when looking for unlinked line portals)
@@ -863,8 +862,7 @@ extend class FishyPlatform
 	//============================
 	static clearscope bool IsBehindLine (vector2 v, Line l)
 	{
-		//Yes, this is borrowed from P_PointOnLineSidePrecise()
-		return ( (v.y - l.v1.p.y) * l.delta.x + (l.v1.p.x - v.x) * l.delta.y > ZS_EQUAL_EPSILON );
+		return level.PointOnLineSide(v, l);
 	}
 
 	//============================
@@ -1440,30 +1438,15 @@ extend class FishyPlatform
 			}
 		}
 
-		if (!bPortCopy) //Portal copies don't need to look for portals
+		if (!bPortCopy && //Portal copies don't need to look for portals.
+			level.linePortals.Size()) //Only do a search if there's something to look for.
 		{
 			let bli = BlockLinesIterator.Create(self, iteratorRadius);
 			while (bli.Next())
 			{
-				Line port = bli.curLine;
-				Line dest;
-				if (!port.IsLinePortal() || !(dest = port.GetPortalDestination()))
-					continue; //Not a line portal
-
-				//To be a linked/static line portal, the portal groups must be non-zero
-				//and they must be different. This check is not a guarantee, though.
-				if (port.frontSector.portalGroup && dest.frontSector.portalGroup &&
-					port.frontSector.portalGroup != dest.frontSector.portalGroup)
-				{
-					//The angle difference between the two lines must be exactly 180
-					if (!DeltaAngle(180 +
-						VectorAngle(port.delta.x, port.delta.y),
-						VectorAngle(dest.delta.x, dest.delta.y)))
-					{
-						continue; //Assume this is a static/linked portal and skip it
-					}
-				}
-				nearbyUPorts.Push(port);
+				let type = bli.curLine.GetPortalType();
+				if (type == LinePortal.PORTT_TELEPORT || type == LinePortal.PORTT_INTERACTIVE) //We don't want static portals
+					nearbyUPorts.Push(bli.curLine);
 			}
 		}
 
@@ -2347,13 +2330,8 @@ extend class FishyPlatform
 			if (IsBehindLine(pos.xy, port))
 				continue; //Center point not in front of line
 
-			bool cornerResult = IsBehindLine((minX1, minY1), port);
-			if (cornerResult == IsBehindLine((minX1, maxY1), port) &&
-				cornerResult == IsBehindLine((maxX1, minY1), port) &&
-				cornerResult == IsBehindLine((maxX1, maxY1), port))
-			{
+			if (level.BoxOnLineSide(pos.xy, size, port) != -1)
 				continue; //All corners on one side; there's no intersection with line
-			}
 
 			if (lastUPort != port)
 			{
