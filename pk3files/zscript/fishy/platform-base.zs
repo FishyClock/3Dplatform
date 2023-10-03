@@ -2374,7 +2374,7 @@ extend class FishyPlatform
 			}
 			else
 			{
-				delta -= delta;
+				delta = -delta;
 			}
 		}
 
