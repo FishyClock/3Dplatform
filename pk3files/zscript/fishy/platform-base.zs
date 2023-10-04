@@ -3068,11 +3068,11 @@ extend class FishyPlatform
 
 			ExchangePassengersWithTwin();
 			CheckPortalTransition(); //Handle sector portals properly
-			if (crossedPortal && bSearchForUPorts)
+			if (crossedPortal)
 			{
-				lastUPort = lastUPort.GetPortalDestination();
-				lastGetUPTime = -1;
-				GetUnlinkedPortal();
+				GetNewBmapResults();
+				if (bSearchForUPorts)
+					GetUnlinkedPortal();
 			}
 		}
 		bMoved = true;
