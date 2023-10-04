@@ -318,6 +318,7 @@ extend class FishyPlatform
 	Line lastUPort;
 	private FishyPlatform portTwin; //Helps with collision when dealing with unlinked line portals
 	private bool bPortCopy;
+	private bool bSearchForUPorts;
 	double portDelta;
 	int acsFlags;
 	transient int lastGetNPTime; //Make sure there's only one GetNewPassengers() blockmap search per tic
@@ -386,6 +387,18 @@ extend class FishyPlatform
 			Super.PostBeginPlay();
 			return;
 		}
+
+		//Only do BlockLinesIterator searches if there are unlinked line portals on the map
+		for (uint iPorts = level.linePortals.Size(); iPorts-- > 0;)
+		{
+			LinePortal port = level.linePortals[iPorts];
+			if (port.mType == LinePortal.PORTT_TELEPORT || port.mType == LinePortal.PORTT_INTERACTIVE)
+			{
+				bSearchForUPorts = true;
+				break;
+			}
+		}
+
 		A_SetSize(radius * abs(scale.x), height * abs(scale.y));
 
 		if (options == -1) //Not already set through ACS?
@@ -1438,14 +1451,13 @@ extend class FishyPlatform
 			}
 		}
 
-		if (!bPortCopy && //Portal copies don't need to look for portals.
-			level.linePortals.Size()) //Only do a search if there's something to look for.
+		if (bSearchForUPorts) //Only do a search if there's something to look for (and we're not a portal copy)
 		{
 			let bli = BlockLinesIterator.Create(self, iteratorRadius);
 			while (bli.Next())
 			{
 				let type = bli.curLine.GetPortalType();
-				if (type == LinePortal.PORTT_TELEPORT || type == LinePortal.PORTT_INTERACTIVE) //We don't want static portals
+				if (type == LinePortal.PORTT_TELEPORT || type == LinePortal.PORTT_INTERACTIVE) //We don't want static (linked) portals
 					nearbyUPorts.Push(bli.curLine);
 			}
 		}
@@ -2294,8 +2306,8 @@ extend class FishyPlatform
 	//============================
 	private void GetUnlinkedPortal ()
 	{
-		if (lastGetUPTime == level.mapTime)
-			return; //Already called in this tic
+		if (!bSearchForUPorts || lastGetUPTime == level.mapTime)
+			return; //Already called in this tic - or there are no unlinked line portals on this map
 		lastGetUPTime = level.mapTime;
 
 		//Our bounding box
