@@ -2306,8 +2306,8 @@ extend class FishyPlatform
 	//============================
 	private void GetUnlinkedPortal ()
 	{
-		if (!bSearchForUPorts || lastGetUPTime == level.mapTime)
-			return; //Already called in this tic - or there are no unlinked line portals on this map
+		if (lastGetUPTime == level.mapTime)
+			return; //Already called in this tic
 		lastGetUPTime = level.mapTime;
 
 		//Our bounding box
@@ -2726,7 +2726,9 @@ extend class FishyPlatform
 
 			if (moveType == MOVE_NORMAL)
 			{
-				plat.GetUnlinkedPortal();
+				if (plat.bSearchForUPorts)
+					plat.GetUnlinkedPortal();
+
 				if (plat.lastUPort && !plat.portTwin)
 				{
 					//Create invisible portal twin to help with non-static line portal collision/physics
@@ -3066,7 +3068,7 @@ extend class FishyPlatform
 
 			ExchangePassengersWithTwin();
 			CheckPortalTransition(); //Handle sector portals properly
-			if (crossedPortal)
+			if (crossedPortal && bSearchForUPorts)
 			{
 				lastUPort = lastUPort.GetPortalDestination();
 				lastGetUPTime = -1;
