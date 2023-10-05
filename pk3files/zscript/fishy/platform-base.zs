@@ -321,7 +321,7 @@ extend class FishyPlatform
 	private bool bSearchForUPorts;
 	double portDelta;
 	int acsFlags;
-	transient int lastGetNPTime; //Make sure there's only one GetNewPassengers() blockmap search per tic
+	transient int lastGetNPTime; //Make sure GetNewPassengers() doesn't run its routine more than once per tic
 	transient bool lastGetNPResult;
 	transient int lastGetUPTime; //Same deal for GetUnlinkedPortal()
 	int options;
@@ -654,7 +654,7 @@ extend class FishyPlatform
 		{
 			//Only set up the new members' group info relative
 			//to the origin.
-			for (int i = newMembers.Size() - 1; i > -1; --i)
+			for (uint i = newMembers.Size(); i-- > 0;)
 			{
 				plat = newMembers[i];
 				if (plat)
