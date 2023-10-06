@@ -1644,13 +1644,13 @@ extend class FishyPlatform
 
 			//Go through the other detected platforms (and our groupmates)
 			//and see if we can steal some of their passengers.
-			for (int iPlat = otherPlats.Size() - 1; iPlat > -1 && (newPass.Size() || miscActors.Size()); --iPlat)
+			for (uint iPlat = otherPlats.Size(); iPlat-- > 0 && (newPass.Size() || miscActors.Size());)
 			{
 				let plat = otherPlats[iPlat];
 				if (!plat.passengers.Size())
 					continue;
 
-				for (int i = newPass.Size() - 1; i > -1; --i)
+				for (uint i = newPass.Size(); i-- > 0;)
 				{
 					let index = plat.passengers.Find(newPass[i]);
 					if (index < plat.passengers.Size())
@@ -1661,7 +1661,7 @@ extend class FishyPlatform
 							newPass.Delete(i);
 					}
 				}
-				for (int i = miscActors.Size() - 1; i > -1; --i)
+				for (uint i = miscActors.Size(); i-- > 0;)
 				{
 					if (plat.passengers.Find(miscActors[i]) < plat.passengers.Size())
 						miscActors.Delete(i);
@@ -1671,7 +1671,7 @@ extend class FishyPlatform
 
 			//Now figure out which of the misc actors are on top of/stuck inside
 			//established passengers.
-			for (int i = 0; miscActors.Size() && i < passengers.Size(); ++i)
+			for (uint i = 0; miscActors.Size() && i < uint(passengers.Size()); ++i)
 			{
 				let mo = passengers[i];
 				if (!mo)
@@ -1686,7 +1686,7 @@ extend class FishyPlatform
 				}
 				double moTop = mo.pos.z + mo.height;
 
-				for (int iOther = miscActors.Size() - 1; iOther > -1; --iOther)
+				for (uint iOther = miscActors.Size(); iOther-- > 0;)
 				{
 					let otherMo = miscActors[iOther];
 
