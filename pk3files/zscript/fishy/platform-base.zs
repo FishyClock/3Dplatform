@@ -1671,7 +1671,7 @@ extend class FishyPlatform
 
 			//Now figure out which of the misc actors are on top of/stuck inside
 			//established passengers.
-			for (uint i = 0; miscActors.Size() && i < uint(passengers.Size()); ++i)
+			for (int i = 0; miscActors.Size() && i < passengers.Size(); ++i)
 			{
 				let mo = passengers[i];
 				if (!mo)
@@ -1704,7 +1704,7 @@ extend class FishyPlatform
 		//prune 'passengers' array; we only want one member per group.
 		//Preferably the origin if active, else the closest member.
 		Array<FishyPlatformGroup> otherGroups;
-		for (int i = passengers.Size() - 1; i > -1; --i)
+		for (uint i = passengers.Size(); i-- > 0;)
 		{
 			let plat = FishyPlatform(passengers[i]);
 			if (!plat || !plat.group)
@@ -1829,7 +1829,7 @@ extend class FishyPlatform
 			let plat = (iTwins == 0) ? self : portTwin;
 
 			if (plat)
-			for (int iPass = plat.passengers.Size() - 1; iPass > -1; --iPass)
+			for (uint iPass = plat.passengers.Size(); iPass-- > 0;)
 			{
 				let mo = plat.passengers[iPass];
 				if (mo && !mo.bNoBlockmap) //If it has NOBLOCKMAP now, assume it's an inventory item that got picked up
@@ -1856,7 +1856,7 @@ extend class FishyPlatform
 			let plat = (iTwins == 0) ? self : portTwin;
 
 			if (plat)
-			for (int iPass = plat.passengers.Size() - 1; iPass > -1; --iPass)
+			for (uint iPass = plat.passengers.Size(); iPass-- > 0;)
 			{
 				let mo = plat.passengers[iPass];
 				if (mo && mo.bNoBlockmap)
@@ -1895,7 +1895,7 @@ extend class FishyPlatform
 
 		vector3 pushForce = level.Vec3Diff(startPos, endPos);
 		Array<double> preMovePos; //Sadly we can't have a vector2/3 dyn array
-		for (int i = passengers.Size() - 1; i > -1; --i)
+		for (int i = passengers.Size(); i-- > 0;)
 		{
 			let mo = passengers[i];
 			let moOldPos = mo.pos;
@@ -2168,7 +2168,7 @@ extend class FishyPlatform
 
 		//Anyone left in the 'passengers' array has moved successfully.
 		//Adjust their angles and velocities.
-		for (int i = passengers.Size() - 1; i > -1; --i)
+		for (int i = passengers.Size(); i-- > 0;)
 		{
 			let mo = passengers[i];
 
@@ -2805,7 +2805,7 @@ extend class FishyPlatform
 
 				//Get all passengers that are platforms and call their GetNewPassengers() now.
 				//That should allow them to take some of our other passengers.
-				for (int iPass = plat.passengers.Size() - 1; iPass > -1; --iPass)
+				for (uint iPass = plat.passengers.Size(); iPass-- > 0;)
 				{
 					let platPass = FishyPlatform(plat.passengers[iPass]);
 					if (!platPass || platPass.bNoBlockmap) //They shouldn't have NOBLOCKMAP now - this is taken care of below
@@ -4363,7 +4363,7 @@ extend class FishyPlatform
 				if (!pSize)
 					continue; //This platform has no passengers
 
-				for (int i = passList.Size() - 1; i > -1; --i)
+				for (uint i = passList.Size(); i-- > 0;)
 				{
 					if (plat.passengers.Find(passList[i]) < pSize)
 						return true;
@@ -4415,7 +4415,7 @@ extend class FishyPlatform
 			platList.Push(plat);
 		}
 
-		for (int i = platList.Size() - 1; i > -1; --i)
+		for (uint i = platList.Size(); i-- > 0;)
 		{
 			let oldTime = platList[i].time;
 			platList[i].time = newTime;
