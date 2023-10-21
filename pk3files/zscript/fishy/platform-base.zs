@@ -399,6 +399,7 @@ extend class FishyPlatform
 			}
 		}
 
+		//Setting the scale through UDB affects collision size
 		A_SetSize(radius * abs(scale.x), height * abs(scale.y));
 
 		if (options == -1) //Not already set through ACS?
@@ -987,7 +988,7 @@ extend class FishyPlatform
 					if (!pushed || pushed.bDestroyed)
 						return; //Actor 'pushed' was destroyed
 				}
-			
+
 				if (crushDamage > 0 && !CrushObstacle(pushed, false, false, pusher))
 					return; //Actor 'pushed' was destroyed
 				deliveredOuchies = true;
@@ -1916,7 +1917,7 @@ extend class FishyPlatform
 				//so that the passenger doesn't end up outside the XY range at its new position
 				//and potentially fall off the platform.
 				//This is a workaround to the fact that GZDoom (at this moment in time)
-				//does not rotate an actor's bounding box when said actor's angle/yaw changes.
+				//uses AABB for actor collision. Meaning the collision box never rotates.
 				if (abs(oldOffX) < maxDist && abs(oldOffY) < maxDist)
 				{
 					maxDist -= 1.0;
@@ -2207,6 +2208,7 @@ extend class FishyPlatform
 
 		double top = pos.z + height;
 		vector3 velJump = (double.nan, 0, 0);
+		bool doVelJump = (options & OPTFLAG_ADDVELJUMP);
 		bool passengerCanCross = (options & OPTFLAG_PASSCANCROSS);
 
 		for (uint i = passengers.Size(); i-- > 0;)
@@ -2229,7 +2231,7 @@ extend class FishyPlatform
 			{
 				//Add velocity to the passenger we just lost track of.
 				//It's likely to be a player that has jumped away.
-				if (options & OPTFLAG_ADDVELJUMP)
+				if (doVelJump)
 				{
 					if (velJump != velJump) //NaN check
 						velJump = level.Vec3Diff(oldPos, pos);
@@ -3111,7 +3113,7 @@ extend class FishyPlatform
 		// Interpolate between p2 and p3 along a Catmull-Rom spline
 		// http://research.microsoft.com/~hollasch/cgindex/curves/catmull-rom.html
 		//
-		// NOTE: the above link doesn't seem to work so here's an alternative. -FishyClockwork
+		// NOTE: the above link doesn't seem to work so here's an alternative. -Fishytza
 		// https://en.wikipedia.org/wiki/Cubic_Hermite_spline#Catmull%E2%80%93Rom_spline
 		double t = time;
 		double res = 2*p2;

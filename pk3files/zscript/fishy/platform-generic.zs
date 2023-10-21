@@ -2,7 +2,7 @@ class FishyPlatformGeneric : FishyPlatform
 {
 	Default
 	{
-		//$Title Generic Platform (set model and size in the 'Custom' tab)
+		//$Title Generic Platform (set model and size in the 'Custom' tab. Setting scale also affects size.)
 		Radius 16; //A visual size for UDB's Visual Mode since it has a default model
 		Height 16;
 	}
