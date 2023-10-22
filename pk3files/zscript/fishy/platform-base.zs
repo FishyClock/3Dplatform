@@ -77,7 +77,7 @@ class FishyPlatform : Actor abstract
 
 		//$Arg1 Options
 		//$Arg1Type 12
-		//$Arg1Enum {1 = "Linear path <- Does nothing for non-origin group members"; 2 = "Use point angle <- ACS commands don't need this / Group move: Rotate angle"; 4 = "Use point pitch <- ACS commands don't need this / Group move: Rotate pitch"; 8 = "Use point roll <- ACS commands don't need this / Group move: Rotate roll"; 16 = "Face movement direction <- Does nothing for non-origin group members"; 32 = "Don't clip against geometry and other platforms"; 64 = "Start active"; 128 = "Group move: Mirror group origin's movement"; 256 = "Add velocity to passengers when they jump away"; 512 = "Add velocity to passengers when stopping (and not blocked)"; 1024 = "Interpolation point is destination"; 2048 = "Resume path when activated again"; 4096 = "Always do 'crush damage' when pushing obstacles"; 8192 = "Pitch/roll changes don't affect passengers"; 16384 = "Passengers can push obstacles"; 32768 = "All passengers get temp NOBLOCKMAP'd before moving platform group <- Set on group origin"; 65536 = "When moving, allow walking monsters to cross onto other platforms and 'bridge' things";}
+		//$Arg1Enum {1 = "Linear path <- Does nothing for non-origin group members"; 2 = "Use point angle <- ACS commands don't need this / Group move: Rotate angle"; 4 = "Use point pitch <- ACS commands don't need this / Group move: Rotate pitch"; 8 = "Use point roll <- ACS commands don't need this / Group move: Rotate roll"; 16 = "Face movement direction <- Does nothing for non-origin group members"; 32 = "Don't clip against geometry and other platforms"; 64 = "Start active"; 128 = "Group move: Mirror group origin's movement"; 256 = "Add velocity to passengers when they jump away"; 512 = "Add velocity to passengers when stopping (and not blocked)"; 1024 = "Interpolation point is destination"; 2048 = "Resume path when activated again"; 4096 = "Always do 'crush damage' when pushing obstacles"; 8192 = "Pitch/roll changes don't affect passengers"; 16384 = "Passengers can push obstacles"; 32768 = "All passengers get temp NOBLOCKMAP'd before moving platform group <- Set on group origin"; 65536 = "When moving, allow walking monsters to cross onto other platforms and 'bridge' things"; 131072 = "Check for nearby things and line portals every tic";}
 		//$Arg1Tooltip 'Group move' affects movement imposed by the group origin. (It only has an effect on non-origin group members.)\nThe 'group origin' is the platform that other members move with and orbit around.\nActivating any group member will turn it into the group origin.\nFlag 32768 is for cases where you want all passengers from the entire group to not collide with each other and to not collide with other platforms in the group (when moving everyone).
 
 		//$Arg2 Platform(s) To Group With
@@ -255,6 +255,7 @@ extend class FishyPlatform
 		OPTFLAG_PASSCANPUSH		= (1<<14),
 		OPTFLAG_DIFFPASSCOLL	= (1<<15),
 		OPTFLAG_PASSCANCROSS	= (1<<16),
+		OPTFLAG_REALTIMEBMAP	= (1<<17),
 
 		//FishyPlatformNode args that we check
 		NODEARG_TRAVELTIME		= 1, //Also applies to InterpolationPoint
@@ -407,11 +408,6 @@ extend class FishyPlatform
 		if (crushDamage == -1) //Ditto
 			crushDamage = args[ARG_CRUSHDMG];
 
-		//In case the mapper placed walking monsters on the platform
-		//get something for HandleOldPassengers() to monitor.
-		GetNewBmapResults();
-		GetNewPassengers(true);
-
 		bool noPrefix = (args[ARG_GROUPTID] && !SetUpGroup(args[ARG_GROUPTID], false));
 
 		//Having a group origin at this point implies the group is already on the move.
@@ -469,6 +465,14 @@ extend class FishyPlatform
 		//Print no (additional) warnings if we're not supposed to have a interpolation point
 		if (nodeTid && SetUpPath(nodeTid, noPrefix) && (options & OPTFLAG_STARTACTIVE))
 			Activate(self);
+
+		//In case the mapper placed walking monsters on an idle platform
+		//get something for HandleOldPassengers() to monitor.
+		if (!passengers.Size()) //PlatMove() would have already given us some passengers by this point
+		{
+			GetNewBmapResults();
+			GetNewPassengers(true);
+		}
 
 		Super.PostBeginPlay();
 	}
@@ -586,7 +590,17 @@ extend class FishyPlatform
 		while (plat = FishyPlatform(it.Next()))
 		{
 			if (plat != self)
+			{
 				foundOne = true;
+
+				//We have to check for these conditions in here, too
+				//because this platform might have not called PostBeginPlay() yet.
+				//(This is done because 'options' can be checked prematurely.)
+				if (plat.options == -1) //Not already set through ACS?
+					plat.options = plat.args[ARG_OPTIONS];
+				if (plat.crushDamage == -1) //Ditto
+					plat.crushDamage = plat.args[ARG_CRUSHDMG];
+			}
 
 			if (plat.group) //Target is in its own group?
 			{
@@ -1423,25 +1437,48 @@ extend class FishyPlatform
 		//
 		// Since this is done at an interval the search radius should be larger too
 		// to give a better chance of catching things.
+		//
+		//...Unless of course fetching blockmap results every tic (ie. "in realtime") is desired.
+
+		//Do nothing if GetNewPassengers() and GetUnlinkedPortal() have been called in this tic.
+		if (level.mapTime == lastGetNPTime && (!bSearchForUPorts || level.mapTime == lastGetUPTime))
+			return;
+
 		nearbyActors.Clear();
 		nearbyUPorts.Clear();
 
 		if (bPortCopy && bNoBlockmap)
 			return; //A portal copy that's not in use shouldn't do anything here
 
-		let iteratorRadius = radius * BMAP_RADIUS_MULTIPLIER;
+		bool realtime = (options & OPTFLAG_REALTIMEBMAP);
+
+		let iteratorRadius = radius;
+		if (!realtime || pos ~== oldPos) //If idle, still use a bigger radius for the sake of MaybeGiveStepUpAssistance()
+			iteratorRadius *= BMAP_RADIUS_MULTIPLIER;
 
 		let bti = BlockThingsIterator.Create(self, iteratorRadius);
 		while (bti.Next())
 		{
-			//Only accept this actor if it has certain attributes
 			let mo = bti.thing;
+			if (mo == self || mo == portTwin)
+				continue; //Ignore self and portal twin
+
+			//If we're doing realtime blockmap searching
+			//then accept this actor unconditionally.
+			//Because all the relevant checks (including distance)
+			//will be done elsewhere.
+			if (realtime)
+			{
+				nearbyActors.Push(mo);
+				continue;
+			}
+
+			//Otherwise, only accept this actor if it has certain attributes
 			if ((mo.bCanPass || //Can move by itself (relevant for MaybeGiveStepUpAssistance())
 				(mo.bCorpse && !mo.bDontGib) || //A corpse (relevant for corpse grinding)
 				(mo.bSpecial && mo is "Inventory") || //Item that can be picked up (relevant for Z position correction)
 				IsCarriable(mo) || //A potential passenger
-				(CollisionFlagChecks(self, mo) && self.CanCollideWith(mo, false) && mo.CanCollideWith(self, true) ) ) && //A solid actor
-				mo != self && mo != portTwin ) //Ignore self and portal twin
+				(CollisionFlagChecks(self, mo) && self.CanCollideWith(mo, false) && mo.CanCollideWith(self, true) ) ) ) //A solid actor
 			{
 				//We don't want the resulting array size to be too large because
 				//it's a waste of time checking so many actors that are simply out of reach.
@@ -1454,6 +1491,9 @@ extend class FishyPlatform
 
 		if (bSearchForUPorts) //Only do a search if there's something to look for (and we're not a portal copy)
 		{
+			if (realtime)
+				iteratorRadius = radius;
+
 			let bli = BlockLinesIterator.Create(self, iteratorRadius);
 			while (bli.Next())
 			{
@@ -1463,7 +1503,7 @@ extend class FishyPlatform
 			}
 		}
 
-		noBmapSearchTics = BMAP_SEARCH_INTERVAL;
+		noBmapSearchTics = realtime ? 0 : BMAP_SEARCH_INTERVAL;
 		oldBmapSearchPos = pos.xy; //If we're too far away from this position then this function will be called earlier (see Tick())
 	}
 
@@ -2583,8 +2623,8 @@ extend class FishyPlatform
 			}
 		}
 
-		if (!moved && blockingMobj)
-			noBmapSearchTics = 0; //Try to get 'blockingMobj' in the next blockmap search
+		if (!moved && (mo = blockingMobj) && nearbyActors.Find(mo) >= nearbyActors.Size())
+			nearbyActors.Push(mo);
 
 		return moved;
 	}
@@ -2723,7 +2763,12 @@ extend class FishyPlatform
 			if (i > -1 && (!plat || plat == self)) //Already handled self
 				continue;
 
-			if (!plat.noBmapSearchTics)
+			//More often than not "teleport moves" involve warping to
+			//our first interpolation point.
+			//Or being moved by our group origin as soon as the map starts.
+			//In such cases get everything that's around us now before
+			//we actually move.
+			if (moveType == MOVE_TELEPORT)
 				plat.GetNewBmapResults();
 
 			if (moveType == MOVE_NORMAL)
@@ -2781,7 +2826,7 @@ extend class FishyPlatform
 					plat.portTwin.A_ChangeLinkFlags(NO_BMAP); //No collision while not needed (don't destroy it - not here)
 				}
 
-				if (!plat.portTwin.noBmapSearchTics)
+				if (moveType == MOVE_TELEPORT)
 					plat.portTwin.GetNewBmapResults();
 			}
 
@@ -4205,6 +4250,11 @@ extend class FishyPlatform
 			//update the group info. (Having an "origin" usually means they are moving.)
 			if (((oldFlags ^ newFlags) & OPTFLAG_MIRROR) && plat.group && plat.group.origin && plat != plat.group.origin)
 				plat.UpdateGroupInfo();
+
+			//If the mapper wants realtime passenger fetching right now
+			//then the search tics need to be discarded for this to take effect.
+			if (newFlags & OPTFLAG_REALTIMEBMAP)
+				plat.noBmapSearchTics = 0;
 		}
 	}
 
