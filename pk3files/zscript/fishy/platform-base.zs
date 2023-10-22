@@ -1474,11 +1474,11 @@ extend class FishyPlatform
 			}
 
 			//Otherwise, only accept this actor if it has certain attributes
-			if ((mo.bCanPass || //Can move by itself (relevant for MaybeGiveStepUpAssistance())
+			if (mo.bCanPass || //Can move by itself (relevant for MaybeGiveStepUpAssistance())
 				(mo.bCorpse && !mo.bDontGib) || //A corpse (relevant for corpse grinding)
 				(mo.bSpecial && mo is "Inventory") || //Item that can be picked up (relevant for Z position correction)
 				IsCarriable(mo) || //A potential passenger
-				(CollisionFlagChecks(self, mo) && self.CanCollideWith(mo, false) && mo.CanCollideWith(self, true) ) ) ) //A solid actor
+				(CollisionFlagChecks(self, mo) && self.CanCollideWith(mo, false) && mo.CanCollideWith(self, true) ) ) //A solid actor
 			{
 				//We don't want the resulting array size to be too large because
 				//it's a waste of time checking so many actors that are simply out of reach.
