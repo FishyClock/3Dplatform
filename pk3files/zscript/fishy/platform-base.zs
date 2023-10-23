@@ -1440,15 +1440,17 @@ extend class FishyPlatform
 		//
 		//...Unless of course fetching blockmap results every tic (ie. "in realtime") is desired.
 
+		//A portal copy that's not in use shouldn't do anything besides clear its lists
+		if (bPortCopy && bNoBlockmap)
+		{
+			nearbyActors.Clear();
+			nearbyUPorts.Clear();
+			return;
+		}
+
 		//Do nothing if GetNewPassengers() and GetUnlinkedPortal() have been called in this tic.
 		if (level.mapTime == lastGetNPTime && (!bSearchForUPorts || level.mapTime == lastGetUPTime))
 			return;
-
-		nearbyActors.Clear();
-		nearbyUPorts.Clear();
-
-		if (bPortCopy && bNoBlockmap)
-			return; //A portal copy that's not in use shouldn't do anything here
 
 		bool realtime = (options & OPTFLAG_REALTIMEBMAP);
 
@@ -1456,41 +1458,48 @@ extend class FishyPlatform
 		if (!realtime || pos ~== oldPos) //If idle, still use a bigger radius for the sake of MaybeGiveStepUpAssistance()
 			iteratorRadius *= BMAP_RADIUS_MULTIPLIER;
 
-		let bti = BlockThingsIterator.Create(self, iteratorRadius);
-		while (bti.Next())
+		if (level.mapTime != lastGetNPTime)
 		{
-			let mo = bti.thing;
-			if (mo == self || mo == portTwin)
-				continue; //Ignore self and portal twin
+			nearbyActors.Clear();
 
-			//If we're doing realtime blockmap searching
-			//then accept this actor unconditionally.
-			//Because all the relevant checks (including distance)
-			//will be done elsewhere.
-			if (realtime)
+			let bti = BlockThingsIterator.Create(self, iteratorRadius);
+			while (bti.Next())
 			{
-				nearbyActors.Push(mo);
-				continue;
-			}
+				let mo = bti.thing;
+				if (mo == self || mo == portTwin)
+					continue; //Ignore self and portal twin
 
-			//Otherwise, only accept this actor if it has certain attributes
-			if (mo.bCanPass || //Can move by itself (relevant for MaybeGiveStepUpAssistance())
-				(mo.bCorpse && !mo.bDontGib) || //A corpse (relevant for corpse grinding)
-				(mo.bSpecial && mo is "Inventory") || //Item that can be picked up (relevant for Z position correction)
-				IsCarriable(mo) || //A potential passenger
-				(CollisionFlagChecks(self, mo) && self.CanCollideWith(mo, false) && mo.CanCollideWith(self, true) ) ) //A solid actor
-			{
-				//We don't want the resulting array size to be too large because
-				//it's a waste of time checking so many actors that are simply out of reach.
-				//But do be a little overboard with our 'blockDist'.
-				double blockDist = iteratorRadius + mo.radius + mo.speed + mo.vel.xy.Length();
-				if (abs(bti.position.x - mo.pos.x) < blockDist && abs(bti.position.y - mo.pos.y) < blockDist)
+				//If we're doing realtime blockmap searching
+				//then accept this actor unconditionally.
+				//Because all the relevant checks (including distance)
+				//will be done elsewhere.
+				if (realtime)
+				{
 					nearbyActors.Push(mo);
+					continue;
+				}
+
+				//Otherwise, only accept this actor if it has certain attributes
+				if (mo.bCanPass || //Can move by itself (relevant for MaybeGiveStepUpAssistance())
+					(mo.bCorpse && !mo.bDontGib) || //A corpse (relevant for corpse grinding)
+					(mo.bSpecial && mo is "Inventory") || //Item that can be picked up (relevant for Z position correction)
+					IsCarriable(mo) || //A potential passenger
+					(CollisionFlagChecks(self, mo) && self.CanCollideWith(mo, false) && mo.CanCollideWith(self, true) ) ) //A solid actor
+				{
+					//We don't want the resulting array size to be too large because
+					//it's a waste of time checking so many actors that are simply out of reach.
+					//But do be a little overboard with our 'blockDist'.
+					double blockDist = iteratorRadius + mo.radius + mo.speed + mo.vel.xy.Length();
+					if (abs(bti.position.x - mo.pos.x) < blockDist && abs(bti.position.y - mo.pos.y) < blockDist)
+						nearbyActors.Push(mo);
+				}
 			}
 		}
 
-		if (bSearchForUPorts) //Only do a search if there's something to look for (and we're not a portal copy)
+		if (bSearchForUPorts && level.mapTime != lastGetUPTime) //Only do a search if there's something to look for (and we're not a portal copy)
 		{
+			nearbyUPorts.Clear();
+
 			if (realtime)
 				iteratorRadius = radius;
 
@@ -3115,11 +3124,11 @@ extend class FishyPlatform
 
 			ExchangePassengersWithTwin();
 			CheckPortalTransition(); //Handle sector portals properly
-			if (crossedPortal)
+			if (crossedPortal && bSearchForUPorts)
 			{
+				lastGetUPTime = -1;
 				GetNewBmapResults();
-				if (bSearchForUPorts)
-					GetUnlinkedPortal();
+				GetUnlinkedPortal();
 			}
 		}
 		bMoved = true;
