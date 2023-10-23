@@ -2240,7 +2240,7 @@ extend class FishyPlatform
 	//============================
 	// HandleOldPassengers
 	//============================
-	private void HandleOldPassengers ()
+	private void HandleOldPassengers (bool letThemWalk)
 	{
 		// Tracks established passengers and doesn't forget them even if
 		// they're above our 'top' (with no 3D floors in between).
@@ -2286,6 +2286,9 @@ extend class FishyPlatform
 			}
 
 			//See if we should keep it away from the edge
+			if (letThemWalk)
+				continue; //Nope
+
 			if (!mo.bIsMonster || mo.bNoGravity || mo.bFloat || !mo.speed) //Is not a walking monster?
 				continue;
 
@@ -2694,8 +2697,7 @@ extend class FishyPlatform
 				continue;
 			}
 
-			int index = passengers.Find(mo);
-			if (index < passengers.Size())
+			if (top - mo.pos.z <= mo.maxStepHeight)
 			{
 				//Try to have it on top of us and deliberately ignore if it gets stuck in another actor
 				PassengerPreMove(mo);
@@ -2717,8 +2719,6 @@ extend class FishyPlatform
 
 				if (fits)
 					continue;
-				else
-					ForgetPassenger(index); //Stuck actors can't be passengers
 			}
 
 			if (!highestMo || highestMo.pos.z + highestMo.height < mo.pos.z + mo.height)
@@ -2726,6 +2726,7 @@ extend class FishyPlatform
 				highestMo = mo;
 				delayedPush.Push(mo);
 			}
+
 			if (mo != highestMo) //We'll push 'highestMo' later
 				PushObstacle(mo);
 		}
@@ -3656,12 +3657,17 @@ extend class FishyPlatform
 		// the moving bridge construct in the demo map would play
 		// its lift sounds slightly out of sync. (2 actors play the sounds.)
 
+		bool inactive;
+
 		if (!group || !group.origin || group.origin == self)
 		for (int i = -1; i == -1 || (group && group.origin == self && i < group.members.Size()); ++i)
 		{
 			let plat = (i == -1) ? self : group.GetMember(i);
 			if (i > -1 && (!plat || plat == self)) //Already handled self
 				continue;
+
+			if (i == -1)
+				inactive = (holdTime - 1 > 0 || !IsActive());
 
 			for (int iTwins = 0; iTwins < 2; ++iTwins)
 			{
@@ -3680,7 +3686,7 @@ extend class FishyPlatform
 				}
 				plat.bOnMobj = (iTwins == 0) ? false : plat.portTwin.bOnMobj; //Aside from standing on an actor, this can also be "true" later if hitting a lower obstacle while going down or we have stuck actors
 				plat.HandleStuckActors();
-				plat.HandleOldPassengers();
+				plat.HandleOldPassengers(inactive);
 				plat.UpdateOldInfo();
 			}
 		}
