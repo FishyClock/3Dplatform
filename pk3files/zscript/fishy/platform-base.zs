@@ -325,6 +325,7 @@ extend class FishyPlatform
 	transient int lastGetNPTime; //Make sure GetNewPassengers() doesn't run its routine more than once per tic
 	transient bool lastGetNPResult;
 	transient int lastGetUPTime; //Same deal for GetUnlinkedPortal()
+	transient int lastGetBmapTime; //Same deal for GetNewBmapResults()
 	int options;
 	int crushDamage;
 
@@ -373,6 +374,7 @@ extend class FishyPlatform
 		time = 1.1;
 		lastGetNPTime = -1;
 		lastGetUPTime = -1;
+		lastGetBmapTime = -1;
 		options = -1;
 		crushDamage = -1;
 		pCurr.x = double.nan;
@@ -1429,7 +1431,7 @@ extend class FishyPlatform
 	//============================
 	// GetNewBmapResults
 	//============================
-	private void GetNewBmapResults ()
+	private void GetNewBmapResults (bool forceRun = false)
 	{
 		// Just creating one BTI or one BLI per tic takes up unnecessary processing time (according to "profilethinkers")
 		// and creates a lot of garbage for the GC (according to "stat gc").
@@ -1438,17 +1440,16 @@ extend class FishyPlatform
 		// Since this is done at an interval the search radius should be larger too
 		// to give a better chance of catching things.
 		//
-		//...Unless of course fetching blockmap results every tic (ie. "in realtime") is desired.
+		// ...Unless of course fetching blockmap results every tic (ie. "in realtime") is desired.
+
+		if (level.mapTime == lastGetBmapTime && !forceRun)
+			return; //Already called in this tic
+		lastGetBmapTime = level.mapTime;
+
+		nearbyActors.Clear();
 
 		//A portal copy that's not in use shouldn't do anything besides clear its 'nearbyActors' array
 		if (bPortCopy && bNoBlockmap)
-		{
-			nearbyActors.Clear();
-			return;
-		}
-
-		//Do nothing if GetNewPassengers() and GetUnlinkedPortal() have been called in this tic.
-		if (level.mapTime == lastGetNPTime && (!bSearchForUPorts || level.mapTime == lastGetUPTime))
 			return;
 
 		bool realtime = (options & OPTFLAG_REALTIMEBMAP);
@@ -1457,45 +1458,40 @@ extend class FishyPlatform
 		if (!realtime || pos ~== oldPos) //If idle, still use a bigger radius for the sake of MaybeGiveStepUpAssistance()
 			iteratorRadius *= BMAP_RADIUS_MULTIPLIER;
 
-		if (level.mapTime != lastGetNPTime)
+		let bti = BlockThingsIterator.Create(self, iteratorRadius);
+		while (bti.Next())
 		{
-			nearbyActors.Clear();
+			let mo = bti.thing;
+			if (mo == self || mo == portTwin)
+				continue; //Ignore self and portal twin
 
-			let bti = BlockThingsIterator.Create(self, iteratorRadius);
-			while (bti.Next())
+			//If we're doing realtime blockmap searching
+			//then accept this actor unconditionally.
+			//Because all the relevant checks (including distance)
+			//will be done elsewhere.
+			if (realtime)
 			{
-				let mo = bti.thing;
-				if (mo == self || mo == portTwin)
-					continue; //Ignore self and portal twin
+				nearbyActors.Push(mo);
+				continue;
+			}
 
-				//If we're doing realtime blockmap searching
-				//then accept this actor unconditionally.
-				//Because all the relevant checks (including distance)
-				//will be done elsewhere.
-				if (realtime)
-				{
+			//Otherwise, only accept this actor if it has certain attributes
+			if (mo.bCanPass || //Can move by itself (relevant for MaybeGiveStepUpAssistance())
+				(mo.bCorpse && !mo.bDontGib) || //A corpse (relevant for corpse grinding)
+				(mo.bSpecial && mo is "Inventory") || //Item that can be picked up (relevant for Z position correction)
+				IsCarriable(mo) || //A potential passenger
+				(CollisionFlagChecks(self, mo) && self.CanCollideWith(mo, false) && mo.CanCollideWith(self, true) ) ) //A solid actor
+			{
+				//We don't want the resulting array size to be too large because
+				//it's a waste of time checking so many actors that are simply out of reach.
+				//But do be a little overboard with our 'blockDist'.
+				double blockDist = iteratorRadius + mo.radius + mo.speed + mo.vel.xy.Length();
+				if (abs(bti.position.x - mo.pos.x) < blockDist && abs(bti.position.y - mo.pos.y) < blockDist)
 					nearbyActors.Push(mo);
-					continue;
-				}
-
-				//Otherwise, only accept this actor if it has certain attributes
-				if (mo.bCanPass || //Can move by itself (relevant for MaybeGiveStepUpAssistance())
-					(mo.bCorpse && !mo.bDontGib) || //A corpse (relevant for corpse grinding)
-					(mo.bSpecial && mo is "Inventory") || //Item that can be picked up (relevant for Z position correction)
-					IsCarriable(mo) || //A potential passenger
-					(CollisionFlagChecks(self, mo) && self.CanCollideWith(mo, false) && mo.CanCollideWith(self, true) ) ) //A solid actor
-				{
-					//We don't want the resulting array size to be too large because
-					//it's a waste of time checking so many actors that are simply out of reach.
-					//But do be a little overboard with our 'blockDist'.
-					double blockDist = iteratorRadius + mo.radius + mo.speed + mo.vel.xy.Length();
-					if (abs(bti.position.x - mo.pos.x) < blockDist && abs(bti.position.y - mo.pos.y) < blockDist)
-						nearbyActors.Push(mo);
-				}
 			}
 		}
 
-		if (bSearchForUPorts && level.mapTime != lastGetUPTime) //Only do a search if there's something to look for (and we're not a portal copy)
+		if (bSearchForUPorts) //Only do a search if there's something to look for (and we're not a portal copy)
 		{
 			nearbyUPorts.Clear();
 
@@ -2354,9 +2350,9 @@ extend class FishyPlatform
 	//============================
 	// GetUnlinkedPortal
 	//============================
-	private void GetUnlinkedPortal ()
+	private void GetUnlinkedPortal (bool forceRun = false)
 	{
-		if (lastGetUPTime == level.mapTime)
+		if (lastGetUPTime == level.mapTime && !forceRun)
 			return; //Already called in this tic
 		lastGetUPTime = level.mapTime;
 
@@ -3057,7 +3053,7 @@ extend class FishyPlatform
 					if (step == 0)
 						newAngle += angDiff;
 
-					if (step < maxSteps-1)
+					if (step < maxSteps - 1)
 						stepMove.xy = RotateVector(stepMove.xy, angDiff);
 				}
 				myStartPos += pos;
@@ -3123,11 +3119,10 @@ extend class FishyPlatform
 
 			ExchangePassengersWithTwin();
 			CheckPortalTransition(); //Handle sector portals properly
-			if (crossedPortal && bSearchForUPorts)
+			if (crossedPortal && bSearchForUPorts && step < maxSteps - 1)
 			{
-				lastGetUPTime = -1;
-				GetNewBmapResults();
-				GetUnlinkedPortal();
+				GetNewBmapResults(true);
+				GetUnlinkedPortal(true);
 			}
 		}
 		bMoved = true;
