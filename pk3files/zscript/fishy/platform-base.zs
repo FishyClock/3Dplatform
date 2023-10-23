@@ -1440,11 +1440,10 @@ extend class FishyPlatform
 		//
 		//...Unless of course fetching blockmap results every tic (ie. "in realtime") is desired.
 
-		//A portal copy that's not in use shouldn't do anything besides clear its lists
+		//A portal copy that's not in use shouldn't do anything besides clear its 'nearbyActors' array
 		if (bPortCopy && bNoBlockmap)
 		{
 			nearbyActors.Clear();
-			nearbyUPorts.Clear();
 			return;
 		}
 
