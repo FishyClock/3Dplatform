@@ -1662,8 +1662,8 @@ extend class FishyPlatform
 
 			if (!ignoreObs && !bOnMobj &&
 				abs(pos.z - (mo.pos.z + mo.height)) <= TOP_EPSILON && //Are we standing on 'mo'?
-				CollisionFlagChecks(self, mo) &&
-				self.CanCollideWith(mo, false) && mo.CanCollideWith(self, true) && OverlapXY(self, mo))
+				CollisionFlagChecks(self, mo) && OverlapXY(self, mo) &&
+				self.CanCollideWith(mo, false) && mo.CanCollideWith(self, true) )
 			{
 				bOnMobj = true;
 				continue;
@@ -2677,9 +2677,8 @@ extend class FishyPlatform
 	//============================
 	// HandleStuckActors
 	//============================
-	private void HandleStuckActors ()
+	private void HandleStuckActors (bool doStandOn)
 	{
-		double top = pos.z + height;
 		Actor highestMo = null;
 		Array<Actor> delayedPush;
 
@@ -2695,38 +2694,15 @@ extend class FishyPlatform
 				continue;
 			}
 
-			if (top - mo.pos.z <= mo.maxStepHeight)
-			{
-				//Try to have it on top of us and deliberately ignore if it gets stuck in another actor
-				PassengerPreMove(mo);
-				bool fits = FitsAtPosition(mo, (mo.pos.xy, top), true);
-				if (fits)
-				{
-					if (mo is "FishyPlatform")
-					{
-						FishyPlatform(mo).PlatMove((mo.pos.xy, top), mo.angle, mo.pitch, mo.roll, MOVE_QUICK);
-					}
-					else
-					{
-						mo.SetZ(top);
-						mo.CheckPortalTransition(); //Handle sector portals properly
-					}
-					stuckActors.Delete(i);
-				}
-				PassengerPostMove(mo, fits);
-
-				if (fits)
-					continue;
-			}
-
-			if (!highestMo || highestMo.pos.z + highestMo.height < mo.pos.z + mo.height)
+			if (doStandOn && (!highestMo || highestMo.pos.z + highestMo.height < mo.pos.z + mo.height))
 			{
 				highestMo = mo;
 				delayedPush.Push(mo);
 			}
-
-			if (mo != highestMo) //We'll push 'highestMo' later
+			else
+			{
 				PushObstacle(mo);
+			}
 		}
 
 		//Try to stand on the highest stuck actor if our 'maxStepHeight' allows it
@@ -3303,7 +3279,7 @@ extend class FishyPlatform
 	//============================
 	// MoveGroup
 	//============================
-	private bool MoveGroup (int moveType)
+	private bool MoveGroup (PMoveTypes moveType)
 	{
 		double delta = DeltaAngle(groupAngle, angle);
 		double piDelta = DeltaAngle(groupPitch, pitch);
@@ -3366,7 +3342,7 @@ extend class FishyPlatform
 				}
 			}
 
-			if (!plat.DoMove(newPos, newAngle, newPitch, newRoll, moveType) && moveType != MOVE_QUICK)
+			if (!plat.DoMove(newPos, newAngle, newPitch, newRoll, moveType) && moveType > MOVE_QUICK)
 				return false;
 		}
 		return true;
@@ -3697,7 +3673,6 @@ extend class FishyPlatform
 					plat.GetNewBmapResults();
 				}
 				plat.bOnMobj = (iTwins == 0) ? false : plat.portTwin.bOnMobj; //Aside from standing on an actor, this can also be "true" later if hitting a lower obstacle while going down or we have stuck actors
-				plat.HandleStuckActors();
 				plat.HandleOldPassengers(inactive);
 				plat.UpdateOldInfo();
 			}
@@ -3862,6 +3837,7 @@ extend class FishyPlatform
 			bool onGround = false;
 			bool yesGravity = false;
 			bool yesFriction = false;
+			inactive = !bActive;
 
 			for (int i = -1; i == -1 || (group && group.origin == self && i < group.members.Size()); ++i)
 			{
@@ -3876,20 +3852,21 @@ extend class FishyPlatform
 
 					plat.CheckFloorCeiling();
 					plat.UpdateWaterLevel();
+					plat.HandleStuckActors(inactive);
+
+					if (!plat.bOnMobj && plat.pos.z > plat.floorZ)
+					{
+						Actor mo;
+						plat.bOnMobj = (
+							(plat.lastGetNPTime == level.mapTime && !plat.lastGetNPResult) ||
+							((mo = plat.blockingMobj) && mo.pos.z <= plat.pos.z && OverlapXY(plat, mo)) ||
+							!plat.TestMobjZ(true) );
+					}
 
 					//Find a member who is gravity bound and/or is "on the ground" and/or doesn't ignore friction
 					onGround |= (plat.bOnMobj || plat.pos.z <= plat.floorZ);
 					yesGravity |= !plat.bNoGravity;
 					yesFriction |= !plat.bNoFriction;
-
-					if (yesGravity && !onGround)
-					{
-						Actor mo;
-						plat.bOnMobj = ((plat.lastGetNPTime == level.mapTime && !plat.lastGetNPResult) ||
-							((mo = plat.blockingMobj) && mo.pos.z <= plat.pos.z && OverlapXY(plat, mo)) ||
-							!plat.TestMobjZ(true) );
-						onGround = plat.bOnMobj;
-					}
 				}
 			}
 
