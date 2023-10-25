@@ -1496,7 +1496,7 @@ extend class FishyPlatform
 			nearbyUPorts.Clear();
 
 			if (realtime)
-				iteratorRadius = radius;
+				iteratorRadius = radius + EXTRA_SIZE;
 
 			let bli = BlockLinesIterator.Create(self, iteratorRadius);
 			while (bli.Next())
