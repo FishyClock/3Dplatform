@@ -410,6 +410,11 @@ extend class FishyPlatform
 		if (crushDamage == -1) //Ditto
 			crushDamage = args[ARG_CRUSHDMG];
 
+		//In case the mapper placed walking monsters on an idle platform
+		//get something for HandleOldPassengers() to monitor.
+		GetNewBmapResults();
+		GetNewPassengers(true);
+
 		bool noPrefix = (args[ARG_GROUPTID] && !SetUpGroup(args[ARG_GROUPTID], false));
 
 		//Having a group origin at this point implies the group is already on the move.
@@ -467,14 +472,6 @@ extend class FishyPlatform
 		//Print no (additional) warnings if we're not supposed to have a interpolation point
 		if (nodeTid && SetUpPath(nodeTid, noPrefix) && (options & OPTFLAG_STARTACTIVE))
 			Activate(self);
-
-		//In case the mapper placed walking monsters on an idle platform
-		//get something for HandleOldPassengers() to monitor.
-		if (!passengers.Size()) //PlatMove() would have already given us some passengers by this point
-		{
-			GetNewBmapResults();
-			GetNewPassengers(true);
-		}
 
 		Super.PostBeginPlay();
 	}
@@ -3939,6 +3936,18 @@ extend class FishyPlatform
 				double grav = (count > 1) ? (sum / count) : sum;
 
 				FallAndSink(grav, oldFloorZ);
+			}
+
+			//If we're not moving (and with no velocity), find and destroy unused portal copies
+			if (!IsActive())
+			for (int i = -1; i == -1 || (group && group.origin == self && i < group.members.Size()); ++i)
+			{
+				let plat = (i == -1) ? self : group.GetMember(i);
+				if (i > -1 && (!plat || plat == self)) //Already handled self
+					continue;
+
+				if (plat.portTwin && plat.portTwin.bNoBlockmap && plat.portTwin.bPortCopy)
+					plat.portTwin.Destroy();
 			}
 
 			for (int i = -1; i == -1 || (group && group.origin == self && i < group.members.Size()); ++i)
