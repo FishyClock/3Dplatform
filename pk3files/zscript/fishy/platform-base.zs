@@ -275,6 +275,7 @@ extend class FishyPlatform
 		MOVE_NORMAL = 0,
 		MOVE_TELEPORT = 1,
 		MOVE_QUICK = -1,
+		MOVE_QUICKTELE = -2,
 	};
 
 	const TOP_EPSILON = 1.0; //For Z checks (if something is on top of something else)
@@ -2753,12 +2754,13 @@ extend class FishyPlatform
 		// "Quick move" is used to correct the position/angles and it is assumed
 		// that 'newPos/Angle/Pitch/Roll' is only marginally different from
 		// the current position/angles.
+		// "Quick move teleport" is for moving platforms back to where they were.
 
 		FishyPlatform plat;
 		if (group && group.origin != self)
 			SetGroupOrigin(self);
 
-		if (moveType != MOVE_QUICK)
+		if (moveType > MOVE_QUICK) //Not a quick move?
 		for (int i = -1; i == -1 || (group && i < group.members.Size()); ++i)
 		{
 			plat = (i == -1) ? self : group.GetMember(i);
@@ -2840,7 +2842,7 @@ extend class FishyPlatform
 			}
 		}
 
-		if (moveType != MOVE_QUICK)
+		if (moveType > MOVE_QUICK) //Not a quick move?
 		for (int i = -1; i == -1 || (group && i < group.members.Size()); ++i)
 		{
 			plat = (i == -1) ? self : group.GetMember(i);
@@ -2859,6 +2861,9 @@ extend class FishyPlatform
 					let platPass = FishyPlatform(plat.passengers[iPass]);
 					if (!platPass || platPass.bNoBlockmap) //They shouldn't have NOBLOCKMAP now - this is taken care of below
 						continue;
+
+					if (moveType == MOVE_TELEPORT)
+						platPass.GetNewBmapResults();
 					platPass.GetNewPassengers(moveType == MOVE_TELEPORT);
 
 					//If passengers get stolen the array size will shrink
@@ -2909,7 +2914,7 @@ extend class FishyPlatform
 			return true;
 
 		double delta, piDelta, roDelta;
-		if (moveType == MOVE_QUICK || moveType == MOVE_TELEPORT || pos == newPos)
+		if (moveType <= MOVE_QUICK || moveType == MOVE_TELEPORT || pos == newPos)
 		{
 			UpdateOldInfo();
 
@@ -2935,7 +2940,7 @@ extend class FishyPlatform
 			}
 		}
 
-		if (moveType == MOVE_QUICK)
+		if (moveType <= MOVE_QUICK)
 		{
 			if (pos != newPos)
 			{
@@ -2945,9 +2950,11 @@ extend class FishyPlatform
 				prev = oldPrev;
 			}
 
-			MovePassengers(oldPos, pos, angle, delta, piDelta, roDelta, false);
+			bool telePass = (moveType == MOVE_QUICKTELE);
+
+			MovePassengers(oldPos, pos, angle, delta, piDelta, roDelta, telePass);
 			if (lastUPort)
-				portTwin.MovePassengers(portTwin.oldPos, portTwin.pos, portTwin.angle, delta, piDelta, roDelta, false);
+				portTwin.MovePassengers(portTwin.oldPos, portTwin.pos, portTwin.angle, delta, piDelta, roDelta, telePass);
 			ExchangePassengersWithTwin();
 
 			GetStuckActors();
@@ -3189,6 +3196,11 @@ extend class FishyPlatform
 		if (faceMove && time > 0)
 			dpos = pos;
 
+		vector3 startPos = pos;
+		double startAngle = angle;
+		double startPitch = pitch;
+		double startRoll = roll;
+
 		vector3 newPos;
 		double newAngle = angle;
 		double newPitch = pitch;
@@ -3279,8 +3291,11 @@ extend class FishyPlatform
 		//Result == 2 means everyone moved. 1 == this platform moved but not all its groupmates moved.
 		//(If this platform isn't in a group then the result is likewise 2 if it moved.)
 		int result = PlatMove(newPos, newAngle, newPitch, newRoll, teleMove);
-		if (result && pos != newPos) //Crossed a portal?
+
+		if (result == 2 && pos != newPos) //Crossed a portal?
 			AdjustInterpolationCoordinates(newPos, pos, DeltaAngle(newAngle, angle));
+		else if (result == 1)
+			PlatMove(startPos, startAngle, startPitch, startRoll, MOVE_QUICKTELE); //Move the group back
 
 		return (result == 2);
 	}
@@ -3564,7 +3579,7 @@ extend class FishyPlatform
 		}
 		else if (result == 1) //This platform has moved, but one or all of its groupmates hasn't
 		{
-			PlatMove(startPos, startAngle, pitch, roll, MOVE_TELEPORT); //...So move them back
+			PlatMove(startPos, startAngle, pitch, roll, MOVE_QUICKTELE); //...So move them back
 		}
 	}
 
