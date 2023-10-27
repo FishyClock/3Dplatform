@@ -114,6 +114,10 @@ class FishyPlatform : Actor abstract
 	//===New properties===//
 	double platAirFric; //For platforms that have +PUSHABLE and +NOGRAVITY. (The pre-existing 'friction' property + sector friction are for gravity bound pushables instead.)
 	property AirFriction: platAirFric;
+
+	//===User variables===//
+	//$UserDefaultValue true
+	bool user_scalesize;
 }
 
 class FishyPlatformNode : InterpolationPoint
@@ -379,6 +383,19 @@ extend class FishyPlatform
 		options = -1;
 		crushDamage = -1;
 		pCurr.x = double.nan;
+
+		// Normally, I would set atypical default values for user variables here
+		// because BeginPlay() runs before the values from the UDMF side are actually set.
+		// And if a user variable was implemented after a thing was placed in
+		// some old map, the UDMF version doesn't exist.
+		// Meaning whatever you set in BeginPlay() is unchanged.
+		//
+		// In this case the default value for 'user_scalesize' should be 'true'.
+		// But this is deliberately NOT set here so platforms in old maps
+		// do not scale their radius and height.
+		//
+		// However, from now on placing a platform in the map will have
+		// 'user_scalesize' set to 'true' by default.
 	}
 
 	//============================
@@ -404,7 +421,8 @@ extend class FishyPlatform
 		}
 
 		//Setting the scale through UDB affects collision size
-		A_SetSize(radius * abs(scale.x), height * abs(scale.y));
+		if (user_scalesize)
+			A_SetSize(radius * abs(scale.x), height * abs(scale.y));
 
 		if (options == -1) //Not already set through ACS?
 			options = args[ARG_OPTIONS];
