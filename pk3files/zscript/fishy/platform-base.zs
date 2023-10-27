@@ -2600,7 +2600,7 @@ extend class FishyPlatform
 			{
 				moved = true;
 				if (!bPortCopy)
-					SetOrigin(level.Vec3Offset(pos, newPos - pos), true);
+					SetOrigin(level.Vec3Offset(oldPos, newPos - oldPos), true);
 			}
 		}
 
