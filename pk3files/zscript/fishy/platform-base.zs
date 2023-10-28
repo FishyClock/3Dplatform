@@ -2964,9 +2964,6 @@ extend class FishyPlatform
 				portTwin.MovePassengers(portTwin.oldPos, portTwin.pos, portTwin.angle, delta, piDelta, roDelta, telePass);
 			ExchangePassengersWithTwin();
 
-			GetStuckActors();
-			if (portTwin)
-				portTwin.GetStuckActors();
 			bMoved = true;
 			return true;
 		}
@@ -3883,6 +3880,9 @@ extend class FishyPlatform
 
 					plat.CheckFloorCeiling();
 					plat.UpdateWaterLevel();
+
+					if (plat.lastGetNPTime != level.mapTime) //Call it only if GetNewPassengers() wasn't called
+						plat.GetStuckActors();
 					plat.HandleStuckActors(inactive);
 
 					if (!plat.bOnMobj && plat.pos.z > plat.floorZ)
@@ -3971,23 +3971,6 @@ extend class FishyPlatform
 
 				if (plat.portTwin && plat.portTwin.bNoBlockmap && plat.portTwin.bPortCopy)
 					plat.portTwin.Destroy();
-			}
-
-			if (!HasMoved())
-			for (int i = -1; i == -1 || (group && group.origin == self && i < group.members.Size()); ++i)
-			{
-				let plat = (i == -1) ? self : group.GetMember(i);
-				if (i > -1 && (!plat || plat == self)) //Already handled self
-					continue;
-
-				for (int iTwins = 0; iTwins < 2; ++iTwins)
-				{
-					if (iTwins > 0 && !(plat = plat.portTwin))
-						break;
-
-					if (plat.lastGetNPTime != level.mapTime)
-						plat.GetStuckActors();
-				}
 			}
 		}
 
