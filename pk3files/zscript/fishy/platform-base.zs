@@ -2310,30 +2310,16 @@ extend class FishyPlatform
 
 			//If there are nearby "bridge" actors (like another platform),
 			//let 'mo' cross over.
-			bool skipIt = false;
 			if (passengerCanCross)
-			for (uint iNearby = nearbyActors.Size(); iNearby-- > 0;)
 			{
-				let otherMo = nearbyActors[iNearby];
-				if (!otherMo || !otherMo.bActLikeBridge || otherMo == mo)
-					continue;
-
-				double otherMoTop = otherMo.pos.z + otherMo.height;
-				if (mo.pos.z > otherMoTop && mo.pos.z - otherMoTop > mo.maxDropoffHeight)
-					continue; //'mo' is too high
-
-				if (otherMoTop > mo.pos.z && otherMoTop - mo.pos.z > mo.maxStepHeight)
-					continue; //'mo' is too low
-
-				if (OverlapXY(mo, otherMo))
-				{
-					skipIt = true;
-					break;
-				}
+				let oldBridge = bActLikeBridge;
+				bActLikeBridge = false; //So self can't be the 'stepThing'
+				FCheckPosition tm;
+				mo.CheckPosition(mo.pos.xy, true, tm);
+				bActLikeBridge = oldBridge;
+				if (tm.stepThing)
+					continue; //Skip it
 			}
-
-			if (skipIt)
-				continue;
 
 			// Make your bog-standard idTech1 AI
 			// that uses A_Chase() or A_Wander()
