@@ -808,8 +808,19 @@ extend class FishyPlatform
 				return false; //Don't collide with any platform in general
 		}
 
-		if (passive && stuckActors.Find(other) < stuckActors.Size())
-			return false; //Let stuck things move out/move through us - also makes pushing them away easier
+		if (passive)
+		{
+			if (stuckActors.Find(other) < stuckActors.Size())
+				return false; //Let stuck things move out/move through us - also makes pushing them away easier
+
+			//Allow the other actor to step up on us
+			if (!other.bMissile && !other.bSkullFly && IsCarriable(other) && //Ignore missiles, charging monsters, and non-carriables
+				(other.bInChase || (plat && plat.bInMove) ) && //This thing must be calling A_Chase or it's a platform calling PlatMove()
+				(pos.z + height) - other.pos.z <= other.maxStepHeight ) //Its 'maxStepHeight' allows it to step up on us
+			{
+				return false;
+			}
+		}
 
 		if (bInMove || (portTwin && portTwin.bInMove))
 		{
@@ -1471,7 +1482,7 @@ extend class FishyPlatform
 		bool realtime = (options & OPTFLAG_REALTIMEBMAP);
 
 		let iteratorRadius = radius;
-		if (!realtime || pos ~== oldPos) //If idle, still use a bigger radius for the sake of MaybeGiveStepUpAssistance()
+		if (!realtime || pos ~== oldPos) //If idle, still use a bigger radius for the sake of GetStuckActors()
 			iteratorRadius *= BMAP_RADIUS_MULTIPLIER;
 
 		let bti = BlockThingsIterator.Create(self, iteratorRadius);
@@ -1492,7 +1503,7 @@ extend class FishyPlatform
 			}
 
 			//Otherwise, only accept this actor if it has certain attributes
-			if (mo.bCanPass || //Can move by itself (relevant for MaybeGiveStepUpAssistance())
+			if (mo.bCanPass || //Can move by itself (relevant for GetStuckActors())
 				(mo.bCorpse && !mo.bDontGib) || //A corpse (relevant for corpse grinding)
 				(mo.bSpecial && mo is "Inventory") || //Item that can be picked up (relevant for Z position correction)
 				IsCarriable(mo) || //A potential passenger
@@ -1525,32 +1536,6 @@ extend class FishyPlatform
 
 		noBmapSearchTics = realtime ? 0 : BMAP_SEARCH_INTERVAL;
 		oldBmapSearchPos = pos.xy; //If we're too far away from this position then this function will be called earlier (see Tick())
-	}
-
-	//============================
-	// MaybeGiveStepUpAssistance
-	//============================
-	private bool MaybeGiveStepUpAssistance (Actor mo)
-	{
-		double top = pos.z + height;
-		if (mo.bCanPass && //Assume it can move by itself (not velocity movement like a projectile)
-			!mo.player && //Players don't need assistance
-			mo.floorZ < top && //Make sure the 'floorZ' hack is really necessary
-			(mo.tics == 0 || mo.tics == 1) && //About to change states (might call A_Chase or A_Wander)
-			top >= mo.pos.z && top - mo.pos.z <= mo.maxStepHeight) //Can step up on us
-		{
-			double blockDist = radius + mo.radius;
-			vector2 vec = level.Vec2Diff(pos.xy, mo.pos.xy);
-			vec = (abs(vec.x), abs(vec.y));
-
-			if ((vec.x >= blockDist || vec.y >= blockDist) && //We want the actor to not overlap on the xy plane, but
-				vec.x < blockDist + mo.speed && vec.y < blockDist + mo.speed) //it should overlap if we take the actor's speed property into account.
-			{
-				mo.floorZ = top; //A little hack that stops monsters from "bumping into" the platform actor and walking around it
-				return true;
-			}
-		}
-		return false;
 	}
 
 	//============================
@@ -1687,7 +1672,7 @@ extend class FishyPlatform
 				continue;
 			}
 
-			if (!MaybeGiveStepUpAssistance(mo) && canCarry && !oldPass && mo.bOnMobj)
+			if (canCarry && !oldPass && mo.bOnMobj)
 				miscActors.Push(mo);
 		}
 
@@ -2697,6 +2682,7 @@ extend class FishyPlatform
 	//============================
 	private void HandleStuckActors (bool doStandOn)
 	{
+		double top = pos.z + height;
 		Actor highestMo = null;
 		Array<Actor> delayedPush;
 
@@ -2710,6 +2696,33 @@ extend class FishyPlatform
 			{
 				stuckActors.Delete(i);
 				continue;
+			}
+
+			if (IsCarriable(mo) && top - mo.pos.z <= mo.maxStepHeight)
+			{
+				PassengerPreMove(mo);
+				bool fits = FitsAtPosition(mo, (mo.pos.xy, top), true);
+				if (fits)
+				{
+					if (mo is "FishyPlatform")
+					{
+						FishyPlatform(mo).PlatMove((mo.pos.xy, top), mo.angle, mo.pitch, mo.roll, MOVE_QUICK);
+					}
+					else
+					{
+						mo.SetZ(top);
+						mo.CheckPortalTransition(); //Handle sector portals properly
+					}
+				}
+				PassengerPostMove(mo, fits);
+
+				if (fits)
+				{
+					stuckActors.Delete(i);
+					if (passengers.Find(mo) >= passengers.Size())
+						passengers.Push(mo);
+					continue;
+				}
 			}
 
 			if (doStandOn && (!highestMo || highestMo.pos.z + highestMo.height < mo.pos.z + mo.height))
@@ -3960,6 +3973,7 @@ extend class FishyPlatform
 					plat.portTwin.Destroy();
 			}
 
+			if (!HasMoved())
 			for (int i = -1; i == -1 || (group && group.origin == self && i < group.members.Size()); ++i)
 			{
 				let plat = (i == -1) ? self : group.GetMember(i);
@@ -3971,16 +3985,8 @@ extend class FishyPlatform
 					if (iTwins > 0 && !(plat = plat.portTwin))
 						break;
 
-					//Call MaybeGiveStepUpAssistance() here unless GetNewPassengers() already did
 					if (plat.lastGetNPTime != level.mapTime)
-					for (uint iActors = plat.nearbyActors.Size(); iActors-- > 0;)
-					{
-						let mo = plat.nearbyActors[iActors];
-						if (!mo || mo.bDestroyed)
-							plat.nearbyActors.Delete(iActors);
-						else
-							plat.MaybeGiveStepUpAssistance(mo);
-					}
+						plat.GetStuckActors();
 				}
 			}
 		}
