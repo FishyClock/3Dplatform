@@ -1630,7 +1630,8 @@ extend class FishyPlatform
 					bool fits = false;
 					bool callPostMove = false;
 					if (canCarry && top - mo.pos.z <= mo.maxStepHeight &&
-						(!(mo is "FishyPlatform") || !FishyPlatform(mo).IsActive() ) ) //Don't move active platforms
+						(!(mo is "FishyPlatform") ||
+						(!FishyPlatform(mo).group && !FishyPlatform(mo).IsActive() ) ) ) //Don't move grouped nor active platforms
 					{
 						PassengerPreMove(mo);
 						fits = FitsAtPosition(mo, (mo.pos.xy, top), true);
@@ -1790,7 +1791,7 @@ extend class FishyPlatform
 			}
 			plat.group.carrier = self;
 
-			if (plat.group.origin && plat.group.origin.bActive)
+			if (plat.group.origin && plat.IsActive())
 			{
 				passengers[i] = plat.group.origin;
 				continue;
@@ -2535,7 +2536,8 @@ extend class FishyPlatform
 			//If we could carry it, try to set the obstacle on top of us
 			//if its 'maxStepHeight' allows it.
 			if (moNewZ > moOldZ && IsCarriable(mo) && moNewZ - moOldZ <= mo.maxStepHeight &&
-				(!(mo is "FishyPlatform") || !FishyPlatform(mo).IsActive() ) ) //Don't move active platforms
+				(!(mo is "FishyPlatform") ||
+				(!FishyPlatform(mo).group && !FishyPlatform(mo).IsActive() ) ) ) //Don't move grouped nor active platforms
 			{
 				PassengerPreMove(mo);
 				bool fits = FitsAtPosition(mo, (mo.pos.xy, moNewZ), true);
@@ -2687,7 +2689,8 @@ extend class FishyPlatform
 			}
 
 			if (IsCarriable(mo) && top - mo.pos.z <= mo.maxStepHeight &&
-				(!(mo is "FishyPlatform") || !FishyPlatform(mo).IsActive() ) ) //Don't move active platforms
+				(!(mo is "FishyPlatform") ||
+				(!FishyPlatform(mo).group && !FishyPlatform(mo).IsActive() ) ) ) //Don't move grouped nor active platforms
 			{
 				PassengerPreMove(mo);
 				bool fits = FitsAtPosition(mo, (mo.pos.xy, top), true);
