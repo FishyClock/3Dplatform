@@ -815,7 +815,7 @@ extend class FishyPlatform
 
 			//Allow the other actor to step up on us
 			if (!other.bMissile && !other.bSkullFly && IsCarriable(other) && //Ignore missiles, charging monsters, and non-carriables
-				(other.bInChase || (plat && plat.bInMove) ) && //This thing must be calling A_Chase or it's a platform calling PlatMove()
+				other.bInChase && //This thing must be calling A_Chase or A_Wander
 				(pos.z + height) - other.pos.z <= other.maxStepHeight ) //Its 'maxStepHeight' allows it to step up on us
 			{
 				return false;
