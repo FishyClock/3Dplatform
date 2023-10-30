@@ -117,12 +117,13 @@ class FishyPlatform : Actor abstract
 
 	//===User variables===//
 	//$UserDefaultValue true
-	bool user_scalesize;
+	bool user_scalesize; //If true, the radius and height will be affected by its scale values
 }
 
 class FishyPlatformNode : InterpolationPoint
 {
-	bool user_nopositionchange;
+	//===User variables===//
+	bool user_nopositionchange; //If true, will not become travel destination but only be used to change angle/pitch/roll
 
 	Default
 	{
