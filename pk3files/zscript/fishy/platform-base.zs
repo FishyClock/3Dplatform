@@ -814,7 +814,8 @@ extend class FishyPlatform
 			if (stuckActors.Find(other) < stuckActors.Size())
 				return false; //Let stuck things move out/move through us - also makes pushing them away easier
 
-			//Allow the other actor to step up on us
+			//Allow the other actor to step up on us.
+			//Well, they'd actually noclip into us but GetStuckActors() and HandleStuckActors() should take care of that.
 			if (!other.bMissile && !other.bSkullFly && IsCarriable(other) && //Ignore missiles, charging monsters, and non-carriables
 				other.bInChase && //This thing must be calling A_Chase or A_Wander
 				(pos.z + height) - other.pos.z <= other.maxStepHeight ) //Its 'maxStepHeight' allows it to step up on us
