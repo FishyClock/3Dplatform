@@ -2743,7 +2743,7 @@ extend class FishyPlatform
 			if (fixedSome)
 				GetNewPassengers(false);
 
-			if (DoPlatZFix(moTop, null))
+			if (DoPlatZFix(moTop, self))
 			{
 				stuckActors.Delete(stuckActors.Find(highestMo));
 				delayedPush.Delete(delayedPush.Find(highestMo));
@@ -3179,7 +3179,9 @@ extend class FishyPlatform
 
 				//First move this platform
 				newZ = plat.pos.z + zOff;
-				if (mover)
+
+				//If we are the mover then don't treat self or our groupmates as passengers
+				if (mover != self)
 					mover.PassengerPreMove(plat);
 
 				bool fits = FitsAtPosition(plat, (plat.pos.xy, newZ), true);
@@ -3196,12 +3198,17 @@ extend class FishyPlatform
 					}
 				}
 
-				if (mover)
+				if (mover != self)
 					mover.PassengerPostMove(plat, fits);
 
 				//We only care if self fits or not
 				if (plat == self && !fits)
 					return false; //If it doesn't fit, abort the whole thing
+
+				//If we're the mover then each platform in the group
+				//moves their own passengers. If we're not the mover
+				//then said mover is responsible for moving them.
+				let passMover = (mover != self) ? mover : plat;
 
 				//Now move the platform's passengers
 				for (uint iPass = plat.passengers.Size(); iPass-- > 0;)
@@ -3214,12 +3221,11 @@ extend class FishyPlatform
 					let platPass = FishyPlatform(mo);
 					if (platPass)
 					{
-						platPass.DoPlatZFix(newZ, mover);
+						platPass.DoPlatZFix(newZ, passMover);
 						continue;
 					}
 
-					if (mover)
-						mover.PassengerPreMove(mo);
+					passMover.PassengerPreMove(mo);
 
 					fits = FitsAtPosition(mo, (mo.pos.xy, newZ), true);
 					if (fits)
@@ -3228,8 +3234,7 @@ extend class FishyPlatform
 						mo.CheckPortalTransition(); //Handle sector portals properly
 					}
 
-					if (mover)
-						mover.PassengerPostMove(mo, fits);
+					passMover.PassengerPostMove(mo, fits);
 				}
 			}
 		}
