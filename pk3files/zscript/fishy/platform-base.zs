@@ -330,6 +330,7 @@ extend class FishyPlatform
 	vector2 oldBmapSearchPos;
 	Array<Actor> passengers;
 	Array<Actor> stuckActors;
+	bool bPushStuckActors; //Do not push away stuck actors until we try moving for the first time
 	Line lastUPort;
 	private FishyPlatform portTwin; //Helps with collision when dealing with unlinked line portals
 	private bool bPortCopy;
@@ -2683,6 +2684,7 @@ extend class FishyPlatform
 		Actor highestMo = null;
 		Array<Actor> delayedPush;
 		bool fixedSome = false;
+		bool doPush = bPushStuckActors; //Remember the value because DoPlatZFix() will set this to 'true'
 
 		for (uint i = stuckActors.Size(); i-- > 0;)
 		{
@@ -2728,9 +2730,10 @@ extend class FishyPlatform
 			if (doStandOn && (!highestMo || highestMo.pos.z + highestMo.height < mo.pos.z + mo.height))
 			{
 				highestMo = mo;
-				delayedPush.Push(mo);
+				if (doPush)
+					delayedPush.Push(mo);
 			}
-			else
+			else if (doPush)
 			{
 				PushObstacle(mo);
 			}
@@ -2746,7 +2749,8 @@ extend class FishyPlatform
 			if (DoPlatZFix(moTop, self))
 			{
 				stuckActors.Delete(stuckActors.Find(highestMo));
-				delayedPush.Delete(delayedPush.Find(highestMo));
+				if (doPush)
+					delayedPush.Delete(delayedPush.Find(highestMo));
 			}
 		}
 
@@ -2770,6 +2774,9 @@ extend class FishyPlatform
 		FishyPlatform plat;
 		if (group && group.origin != self)
 			SetGroupOrigin(self);
+
+		if (moveType != MOVE_TELEPORT)
+			bPushStuckActors = true;
 
 		if (moveType > MOVE_QUICK) //Not a quick move?
 		for (int i = -1; i == -1 || (group && i < group.members.Size()); ++i)
@@ -3164,6 +3171,8 @@ extend class FishyPlatform
 				return false; //Already called in this tic for this group
 			group.lastZFixTime = level.mapTime;
 		}
+
+		bPushStuckActors = true;
 
 		//We're going to try moving the entire group and everyone's passengers
 		for (int i = -1; i == -1 || (group && i < group.members.Size()); ++i)
@@ -3983,6 +3992,9 @@ extend class FishyPlatform
 
 					plat.CheckFloorCeiling();
 					plat.UpdateWaterLevel();
+
+					if (group && group.origin)
+						plat.bPushStuckActors |= group.origin.bPushStuckActors;
 
 					if (plat.lastGetNPTime != level.mapTime) //Call it only if GetNewPassengers() wasn't called
 						plat.GetStuckActors();
