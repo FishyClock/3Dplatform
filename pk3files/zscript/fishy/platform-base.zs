@@ -2535,6 +2535,10 @@ extend class FishyPlatform
 		bool moved = bPortCopy ? FitsAtPosition(self, newPos) : TryMove(newPos.xy, 1);
 		let mo = blockingMobj;
 
+		//Remember 'blockingMobj' as a "nearby actor" if it isn't one already
+		if (mo && nearbyActors.Find(mo) >= nearbyActors.Size())
+			nearbyActors.Push(mo);
+
 		if (!moved && mo)
 		{
 			let moOldZ = mo.pos.z;
@@ -2628,9 +2632,6 @@ extend class FishyPlatform
 				}
 			}
 		}
-
-		if (!moved && (mo = blockingMobj) && nearbyActors.Find(mo) >= nearbyActors.Size())
-			nearbyActors.Push(mo);
 
 		return moved;
 	}
@@ -3812,7 +3813,7 @@ extend class FishyPlatform
 				{
 					plat.GetNewBmapResults();
 				}
-				plat.bOnMobj = (iTwins == 0) ? false : plat.portTwin.bOnMobj; //Aside from standing on an actor, this can also be "true" later if hitting a lower obstacle while going down or we have stuck actors
+				plat.bOnMobj = false; //Aside from standing on an actor, this can also be "true" later if hitting a lower obstacle while going down or we have stuck actors
 				plat.HandleOldPassengers(inactive);
 				plat.UpdateOldInfo();
 			}
