@@ -2188,7 +2188,7 @@ extend class FishyPlatform
 						if (!plat)
 							otherMo.SetOrigin(otherOldPos, true);
 						else
-							plat.PlatMove(otherOldPos, mo.angle, mo.pitch, mo.roll, MOVE_TELEPORT);
+							plat.PlatMove(otherOldPos, plat.angle, plat.pitch, plat.roll, MOVE_TELEPORT);
 
 						otherMo.A_ChangeLinkFlags(YES_BMAP);
 						PassengerPostMove(otherMo, false);
