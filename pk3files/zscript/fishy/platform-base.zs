@@ -934,25 +934,46 @@ extend class FishyPlatform
 	}
 
 	//============================
+	// GetCrushDamageSource
+	//============================
+	virtual Actor, Name GetCrushDamageSource (Actor dmgSrc)
+	{
+		// Determine if anyone should take blame for
+		// causing crush damage and what the
+		// damage type should be.
+		//
+		// 'dmgSrc' is the "pusher"
+		// which may or may not be the platform itself.
+		//
+		// By default nobody takes the blame
+		// and damage type is "Crush."
+		return null, 'Crush';
+	}
+
+	//============================
 	// CrushObstacle
 	//============================
 	private bool CrushObstacle (Actor pushed, bool noPush, bool fits, Actor pusher)
 	{
-		//Helper function for PushObstacle().
-		//Retuns false if 'pushed' was destroyed.
-
-		//Normally, if the obstacle is pushed against a wall or solid actor etc
-		//then apply damage every 4th tic so its pain sound can be heard.
-		//But if it's not pushed against anything and 'hurtfulPush' is enabled
-		//then always apply damage.
-		//However, if there was no 'pushForce' whatsoever and 'hurtfulPush' is
-		//desired then the "damage every 4th tic" rule always applies.
+		// Helper function for PushObstacle().
+		// Retuns false if 'pushed' was destroyed.
+		//
+		// Normally, if the obstacle is pushed against a wall or solid actor etc
+		// then apply damage every 4th tic so its pain sound can be heard.
+		// But if it's not pushed against anything and 'hurtfulPush' is enabled
+		// then always apply damage.
+		// However, if there was no 'pushForce' whatsoever and 'hurtfulPush' is
+		// desired then the "damage every 4th tic" rule always applies.
 		bool hurtfulPush = (options & OPTFLAG_HURTFULPUSH);
+		Actor dmgSrc;
+		Name dmgType;
+
 		if (noPush)
 		{
 			if (hurtfulPush && !(level.mapTime & 3))
 			{
-				int doneDamage = pushed.DamageMobj(null, null, crushDamage, 'Crush');
+				[dmgSrc, dmgType] = GetCrushDamageSource(pusher);
+				int doneDamage = pushed.DamageMobj(dmgSrc, dmgSrc, crushDamage, dmgType);
 				pushed.TraceBleed(doneDamage > 0 ? doneDamage : crushDamage, pusher);
 			}
 		}
@@ -961,7 +982,8 @@ extend class FishyPlatform
 			//If it 'fits' then it's not being pushed against anything
 			if ((!fits && !(level.mapTime & 3)) || (fits && hurtfulPush))
 			{
-				int doneDamage = pushed.DamageMobj(null, null, crushDamage, 'Crush');
+				[dmgSrc, dmgType] = GetCrushDamageSource(pusher);
+				int doneDamage = pushed.DamageMobj(dmgSrc, dmgSrc, crushDamage, dmgType);
 				pushed.TraceBleed(doneDamage > 0 ? doneDamage : crushDamage, pusher);
 			}
 		}
