@@ -3167,8 +3167,8 @@ extend class FishyPlatform
 				GetNewBmapResults(true);
 				GetUnlinkedPortal(true);
 			}
+			bMoved = true;
 		}
-		bMoved = true;
 		return true;
 	}
 
