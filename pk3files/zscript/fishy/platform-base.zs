@@ -2629,7 +2629,6 @@ extend class FishyPlatform
 				{
 					bOnMobj = true;
 					SetZ(moTop);
-					oldPos.z = moTop;
 					if (!bPortCopy)
 						CheckPortalTransition(); //Handle sector portals properly
 
@@ -2641,16 +2640,17 @@ extend class FishyPlatform
 					//Try to adjust our twin
 					if (portTwin && (!portTwin.bNoBlockmap || !portTwin.bPortCopy))
 					{
-						vector3 twinPos = TranslatePortalVector(oldPos, (bPortCopy ? portTwin.lastUPort : lastUPort), true, bPortCopy);
-						if (twinPos != oldPos && portTwin.pos.z != twinPos.z && FitsAtPosition(portTwin, twinPos))
+						double twinZ = portTwin.pos.z + moTop - oldPos.z;
+						if (portTwin.pos.z != twinZ && FitsAtPosition(portTwin, (portTwin.pos.xy, twinZ)))
 						{
 							portTwin.bOnMobj = true;
-							portTwin.SetZ(twinPos.z);
-							portTwin.oldPos.z = twinPos.z;
+							portTwin.SetZ(twinZ);
+							portTwin.oldPos.z = twinZ;
 							if (!portTwin.bPortCopy)
 								portTwin.CheckPortalTransition(); //Handle sector portals properly
 						}
 					}
+					oldPos.z = moTop;
 				}
 			}
 		}
