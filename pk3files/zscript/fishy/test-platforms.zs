@@ -107,6 +107,21 @@ class TESTPushCrate : TESTPlat
 	}
 }
 
+class TESTSmallCrate : TESTPushCrate
+{
+	States
+	{
+	Spawn:
+		MODL A -1 NoDelay
+		{
+			A_ChangeModel('TESTPushCrate');
+			A_SetSize(radius * 0.25, height * 0.25);
+			scale *= 0.25;
+		}
+		Stop;
+	}
+}
+
 class TESTTorchZombo : ZombieMan
 {
 	Default

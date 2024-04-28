@@ -103,6 +103,7 @@ class FishyPlatform : Actor abstract
 		+NOBLOOD;
 		+DONTTHRUST;
 		+NOTAUTOAIMED;
+		+FishyPlatform.USEACTORTICK;
 
 		FishyPlatform.AirFriction 0.99;
 	}
@@ -110,6 +111,7 @@ class FishyPlatform : Actor abstract
 	//===New flags===//
 	int platFlags;
 	flagdef Carriable: platFlags, 0; //Let's this platform be carried (like a passenger) by other platforms
+	flagdef UseActorTick: platFlags, 1; //If we're not in a group, call Actor.Tick() in our Tick() override to handle world interaction
 
 	//===New properties===//
 	double platAirFric; //For platforms that have +PUSHABLE and +NOGRAVITY. (The pre-existing 'friction' property + sector friction are for gravity bound pushables instead.)
@@ -118,6 +120,7 @@ class FishyPlatform : Actor abstract
 	//===User variables===//
 	//$UserDefaultValue true
 	bool user_scalesize; //If true, the radius and height will be affected by its scale values
+	int user_flagoverride_useactortick; //If == 0 then behavior depends on whether the flag is set; If > 0 then pretend the flag is set; If < 0 then pretend the flag is NOT set
 }
 
 class FishyPlatformNode : InterpolationPoint
@@ -3841,7 +3844,46 @@ extend class FishyPlatform
 			}
 		}
 
-		if (!group || group.origin == self)
+		bool callActorTick = (!group && //The group logic is incompatible with the native Tick() function - so for sanity's sake let's just not bother
+			(user_flagoverride_useactortick > 0 ||
+			(user_flagoverride_useactortick == 0 && bUseActorTick) ) );
+
+		if (callActorTick)
+		{
+			if (lastGetBmapTime == level.mapTime)
+				GetNewPassengers(false); //Call this early if we just did a blockmap search
+
+			let oldBridge = bActLikeBridge;
+			bActLikeBridge = false; //Hack: don't let this flag stop us from going up/down lifts
+			bInMove = true; //Don't collide with passengers
+
+			Actor.Tick();
+			if (bDestroyed)
+				return; //Abort if we got Thing_Remove()'d
+
+			bActLikeBridge = oldBridge;
+			bInMove = false;
+
+			//If our position/angles have actually changed then go back and try to get here via PlatMove()
+			if (pos != oldPos || angle != oldAngle || pitch != oldPitch || roll != oldRoll)
+			{
+				pCurr += pos - oldPos; //Adjust for interpolation moves
+				let thisPos = pos;
+				let thisAng = angle;
+				let thisPi = pitch;
+				let thisRo = roll;
+				let oldNoTrig = bNoTrigger;
+				bNoTrigger = true; //Don't trigger line and sector action specials twice
+				GoBack();
+				PlatMove(thisPos, thisAng, thisPi, thisRo, MOVE_NORMAL);
+				bNoTrigger = oldNoTrig;
+			}
+			else if (portTwin && portTwin.bNoBlockmap && portTwin.bPortCopy && !IsActive())
+			{
+				portTwin.Destroy(); //If we're not moving then remove our non-solid portal copy
+			}
+		}
+		else if (!group || group.origin == self)
 		{
 			PlatVelMove();
 			if (bDestroyed)
@@ -3993,6 +4035,9 @@ extend class FishyPlatform
 			}
 			break;
 		}
+
+		if (callActorTick)
+			return;
 
 		//Handle friction, gravity, and other misc things
 		if (!group || !group.origin || group.origin == self)
