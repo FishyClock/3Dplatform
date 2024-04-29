@@ -3853,21 +3853,17 @@ extend class FishyPlatform
 			if (lastGetBmapTime == level.mapTime)
 				GetNewPassengers(false); //Call this early if we just did a blockmap search
 
-			let oldBridge = bActLikeBridge;
-			bActLikeBridge = false; //Hack: don't let this flag stop us from going up/down lifts
 			bInMove = true; //Don't collide with passengers
-
 			Actor.Tick();
 			if (bDestroyed)
 				return; //Abort if we got Thing_Remove()'d
-
-			bActLikeBridge = oldBridge;
 			bInMove = false;
 
 			//If our position/angles have actually changed then go back and try to get here via PlatMove()
 			if (pos != oldPos || angle != oldAngle || pitch != oldPitch || roll != oldRoll)
 			{
-				pCurr += pos - oldPos; //Adjust for interpolation moves
+				if (bActive && pos != oldPos)
+					pCurr += level.Vec3Diff(oldPos, pos); //Adjust for interpolation moves
 				let thisPos = pos;
 				let thisAng = angle;
 				let thisPi = pitch;
