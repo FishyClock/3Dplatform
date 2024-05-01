@@ -290,6 +290,7 @@ extend class FishyPlatform
 	{
 		MOVE_NORMAL = 0,
 		MOVE_TELEPORT = 1,
+		MOVE_REPEAT = 2,
 		MOVE_QUICK = -1,
 		MOVE_QUICKTELE = -2,
 	};
@@ -2819,7 +2820,7 @@ extend class FishyPlatform
 			if (moveType == MOVE_TELEPORT)
 				plat.GetNewBmapResults();
 
-			if (moveType == MOVE_NORMAL)
+			if (moveType == MOVE_NORMAL || moveType == MOVE_REPEAT)
 			{
 				if (plat.bSearchForUPorts)
 					plat.GetUnlinkedPortal();
@@ -2878,9 +2879,9 @@ extend class FishyPlatform
 					plat.portTwin.GetNewBmapResults();
 			}
 
-			if (!plat.GetNewPassengers(moveType == MOVE_TELEPORT) ||
+			if ((!plat.GetNewPassengers(moveType == MOVE_TELEPORT) ||
 				(plat.portTwin && !plat.portTwin.bNoBlockmap &&
-				!plat.portTwin.GetNewPassengers(moveType == MOVE_TELEPORT) ) )
+				!plat.portTwin.GetNewPassengers(moveType == MOVE_TELEPORT) ) ) && moveType != MOVE_REPEAT )
 			{
 				return 0; //GetNewPassengers() detected a stuck actor that couldn't be resolved
 			}
@@ -2958,7 +2959,7 @@ extend class FishyPlatform
 			return true;
 
 		double delta, piDelta, roDelta;
-		if (moveType <= MOVE_QUICK || moveType == MOVE_TELEPORT || pos == newPos)
+		if (moveType != MOVE_NORMAL || pos == newPos)
 		{
 			UpdateOldInfo();
 
@@ -2984,7 +2985,7 @@ extend class FishyPlatform
 			}
 		}
 
-		if (moveType <= MOVE_QUICK)
+		if (moveType <= MOVE_QUICK || moveType == MOVE_REPEAT)
 		{
 			if (pos != newPos)
 			{
@@ -3868,15 +3869,24 @@ extend class FishyPlatform
 				let thisAng = angle;
 				let thisPi = pitch;
 				let thisRo = roll;
-				let oldNoTrig = bNoTrigger;
-				bNoTrigger = true; //Don't trigger line and sector action specials twice
 				GoBack();
-				PlatMove(thisPos, thisAng, thisPi, thisRo, MOVE_NORMAL);
-				bNoTrigger = oldNoTrig;
+				PlatMove(thisPos, thisAng, thisPi, thisRo, MOVE_REPEAT);
 			}
 			else if (portTwin && portTwin.bNoBlockmap && portTwin.bPortCopy && !IsActive())
 			{
 				portTwin.Destroy(); //If we're not moving then remove our non-solid portal copy
+			}
+
+			if (!bOnMobj && pos.z > floorZ && vel != (0, 0, 0))
+			{
+				vel *= platAirFric;
+
+				//For some reason Actor.Tick() doesn't take care of this(?)
+				//so the 'minVel' check is necessary here, too
+				//otherwise too much time is spent with a combined "zero velocity."
+				if (abs(vel.x) < minVel) vel.x = 0;
+				if (abs(vel.y) < minVel) vel.y = 0;
+				if (abs(vel.z) < minVel) vel.z = 0;
 			}
 		}
 		else if (!group || group.origin == self)
