@@ -3096,8 +3096,8 @@ extend class FishyPlatform
 
 		for (int step = 0; step < maxSteps; ++step)
 		{
+			let oldPGroup = curSector.portalGroup;
 			UpdateOldInfo();
-
 			newPos = pos + stepMove;
 			if (!PlatTakeOneStep(newPos))
 			{
@@ -3117,16 +3117,22 @@ extend class FishyPlatform
 				return false;
 			}
 
+			if (!bPlatPorted && //Not triggered a teleport special? (That's not teleport-to-line)
+				newPos.xy != pos.xy && //And yet the position is not what was expected?
+				!lastUPort && //We weren't touching an unlinked line portal before taking a step?
+				curSector.portalGroup == oldPGroup) //We did not cross a linked/static line portal?
+			{
+				//Assume we activated a teleport-to-line special
+				bPlatPorted = true;
+				platTeleFlags = 0;
+			}
+
 			if (bPlatPorted) //Did we activate a teleport special?
 			{
 				//Keep it simple
 				newPos = pos;
-				newAngle = angle; //The angle was already changed by the teleport special
-				if (step > 0)
-				{
-					newPitch = pitch;
-					newRoll = roll;
-				}
+				newAngle = angle;
+				portDelta += DeltaAngle(oldAngle, angle); //For SetInterpolationCoordinates()
 				GoBack();
 				return DoMove(newPos, newAngle, newPitch, newRoll, MOVE_QUICKTELE);
 			}
@@ -3938,7 +3944,7 @@ extend class FishyPlatform
 			//If our position/angles have actually changed then go back and try to get here via PlatMove()
 			if (pos != oldPos || angle != oldAngle || pitch != oldPitch || roll != oldRoll)
 			{
-				if (bActive && pos != oldPos)
+				if (bActive && (pos != oldPos || angle != oldAngle))
 				{
 					if (bPlatPorted || curSector.portalGroup != oldPGroup)
 						AdjustInterpolationCoordinates(oldPos, pos, DeltaAngle(oldAngle, angle));
