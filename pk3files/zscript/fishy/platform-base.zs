@@ -1404,12 +1404,14 @@ extend class FishyPlatform
 			if (group && group == plat.group)
 				return false;
 
-			//If either one has this option then don't carry it
-			if ((options != -1 && (options & OPTFLAG_IGNOREGEO) ) ||
-				(plat.options != -1 && (plat.options & OPTFLAG_IGNOREGEO) ) )
-			{
+			//If either one has OPTFLAG_IGNOREGEO then don't carry it
+			if (options == -1) //Not already set through PostBeginPlay()?
+				options = args[ARG_OPTIONS];
+			if (plat.options == -1) //Ditto
+				plat.options = plat.args[ARG_OPTIONS];
+			if ((options | plat.options) & OPTFLAG_IGNOREGEO)
 				return false;
-			}
+
 			//If this is somebody's portal copy, ignore it
 			if (plat.bPortCopy)
 				return false;
