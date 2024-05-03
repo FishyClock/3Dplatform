@@ -103,7 +103,6 @@ class FishyPlatform : Actor abstract
 		+NOBLOOD;
 		+DONTTHRUST;
 		+NOTAUTOAIMED;
-		+FishyPlatform.USEACTORTICK;
 
 		FishyPlatform.AirFriction 0.99;
 	}
@@ -288,11 +287,12 @@ extend class FishyPlatform
 	//For PlatMove()
 	enum PMoveTypes
 	{
-		MOVE_NORMAL = 0,
-		MOVE_TELEPORT = 1,
-		MOVE_REPEAT = 2,
-		MOVE_QUICK = -1,
-		MOVE_QUICKTELE = -2,
+		MOVE_NORMAL =		0,
+		MOVE_TELEPORT =		1,
+		MOVE_TRUETELE =		2, //Like MOVE_TELEPORT but calls Teleport() instead of SetOrigin()
+		MOVE_REPEAT =		3, //Combines aspects of MOVE_NORMAL and MOVE_QUICK
+		MOVE_QUICK =		-1,
+		MOVE_QUICKTELE =	-2,
 	};
 
 	const TOP_EPSILON = 1.0; //For Z checks (if something is on top of something else)
@@ -345,8 +345,8 @@ extend class FishyPlatform
 	transient bool lastGetNPResult;
 	transient int lastGetUPTime; //Same deal for GetUnlinkedPortal()
 	transient int lastGetBmapTime; //Same deal for GetNewBmapResults()
-	transient bool bPlatPorted;
-	transient int platTeleFlags;
+	transient bool bPlatPorted; //Set by PostTeleport() and checked by various routines (The pre-existing 'bTeleport' flag isn't good enough)
+	transient int platTeleFlags; //Ditto
 	int options;
 	int crushDamage;
 
@@ -2030,7 +2030,13 @@ extend class FishyPlatform
 					plat.bPlatPorted = true;
 					plat.platTeleFlags = platTeleFlags;
 				}
-				int result = plat.PlatMove(moNewPos, moNewAngle, mo.pitch, mo.roll, teleMove);
+
+				PMoveTypes moveType =
+					(bPlatPorted) ? MOVE_TRUETELE :
+					(teleMove) ? MOVE_TELEPORT :
+					MOVE_NORMAL;
+
+				int result = plat.PlatMove(moNewPos, moNewAngle, mo.pitch, mo.roll, moveType);
 				moved = (result == 2); //2 == this plat and its groupmates moved. 1 == plat moved but not all groupmates moved.
 				if (plat.bActive)
 				{
@@ -2826,7 +2832,8 @@ extend class FishyPlatform
 		if (group && group.origin != self)
 			SetGroupOrigin(self);
 
-		if (moveType != MOVE_TELEPORT)
+		bool teleMove = (moveType == MOVE_TELEPORT || moveType == MOVE_TRUETELE);
+		if (!teleMove)
 			bPushStuckActors = true;
 
 		if (moveType > MOVE_QUICK) //Not a quick move?
@@ -2841,7 +2848,7 @@ extend class FishyPlatform
 			//Or being moved by our group origin as soon as the map starts.
 			//In such cases get everything that's around us now before
 			//we actually move.
-			if (moveType == MOVE_TELEPORT)
+			if (teleMove)
 				plat.GetNewBmapResults();
 
 			if (moveType == MOVE_NORMAL || moveType == MOVE_REPEAT)
@@ -2889,6 +2896,12 @@ extend class FishyPlatform
 				for (int i = 0; i < 5; ++i)
 					plat.portTwin.args[i] = plat.args[i];
 
+				if (plat.bPlatPorted)
+				{
+					plat.portTwin.bPlatPorted = true;
+					plat.portTwin.platTeleFlags = plat.platTeleFlags;
+				}
+
 				if (plat.portTwin.bNoBlockmap && plat.lastUPort)
 				{
 					plat.portTwin.A_ChangeLinkFlags(YES_BMAP);
@@ -2899,13 +2912,13 @@ extend class FishyPlatform
 					plat.portTwin.A_ChangeLinkFlags(NO_BMAP); //No collision while not needed (don't destroy it - not here)
 				}
 
-				if (moveType == MOVE_TELEPORT)
+				if (teleMove)
 					plat.portTwin.GetNewBmapResults();
 			}
 
-			if ((!plat.GetNewPassengers(moveType == MOVE_TELEPORT) ||
+			if ((!plat.GetNewPassengers(teleMove) ||
 				(plat.portTwin && !plat.portTwin.bNoBlockmap &&
-				!plat.portTwin.GetNewPassengers(moveType == MOVE_TELEPORT) ) ) && moveType != MOVE_REPEAT )
+				!plat.portTwin.GetNewPassengers(teleMove) ) ) && moveType != MOVE_REPEAT )
 			{
 				return 0; //GetNewPassengers() detected a stuck actor that couldn't be resolved
 			}
@@ -2931,9 +2944,9 @@ extend class FishyPlatform
 					if (!platPass || platPass.bNoBlockmap) //They shouldn't have NOBLOCKMAP now - this is taken care of below
 						continue;
 
-					if (moveType == MOVE_TELEPORT)
+					if (teleMove)
 						platPass.GetNewBmapResults();
-					platPass.GetNewPassengers(moveType == MOVE_TELEPORT);
+					platPass.GetNewPassengers(teleMove);
 
 					//If passengers get stolen the array size will shrink
 					//and this one's position in the array might have changed.
@@ -3030,19 +3043,23 @@ extend class FishyPlatform
 			return true;
 		}
 
-		if (moveType == MOVE_TELEPORT || pos == newPos)
+		if (moveType == MOVE_TELEPORT || moveType == MOVE_TRUETELE ||pos == newPos)
 		{
 			if (pos != newPos)
 			{
-				SetOrigin(newPos, false);
+				if (moveType == MOVE_TRUETELE)
+					Teleport(newPos, newAngle, platTeleFlags);
+				else
+					SetOrigin(newPos, false);
 				CheckPortalTransition(); //Handle sector portals properly
 			}
 
 			bool result = true;
-			bool movedMine = MovePassengers(oldPos, pos, angle, delta, piDelta, roDelta, moveType == MOVE_TELEPORT);
+			bool telePass = (moveType == MOVE_TELEPORT || moveType == MOVE_TRUETELE);
+			bool movedMine = MovePassengers(oldPos, pos, angle, delta, piDelta, roDelta, telePass);
 
 			if (!movedMine || (lastUPort &&
-				!portTwin.MovePassengers(portTwin.oldPos, portTwin.pos, portTwin.angle, delta, piDelta, roDelta, moveType == MOVE_TELEPORT) ) )
+				!portTwin.MovePassengers(portTwin.oldPos, portTwin.pos, portTwin.angle, delta, piDelta, roDelta, telePass) ) )
 			{
 				if (movedMine)
 					MovePassengers(pos, oldPos, angle, -delta, -piDelta, -roDelta, true); //Move them back
@@ -3077,7 +3094,6 @@ extend class FishyPlatform
 			stepMove /= maxSteps;
 		}
 
-		bPlatPorted = false;
 		for (int step = 0; step < maxSteps; ++step)
 		{
 			UpdateOldInfo();
@@ -3101,12 +3117,18 @@ extend class FishyPlatform
 				return false;
 			}
 
-			if (bPlatPorted)
+			if (bPlatPorted) //Did we activate a teleport special?
 			{
-				let thisPos = pos;
-				let thisAng = angle;
+				//Keep it simple
+				newPos = pos;
+				newAngle = angle; //The angle was already changed by the teleport special
+				if (step > 0)
+				{
+					newPitch = pitch;
+					newRoll = roll;
+				}
 				GoBack();
-				return DoMove(thisPos, thisAng, newPitch, newRoll, MOVE_TELEPORT);
+				return DoMove(newPos, newAngle, newPitch, newRoll, MOVE_QUICKTELE);
 			}
 
 			//For MovePassengers().
@@ -3481,8 +3503,8 @@ extend class FishyPlatform
 	//============================
 	private bool MoveGroup (PMoveTypes moveType)
 	{
-		if (bPlatPorted && moveType == MOVE_NORMAL)
-			moveType = MOVE_TELEPORT;
+		if (bPlatPorted)
+			moveType = MOVE_TRUETELE;
 
 		double delta = DeltaAngle(groupAngle, angle);
 		double piDelta = DeltaAngle(groupPitch, pitch);
@@ -3545,7 +3567,7 @@ extend class FishyPlatform
 				}
 			}
 
-			if (bPlatPorted && moveType == MOVE_TELEPORT)
+			if (moveType == MOVE_TRUETELE)
 			{
 				plat.bPlatPorted = true;
 				plat.platTeleFlags = platTeleFlags;
