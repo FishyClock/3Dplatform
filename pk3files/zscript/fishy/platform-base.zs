@@ -345,6 +345,7 @@ extend class FishyPlatform
 	transient bool lastGetNPResult;
 	transient int lastGetUPTime; //Same deal for GetUnlinkedPortal()
 	transient int lastGetBmapTime; //Same deal for GetNewBmapResults()
+	transient bool bPlatPorted;
 	int options;
 	int crushDamage;
 
@@ -2029,11 +2030,18 @@ extend class FishyPlatform
 					//Tried to move an active platform.
 					//If we moved it, adjust its
 					//interpolation coordinates.
-					if (result)
+					if (moved)
 					{
-						plat.pCurr += level.Vec3Diff(moOldPos, mo.pos);
-						if (moNewPos != mo.pos)
-							plat.AdjustInterpolationCoordinates(moNewPos, mo.pos, DeltaAngle(moNewAngle, mo.angle));
+						if (teleMove)
+						{
+							plat.AdjustInterpolationCoordinates(moOldPos, moNewPos, delta);
+						}
+						else
+						{
+							plat.pCurr += moNewPos - moOldPos;
+							if (moNewPos != mo.pos)
+								plat.AdjustInterpolationCoordinates(moNewPos, mo.pos, DeltaAngle(moNewAngle, mo.angle));
+						}
 					}
 
 					//In the unlikely event the plat has one of the flags CANPUSHWALLS, CANUSEWALLS, ACTIVATEMCROSS or ACTIVATEPCROSS
@@ -3727,6 +3735,14 @@ extend class FishyPlatform
 	}
 
 	//============================
+	// PostTeleport (override)
+	//============================
+	override void PostTeleport (vector3 destPos, double destAngle, int flags)
+	{
+		bPlatPorted = true;
+	}
+
+	//============================
 	// Tick (override)
 	//============================
 	override void Tick ()
@@ -3842,6 +3858,7 @@ extend class FishyPlatform
 				plat.bOnMobj = false; //Aside from standing on an actor, this can also be "true" later if hitting a lower obstacle while going down or we have stuck actors
 				plat.HandleOldPassengers(inactive);
 				plat.UpdateOldInfo();
+				plat.bPlatPorted = false;
 			}
 		}
 
@@ -3854,6 +3871,7 @@ extend class FishyPlatform
 			if (lastGetBmapTime == level.mapTime)
 				GetNewPassengers(false); //Call this early if we just did a blockmap search
 
+			let oldPGroup = curSector.portalGroup;
 			bInMove = true; //Don't collide with passengers
 			Actor.Tick();
 			if (bDestroyed)
@@ -3864,7 +3882,12 @@ extend class FishyPlatform
 			if (pos != oldPos || angle != oldAngle || pitch != oldPitch || roll != oldRoll)
 			{
 				if (bActive && pos != oldPos)
-					pCurr += level.Vec3Diff(oldPos, pos); //Adjust for interpolation moves
+				{
+					if (bPlatPorted || curSector.portalGroup != oldPGroup)
+						AdjustInterpolationCoordinates(oldPos, pos, DeltaAngle(oldAngle, angle));
+					else
+						pCurr += pos - oldPos; //Adjust for interpolation moves
+				}
 				let thisPos = pos;
 				let thisAng = angle;
 				let thisPi = pitch;
