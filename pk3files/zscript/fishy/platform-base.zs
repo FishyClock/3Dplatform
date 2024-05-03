@@ -3043,7 +3043,7 @@ extend class FishyPlatform
 			return true;
 		}
 
-		if (moveType == MOVE_TELEPORT || moveType == MOVE_TRUETELE ||pos == newPos)
+		if (moveType == MOVE_TELEPORT || moveType == MOVE_TRUETELE || pos == newPos)
 		{
 			if (pos != newPos)
 			{
@@ -3567,7 +3567,7 @@ extend class FishyPlatform
 				}
 			}
 
-			if (moveType == MOVE_TRUETELE)
+			if (bPlatPorted)
 			{
 				plat.bPlatPorted = true;
 				plat.platTeleFlags = platTeleFlags;
