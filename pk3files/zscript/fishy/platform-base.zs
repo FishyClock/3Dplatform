@@ -346,6 +346,7 @@ extend class FishyPlatform
 	transient int lastGetUPTime; //Same deal for GetUnlinkedPortal()
 	transient int lastGetBmapTime; //Same deal for GetNewBmapResults()
 	transient bool bPlatPorted;
+	transient int platTeleFlags;
 	int options;
 	int crushDamage;
 
@@ -1975,6 +1976,7 @@ extend class FishyPlatform
 				(cos(forward-90)*roDelta, sin(forward-90)*roDelta); //Right/left
 		}
 
+		teleMove |= bPlatPorted;
 		vector3 pushForce = level.Vec3Diff(startPos, endPos);
 		Array<double> preMovePos; //Sadly we can't have a vector2/3 dyn array
 		for (int i = passengers.Size(); i-- > 0;)
@@ -2023,6 +2025,11 @@ extend class FishyPlatform
 				mo.bNoGravity = true; //Needed so sloped sectors don't block 'mo'
 				let moOldAngle = mo.angle;
 				let moNewAngle = mo.angle + delta;
+				if (bPlatPorted)
+				{
+					plat.bPlatPorted = true;
+					plat.platTeleFlags = platTeleFlags;
+				}
 				int result = plat.PlatMove(moNewPos, moNewAngle, mo.pitch, mo.roll, teleMove);
 				moved = (result == 2); //2 == this plat and its groupmates moved. 1 == plat moved but not all groupmates moved.
 				if (plat.bActive)
@@ -2075,7 +2082,16 @@ extend class FishyPlatform
 				moved = FitsAtPosition(mo, moNewPos);
 				if (moved)
 				{
-					mo.SetOrigin(moNewPos, false);
+					if (bPlatPorted)
+					{
+						let moOldAngle = mo.angle;
+						mo.Teleport(moNewPos, mo.angle + delta, platTeleFlags); //Temp angle change for destination telefog position
+						mo.angle = moOldAngle; //The angle change is supposed to happen later
+					}
+					else
+					{
+						mo.SetOrigin(moNewPos, false);
+					}
 					mo.CheckPortalTransition(); //Handle sector portals properly
 				}
 			}
@@ -3061,6 +3077,7 @@ extend class FishyPlatform
 			stepMove /= maxSteps;
 		}
 
+		bPlatPorted = false;
 		for (int step = 0; step < maxSteps; ++step)
 		{
 			UpdateOldInfo();
@@ -3082,6 +3099,14 @@ extend class FishyPlatform
 					}
 				}
 				return false;
+			}
+
+			if (bPlatPorted)
+			{
+				let thisPos = pos;
+				let thisAng = angle;
+				GoBack();
+				return DoMove(thisPos, thisAng, newPitch, newRoll, MOVE_TELEPORT);
 			}
 
 			//For MovePassengers().
@@ -3456,6 +3481,9 @@ extend class FishyPlatform
 	//============================
 	private bool MoveGroup (PMoveTypes moveType)
 	{
+		if (bPlatPorted && moveType == MOVE_NORMAL)
+			moveType = MOVE_TELEPORT;
+
 		double delta = DeltaAngle(groupAngle, angle);
 		double piDelta = DeltaAngle(groupPitch, pitch);
 		double roDelta = DeltaAngle(groupRoll, roll);
@@ -3515,6 +3543,12 @@ extend class FishyPlatform
 					if (changeRo)
 						newRoll = plat.groupRoll + piDelta*s + roDelta*c;
 				}
+			}
+
+			if (bPlatPorted && moveType == MOVE_TELEPORT)
+			{
+				plat.bPlatPorted = true;
+				plat.platTeleFlags = platTeleFlags;
 			}
 
 			if (!plat.DoMove(newPos, newAngle, newPitch, newRoll, moveType) && moveType > MOVE_QUICK)
@@ -3722,7 +3756,7 @@ extend class FishyPlatform
 			}
 		}
 
-		if (result == 2)
+		if (result == 2 && bActive)
 		{
 			pCurr += vel;
 			if (pos != newPos) //Crossed a portal?
@@ -3740,6 +3774,7 @@ extend class FishyPlatform
 	override void PostTeleport (vector3 destPos, double destAngle, int flags)
 	{
 		bPlatPorted = true;
+		platTeleFlags = flags;
 	}
 
 	//============================
