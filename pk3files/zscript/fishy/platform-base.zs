@@ -1405,9 +1405,11 @@ extend class FishyPlatform
 				return false;
 
 			//If either one has this option then don't carry it
-			if ((options | plat.options) & OPTFLAG_IGNOREGEO)
+			if ((options != -1 && (options & OPTFLAG_IGNOREGEO) ) ||
+				(plat.options != -1 && (plat.options & OPTFLAG_IGNOREGEO) ) )
+			{
 				return false;
-
+			}
 			//If this is somebody's portal copy, ignore it
 			if (plat.bPortCopy)
 				return false;
