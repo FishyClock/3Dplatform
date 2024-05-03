@@ -1,7 +1,7 @@
 /******************************************************************************
 
  3D platform actor class
- Copyright (C) 2022-2023 Fishytza A.K.A. FishyClockwork
+ Copyright (C) 2022-2024 Fishytza A.K.A. FishyClockwork
 
  This program is free software: you can redistribute it and/or modify
  it under the terms of the GNU General Public License as published by
