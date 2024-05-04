@@ -2089,21 +2089,30 @@ extend class FishyPlatform
 			}
 			else if (teleMove)
 			{
-				moved = FitsAtPosition(mo, moNewPos);
-				if (moved)
+				if (bPlatPorted)
 				{
-					if (bPlatPorted)
+					let moOldAngle = mo.angle;
+					moved = mo.Teleport(moNewPos, mo.angle + delta, platTeleFlags); //Temp angle change for destination telefog position
+					if (!mo || mo.bDestroyed)
 					{
-						let moOldAngle = mo.angle;
-						mo.Teleport(moNewPos, mo.angle + delta, platTeleFlags); //Temp angle change for destination telefog position
-						mo.angle = moOldAngle; //The angle change is supposed to happen later
+						ForgetPassenger(i);
+						continue;
 					}
-					else
-					{
-						mo.SetOrigin(moNewPos, false);
-					}
-					mo.CheckPortalTransition(); //Handle sector portals properly
+
+					if (!mo.bNoBlockmap)
+						mo.A_ChangeLinkFlags(NO_BMAP); //Undo SetActorFlag() shenanigans
+
+					mo.angle = moOldAngle; //The angle change is supposed to happen later
 				}
+				else
+				{
+					moved = FitsAtPosition(mo, moNewPos);
+					if (moved)
+						mo.SetOrigin(moNewPos, false);
+				}
+
+				if (moved)
+					mo.CheckPortalTransition(); //Handle sector portals properly
 			}
 			else
 			{
@@ -2837,7 +2846,8 @@ extend class FishyPlatform
 			SetGroupOrigin(self);
 
 		bool teleMove = (moveType == MOVE_TELEPORT || moveType == MOVE_TRUETELE);
-		if (!teleMove)
+
+		if (moveType != MOVE_TELEPORT)
 			bPushStuckActors = true;
 
 		if (moveType > MOVE_QUICK) //Not a quick move?
@@ -2920,9 +2930,9 @@ extend class FishyPlatform
 					plat.portTwin.GetNewBmapResults();
 			}
 
-			if ((!plat.GetNewPassengers(teleMove) ||
+			if ((!plat.GetNewPassengers(moveType == MOVE_TELEPORT) ||
 				(plat.portTwin && !plat.portTwin.bNoBlockmap &&
-				!plat.portTwin.GetNewPassengers(teleMove) ) ) && moveType != MOVE_REPEAT )
+				!plat.portTwin.GetNewPassengers(moveType == MOVE_TELEPORT) ) ) && moveType != MOVE_REPEAT )
 			{
 				return 0; //GetNewPassengers() detected a stuck actor that couldn't be resolved
 			}
@@ -2950,7 +2960,7 @@ extend class FishyPlatform
 
 					if (teleMove)
 						platPass.GetNewBmapResults();
-					platPass.GetNewPassengers(teleMove);
+					platPass.GetNewPassengers(moveType == MOVE_TELEPORT);
 
 					//If passengers get stolen the array size will shrink
 					//and this one's position in the array might have changed.
@@ -3004,14 +3014,28 @@ extend class FishyPlatform
 		{
 			UpdateOldInfo();
 
+			if (moveType == MOVE_TRUETELE)
+			{
+				//Handle this early in case something goes wrong
+				if (!Teleport(newPos, newAngle, platTeleFlags))
+					return false;
+
+				if (bDestroyed)
+					return true; //"True" because technically we made a move before getting Thing_Remove()'d
+
+				CheckPortalTransition(); //Handle sector portals properly
+				newPos = pos; //Don't let CheckPortalTransition() confuse the (pos != newPos) if condition below
+				moveType = MOVE_QUICKTELE;
+			}
+
 			angle = newAngle;
 			pitch = newPitch;
 			roll = newRoll;
 
 			//For MovePassengers()
 			delta = DeltaAngle(oldAngle, newAngle);
-			piDelta = moveType == MOVE_TELEPORT ? 0 : DeltaAngle(oldPitch, newPitch);
-			roDelta = moveType == MOVE_TELEPORT ? 0 : DeltaAngle(oldRoll, newRoll);
+			piDelta = (moveType == MOVE_TELEPORT) ? 0 : DeltaAngle(oldPitch, newPitch);
+			roDelta = (moveType == MOVE_TELEPORT) ? 0 : DeltaAngle(oldRoll, newRoll);
 
 			if (lastUPort)
 			{
@@ -3047,19 +3071,16 @@ extend class FishyPlatform
 			return true;
 		}
 
-		if (moveType == MOVE_TELEPORT || moveType == MOVE_TRUETELE || pos == newPos)
+		if (moveType == MOVE_TELEPORT || pos == newPos)
 		{
 			if (pos != newPos)
 			{
-				if (moveType == MOVE_TRUETELE)
-					Teleport(newPos, newAngle, platTeleFlags);
-				else
-					SetOrigin(newPos, false);
+				SetOrigin(newPos, false);
 				CheckPortalTransition(); //Handle sector portals properly
 			}
 
 			bool result = true;
-			bool telePass = (moveType == MOVE_TELEPORT || moveType == MOVE_TRUETELE);
+			bool telePass = (moveType == MOVE_TELEPORT);
 			bool movedMine = MovePassengers(oldPos, pos, angle, delta, piDelta, roDelta, telePass);
 
 			if (!movedMine || (lastUPort &&
