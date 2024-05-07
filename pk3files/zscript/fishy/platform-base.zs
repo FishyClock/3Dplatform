@@ -111,6 +111,7 @@ class FishyPlatform : Actor abstract
 	int platFlags;
 	flagdef Carriable: platFlags, 0; //Let's this platform be carried (like a passenger) by other platforms
 	flagdef UseActorTick: platFlags, 1; //If we're not in a group, call Actor.Tick() in our Tick() override to handle world interaction
+	flagdef NoPassOrbit: platFlags, 2; //Passengers are unaffected by platform angle/pitch/roll changes
 
 	//===New properties===//
 	double platAirFric; //For platforms that have +PUSHABLE and +NOGRAVITY. (The pre-existing 'friction' property + sector friction are for gravity bound pushables instead.)
@@ -1964,6 +1965,13 @@ extend class FishyPlatform
 		if (!passengers.Size())
 			return true; //No passengers? Nothing to do
 
+		if (bNoPassOrbit)
+		{
+			delta = 0;
+			piDelta = 0;
+			roDelta = 0;
+		}
+
 		let grp = bPortCopy ? portTwin.group : self.group;
 		if (!grp || !grp.origin || !(grp.origin.options & OPTFLAG_DIFFPASSCOLL))
 			UnlinkPassengers();
@@ -2906,6 +2914,7 @@ extend class FishyPlatform
 					plat.portTwin.A_SetSize(plat.radius, plat.height);
 				plat.portTwin.options = plat.options;
 				plat.portTwin.crushDamage = plat.crushDamage;
+				plat.portTwin.bNoPassOrbit = plat.bNoPassOrbit;
 				plat.portTwin.special = plat.special;
 				for (int i = 0; i < 5; ++i)
 					plat.portTwin.args[i] = plat.args[i];

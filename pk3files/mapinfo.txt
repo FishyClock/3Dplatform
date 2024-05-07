@@ -27,6 +27,7 @@ DoomEdNums
 	15508 = TESTPushable2	//Ditto
 	15509 = TESTNoDeathSeq	//Ditto
 	15510 = TESTNastyHeart
+	15511 = TESTCybie
 }
 
 map MAP01 "Fishy's 3D Platforms: Demo"
