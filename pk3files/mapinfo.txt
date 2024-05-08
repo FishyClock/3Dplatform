@@ -28,7 +28,6 @@ DoomEdNums
 	15509 = TESTNoDeathSeq	//Ditto
 	15510 = TESTNastyHeart
 	15511 = TESTCybie
-	15512 = TESTCustomActorFlagChange
 }
 
 map MAP01 "Fishy's 3D Platforms: Demo"
