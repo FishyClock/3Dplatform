@@ -120,7 +120,6 @@ class FishyPlatform : Actor abstract
 	//===User variables===//
 	//$UserDefaultValue true
 	bool user_scalesize; //If true, the radius and height will be affected by its scale values
-	int user_flagoverride_useactortick; //If == 0 then behavior depends on whether the flag is set; If > 0 then pretend the flag is set; If < 0 then pretend the flag is NOT set
 }
 
 class FishyPlatformNode : InterpolationPoint
@@ -3959,9 +3958,8 @@ extend class FishyPlatform
 			}
 		}
 
-		bool callActorTick = (!group && //The group logic is incompatible with the native Tick() function - so for sanity's sake let's just not bother
-			(user_flagoverride_useactortick > 0 ||
-			(user_flagoverride_useactortick == 0 && bUseActorTick) ) );
+		//The group logic is incompatible with the native Tick() function - so for sanity's sake let's just not bother
+		bool callActorTick = (!group && bUseActorTick);
 
 		if (callActorTick)
 		{

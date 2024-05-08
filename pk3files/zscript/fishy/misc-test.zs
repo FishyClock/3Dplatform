@@ -48,3 +48,29 @@ class TESTNoDeathSeq : ZombieMan
 		Stop;
 	}
 }
+
+class TESTCustomActorFlagChange : FishyPlatform
+{
+	Default
+	{
+		ClearFlags;
+	}
+
+	States
+	{
+	Spawn:
+		POSS A 1
+		{
+			if (bUseActorTick)
+				SetStateLabel("Other");
+		}
+		Loop;
+	Other:
+		SPOS A 1
+		{
+			if (!bUseActorTick)
+				SetStateLabel("Spawn");
+		}
+		Loop;
+	}
+}
