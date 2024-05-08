@@ -4716,7 +4716,7 @@ extend class FishyPlatform
 		{
 			let it = level.CreateActorIterator(passTid);
 			Actor mo;
-			while (mo = Actor(it.Next()))
+			while (mo = it.Next())
 				passList.Push(mo);
 		}
 
