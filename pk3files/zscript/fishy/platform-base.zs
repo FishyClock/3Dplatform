@@ -3958,7 +3958,20 @@ extend class FishyPlatform
 			}
 		}
 
-		//The group logic is incompatible with the native Tick() function - so for sanity's sake let's just not bother
+		// The group logic is incompatible with the native Tick() function.
+		// For sanity's sake, I'm not going to bother to make it compatible.
+		// Because being in a group affects gravity and friction.
+		// And making that work with Actor.Tick() will give me a headache.
+		// Besides that, movement in the world has to happen first before
+		// any path following happens.
+		// But calling Actor.Tick() will also change actor states.
+		//
+		// As it turns out, there's more to actor movement
+		// besides checking velocity, handling gravity, friction.
+		// Such as scrolling floors and bounce logic.
+		// If you want bouncyness or scrolling or whatever else
+		// is already handled natively then use Actor.Tick().
+		//
 		bool callActorTick = (!group && bUseActorTick);
 
 		if (callActorTick)
