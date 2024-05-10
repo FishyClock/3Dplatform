@@ -282,6 +282,7 @@ class TESTCybie : FishyPlatform
 		+ACTLIKEBRIDGE
 		+FishyPlatform.USEACTORTICK
 		+FishyPlatform.NOPASSORBIT
+		+FishyPlatform.NOCORPSEGIB
 		SeeSound "cyber/sight";
 		PainSound "cyber/pain";
 		DeathSound "cyber/death";

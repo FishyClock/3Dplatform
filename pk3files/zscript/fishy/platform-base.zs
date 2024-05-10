@@ -112,6 +112,7 @@ class FishyPlatform : Actor abstract
 	flagdef Carriable: platFlags, 0; //Let's this platform be carried (like a passenger) by other platforms
 	flagdef UseActorTick: platFlags, 1; //If we're not in a group, call Actor.Tick() in our Tick() override to handle world interaction
 	flagdef NoPassOrbit: platFlags, 2; //Passengers are unaffected by platform angle/pitch/roll changes
+	flagdef NoCorpseGib: platFlags, 3; //Don't gib corpses when touching them
 
 	//===New properties===//
 	double platAirFric; //For platforms that have +PUSHABLE and +NOGRAVITY. (The pre-existing 'friction' property + sector friction are for gravity bound pushables instead.)
@@ -1655,7 +1656,7 @@ extend class FishyPlatform
 
 			if (OverlapZ(self, mo) && OverlapXY(self, mo))
 			{
-				if (mo.bCorpse && !mo.bDontGib && mo.tics == -1) //Let dying actors finish their death sequence
+				if (mo.bCorpse && !mo.bDontGib && mo.tics == -1 && !bNoCorpseGib) //Let dying actors finish their death sequence
 				{
 					if (!ignoreObs)
 						mo.Grind(false);
