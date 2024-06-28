@@ -429,7 +429,7 @@ extend class FishyPlatform
 		//Only do BlockLinesIterator searches if there are unlinked line portals on the map
 		for (uint iPorts = level.linePortals.Size(); iPorts-- > 0;)
 		{
-			LinePortal port = level.linePortals[iPorts];
+			let port = level.linePortals[iPorts];
 			if (port.mType == LinePortal.PORTT_TELEPORT || port.mType == LinePortal.PORTT_INTERACTIVE)
 			{
 				bSearchForUPorts = true;
