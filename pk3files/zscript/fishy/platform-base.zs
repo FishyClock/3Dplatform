@@ -1909,7 +1909,7 @@ extend class FishyPlatform
 		//
 		// In a custom game/mod it would be cleaner to do the non-collision
 		// in a CanCollideWith() override for the passenger.
-		// At this moment there're no way to inject code or override
+		// At this moment there's no way to inject code or override
 		// CanCollideWith() with pre-existing or unknown actor classes.
 
 		for (int iTwins = 0; iTwins < 2; ++iTwins)
