@@ -2915,6 +2915,7 @@ extend class FishyPlatform
 				plat.portTwin.options = plat.options;
 				plat.portTwin.crushDamage = plat.crushDamage;
 				plat.portTwin.bNoPassOrbit = plat.bNoPassOrbit;
+				plat.portTwin.bNoCorpseGib = plat.bNoCorpseGib;
 				plat.portTwin.special = plat.special;
 				for (int i = 0; i < 5; ++i)
 					plat.portTwin.args[i] = plat.args[i];
