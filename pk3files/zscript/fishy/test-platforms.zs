@@ -209,8 +209,7 @@ class TESTNastyHeart : FishyPlatform
 		-NODAMAGE;
 		-NOBLOOD;
 		-NOTAUTOAIMED;
-		+MISSILEMORE;
-		+MISSILEEVENMORE;
+		MissileChanceMult 0.0625; //This is the old +MISSILEMORE and +MISSILEEVENMORE as a property
 		Obituary "%o succumbed to FIREBLU <3";
 	}
 
@@ -274,8 +273,8 @@ class TESTCybie : FishyPlatform
 		ClearFlags;
 		Monster;
 		MinMissileChance 160;
-		+BOSS 
-		+MISSILEMORE
+		MissileChanceMult 0.5;
+		+BOSS
 		+FLOORCLIP
 		+NORADIUSDMG
 		+DONTMORPH
@@ -288,6 +287,7 @@ class TESTCybie : FishyPlatform
 		DeathSound "cyber/death";
 		ActiveSound "cyber/active";
 		Obituary "$OB_CYBORG";
+		Tag "$FN_CYBER";
 	}
 	States
 	{
