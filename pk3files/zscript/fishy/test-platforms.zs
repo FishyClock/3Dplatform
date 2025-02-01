@@ -53,8 +53,16 @@ class TESTSprite : TESTPlat
 	Spawn:
 		TROO A -1 NoDelay //Test NoDelay
 		{
-			Actor indicator = Spawn("TESTSPritePitchIndicator", pos);
-			indicator.tracer = self;
+			for (int i = 0; i < 3; ++i)
+			{
+				Actor indicator = Spawn("TESTSPritePitchIndicator", pos);
+				indicator.tracer = self;
+				switch (i)
+				{
+					case 1: indicator.SetStateLabel("Left"); break;
+					case 2: indicator.SetStateLabel("Up");   break;
+				}
+			}
 		}
 		Stop;
 	}
@@ -68,20 +76,27 @@ class TESTSPritePitchIndicator : Actor
 		+NOBLOCKMAP;
 	}
 
+	void A_AkshunFunkshunFollohTraysir (vector3 offset)
+	{
+		if (!tracer)
+		{
+			Destroy();
+			return;
+		}
+		quat q = quat.FromAngles(tracer.angle, tracer.pitch, tracer.roll);
+		SetOrigin(level.Vec3Offset(tracer.pos, q * offset), true);
+	}
+
 	States
 	{
-	Spawn:
-		APLS AAABBB 1
-		{
-			if (!tracer)
-			{
-				Destroy();
-				return;
-			}
-			quat q = quat.FromAngles(tracer.angle, tracer.pitch, tracer.roll);
-			vector3 offset = q * (tracer.radius, 0, 0);
-			SetOrigin(level.Vec3Offset(tracer.pos, offset), true);
-		}
+	Spawn: //Front
+		APLS AAABBB 1 A_AkshunFunkshunFollohTraysir((tracer.radius, 0, 0));
+		Loop;
+	Left:
+		PLSS AAABBB 1 A_AkshunFunkshunFollohTraysir((0, tracer.radius, 0));
+		Loop;
+	Up:
+		BAL1 AAABBB 1 A_AkshunFunkshunFollohTraysir((0, 0, tracer.radius));
 		Loop;
 	}
 }
