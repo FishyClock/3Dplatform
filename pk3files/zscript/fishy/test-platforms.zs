@@ -76,7 +76,7 @@ class TESTSPritePitchIndicator : Actor
 		+NOBLOCKMAP;
 	}
 
-	void A_AkshunFunkshunFollohTraysir (vector3 offset)
+	void A_AkshunFunkshunFollohTraysir (vector3 offset, color boja)
 	{
 		if (!tracer)
 		{
@@ -84,19 +84,23 @@ class TESTSPritePitchIndicator : Actor
 			return;
 		}
 		quat q = quat.FromAngles(tracer.angle, tracer.pitch, tracer.roll);
-		SetOrigin(level.Vec3Offset(tracer.pos, q * offset), true);
+		offset = q * offset;
+		SetOrigin(level.Vec3Offset(tracer.pos, offset), true);
+
+		for (double i = 0.05; i < 1.0; i += 0.05)
+			tracer.A_SpawnParticle(boja, SPF_FULLBRIGHT, 1, 10, xoff: offset.x*i, yoff: offset.y*i, zoff: offset.z*i);
 	}
 
 	States
 	{
 	Spawn: //Front
-		APLS AAABBB 1 A_AkshunFunkshunFollohTraysir((tracer.radius, 0, 0));
+		APLS AAABBB 1 Bright A_AkshunFunkshunFollohTraysir((tracer.radius, 0, 0), "Green");
 		Loop;
 	Left:
-		PLSS AAABBB 1 A_AkshunFunkshunFollohTraysir((0, tracer.radius, 0));
+		PLSS AAABBB 1 Bright A_AkshunFunkshunFollohTraysir((0, tracer.radius, 0), "Blue");
 		Loop;
 	Up:
-		BAL1 AAABBB 1 A_AkshunFunkshunFollohTraysir((0, 0, tracer.radius));
+		BAL1 AAABBB 1 Bright A_AkshunFunkshunFollohTraysir((0, 0, tracer.radius), "Red");
 		Loop;
 	}
 }
