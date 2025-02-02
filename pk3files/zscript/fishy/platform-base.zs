@@ -1,7 +1,7 @@
 /******************************************************************************
 
  3D platform actor class
- Copyright (C) 2022-2024 Fishytza A.K.A. FishyClockwork
+ Copyright (C) 2022-2025 Fishytza A.K.A. FishyClockwork
 
  This program is free software: you can redistribute it and/or modify
  it under the terms of the GNU General Public License as published by
@@ -315,7 +315,7 @@ extend class FishyPlatform
 	double groupPitch; //The pitch when this platform joins a group - doesn't change when origin changes.
 	double groupRoll;  //The roll when this platform joins a group - doesn't change when origin changes.
 	vector3 groupOrbitOffset;  //Precalculated offset from origin's groupOrbitPos to orbiter's groupOrbitPos - changes when origin changes.
-	vector2 groupOrbitAngDiff; //Precalculated delta from origin's groupAngle to orbiter's groupAngle as a cosine(x) and sine(y) - changes when origin changes.
+	quat groupOrbitAngDiff; //Precalculated deltas from origin's groupAngle/Pitch/Roll to orbiter's groupAngle/Pitch/Roll as a quaternion - changes when origin changes.
 	double time;
 	double reachedTime;
 	double timeFrac;
@@ -720,7 +720,10 @@ extend class FishyPlatform
 	private void SetOrbitInfo ()
 	{
 		groupOrbitOffset = level.Vec3Diff(group.origin.groupOrbitPos, groupOrbitPos);
-		groupOrbitAngDiff = DeltaAngle(group.origin.groupAngle, groupAngle).ToVector();
+		groupOrbitAngDiff = quat.FromAngles(
+			DeltaAngle(group.origin.groupAngle, groupAngle),
+			DeltaAngle(group.origin.groupPitch, groupPitch),
+			DeltaAngle(group.origin.groupRoll, groupRoll) );
 	}
 
 	//============================
@@ -778,13 +781,9 @@ extend class FishyPlatform
 			vector3 offset = qRot * level.Vec3Diff(ori.pos, pos);
 			groupOrbitPos = level.Vec3Offset(ori.groupOrbitPos, offset);
 
-			groupAngle = angle + delta;
+			quat qAngs = quat.FromAngles(angle, pitch, roll) * quat.FromAngles(delta, piDelta, roDelta);
+			[groupAngle, groupPitch, groupRoll] = AnglesFromQuat(qAngs);
 			SetOrbitInfo();
-			double c = groupOrbitAngDiff.x;
-			double s = groupOrbitAngDiff.y;
-
-			groupPitch = pitch + piDelta*c - roDelta*s;
-			groupRoll = roll + piDelta*s + roDelta*c;
 		}
 	}
 
@@ -802,6 +801,34 @@ extend class FishyPlatform
 		quat qLast = quat(-qFirst.x, -qFirst.y, -qFirst.z, +qFirst.w); //This would be qFirst.Conjugate(); if not for the JIT error
 
 		return qFirst * quat.FromAngles(yaDelta, piDelta, roDelta) * qLast;
+	}
+
+	//============================
+	// AnglesFromQuat
+	//============================
+	static double, double, double AnglesFromQuat (quat q)
+	{
+		//Credits to Boondorl and kodi for showing me how it's done
+
+		//Personal note: Converting angles to quats and back to angles again
+		//is consistent as long as the pitch doesn't go beyond -89 +89 range.
+		//A pitch outside the range of -89 +89 that was set into a quat
+		//will fuck up the yaw and roll result when converted back.
+		double ySquared = q.y * q.y;
+		double qYaw1 = 2.0 * (q.w * q.z + q.x * q.y);
+		double qYaw2 = 1.0 - 2.0 * (ySquared + q.z * q.z);
+		double qYaw = atan2(qYaw1, qYaw2);
+
+		double qPitchCommon = q.w * q.y - q.x * q.z;
+		double qPitch1 = sqrt(1.0 + 2.0 * qPitchCommon);
+		double qPitch2 = sqrt(1.0 - 2.0 * qPitchCommon);
+		double qPitch = 2.0 * atan2(qPitch1, qPitch2) - 90.0;
+
+		double qRoll1 = 2.0 * (q.w * q.x + q.y * q.z);
+		double qRoll2 = 1.0 - 2.0 * (q.x * q.x + ySquared);
+		double qRoll = atan2(qRoll1, qRoll2);
+
+		return qYaw, qPitch, qRoll;
 	}
 
 	//============================
@@ -3553,6 +3580,7 @@ extend class FishyPlatform
 
 		vector3 mirOfs = (double.nan, 0, 0);
 		quat qRot = quat(double.nan, 0, 0, 0);
+		quat qAngs = quat(double.nan, 0, 0, 0);
 
 		for (int iPlat = 0; iPlat < group.members.Size(); ++iPlat)
 		{
@@ -3594,17 +3622,19 @@ extend class FishyPlatform
 					qRot = GetQuatRotation(delta, piDelta, roDelta, groupAngle);
 				newPos = level.Vec3Offset(pos, qRot * plat.groupOrbitOffset);
 
-				if (changeAng)
-					newAngle = plat.groupAngle + delta;
-
-				if (changePi || changeRo)
+				if (changeAng || changePi || changeRo)
 				{
-					double c = plat.groupOrbitAngDiff.x;
-					double s = plat.groupOrbitAngDiff.y;
+					if (qAngs != qAngs) //NaN check
+						qAngs = quat.FromAngles(angle, pitch, roll);
+
+					let [qYaw, qPitch, qRoll] = AnglesFromQuat(qAngs * plat.groupOrbitAngDiff);
+
+					if (changeAng)
+						newAngle = qYaw;
 					if (changePi)
-						newPitch = plat.groupPitch + piDelta*c - roDelta*s;
+						newPitch = qPitch;
 					if (changeRo)
-						newRoll = plat.groupRoll + piDelta*s + roDelta*c;
+						newRoll = qRoll;
 				}
 			}
 
