@@ -809,12 +809,7 @@ extend class FishyPlatform
 	//============================
 	static double, double, double AnglesFromQuat (quat q)
 	{
-		//Credits to Boondorl and kodi for showing me how it's done
-
-		//Personal note: Converting angles to quats and back to angles again
-		//is consistent as long as the pitch doesn't go beyond -89 +89 range.
-		//A pitch outside the range of -89 +89 that was set into a quat
-		//will fuck up the yaw and roll result when converted back.
+		//Credits to Boondorl and kodi
 		double ySquared = q.y * q.y;
 		double qYaw1 = 2.0 * (q.w * q.z + q.x * q.y);
 		double qYaw2 = 1.0 - 2.0 * (ySquared + q.z * q.z);
