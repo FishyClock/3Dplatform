@@ -758,7 +758,6 @@ extend class FishyPlatform
 	{
 		//Called when a platform joins a group with a designated
 		//origin. Or when a group member's mirror flag changes.
-		//This is similar to MoveGroup() but backwards.
 
 		let ori = group.origin;
 		double delta = DeltaAngle(ori.angle, ori.groupAngle);
@@ -781,8 +780,10 @@ extend class FishyPlatform
 			vector3 offset = qRot * level.Vec3Diff(ori.pos, pos);
 			groupOrbitPos = level.Vec3Offset(ori.groupOrbitPos, offset);
 
-			quat qAngs = quat.FromAngles(angle, pitch, roll) * quat.FromAngles(delta, piDelta, roDelta);
-			[groupAngle, groupPitch, groupRoll] = AnglesFromQuat(qAngs);
+			groupAngle = Normalize180( ori.groupAngle + DeltaAngle(ori.angle, angle) );
+			groupPitch = Normalize180( ori.groupPitch + DeltaAngle(ori.pitch, pitch) );
+			groupRoll  = Normalize180( ori.groupRoll  + DeltaAngle(ori.roll, roll) );
+
 			SetOrbitInfo();
 		}
 	}
