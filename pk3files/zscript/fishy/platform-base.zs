@@ -809,16 +809,18 @@ extend class FishyPlatform
 	//============================
 	static double, double, double AnglesFromQuat (quat q)
 	{
-		//Credits to Boondorl and kodi
+		//Credits to Boondorl and Lewisk3
 		double ySquared = q.y * q.y;
 		double qYaw1 = 2.0 * (q.w * q.z + q.x * q.y);
 		double qYaw2 = 1.0 - 2.0 * (ySquared + q.z * q.z);
 		double qYaw = atan2(qYaw1, qYaw2);
 
-		double qPitchCommon = q.w * q.y - q.x * q.z;
-		double qPitch1 = sqrt(1.0 + 2.0 * qPitchCommon);
-		double qPitch2 = sqrt(1.0 - 2.0 * qPitchCommon);
-		double qPitch = 2.0 * atan2(qPitch1, qPitch2) - 90.0;
+		double sinP = 2.0 * (q.w * q.y - q.x * q.z);
+		double qPitch;
+		if (abs(sinP) >= 1.0)
+			qPitch = 90.0 * (sinP < 0.0 ? -1 : 1);
+		else
+			qPitch = asin(sinP);
 
 		double qRoll1 = 2.0 * (q.w * q.x + q.y * q.z);
 		double qRoll2 = 1.0 - 2.0 * (q.x * q.x + ySquared);
