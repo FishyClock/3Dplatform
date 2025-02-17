@@ -817,7 +817,7 @@ extend class FishyPlatform
 
 		double qPitch = 2.0 * (q.w * q.y - q.x * q.z);
 		if (abs(qPitch) >= 1.0)
-			qPitch = 90.0 * (qPitch < 0.0 ? -1 : 1);
+			qPitch = (qPitch < 0.0) ? -90.0 : 90.0;
 		else
 			qPitch = asin(qPitch);
 
