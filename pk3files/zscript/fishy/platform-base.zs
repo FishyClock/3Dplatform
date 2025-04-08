@@ -2021,6 +2021,7 @@ extend class FishyPlatform
 			let moOldPos = mo.pos;
 			let moOldNoDropoff = mo.bNoDropoff;
 			let moOldNoGrav = mo.bNoGravity;
+			let moOldScrollMove = mo.bScrollMove;
 			let plat = FishyPlatform(mo);
 
 			vector3 offset = level.Vec3Diff(startPos, moOldPos);
@@ -2059,6 +2060,8 @@ extend class FishyPlatform
 			{
 				mo.bNoDropoff = false;
 				mo.bNoGravity = true; //Needed so sloped sectors don't block 'mo'
+				if (compat_crossdropoff) //Only do this if really necessary
+					mo.bScrollMove = true; //Hack: negate the effects of compat_crossdropoff
 				let moOldAngle = mo.angle;
 				let moNewAngle = mo.angle + delta;
 				if (bPlatPorted)
@@ -2099,6 +2102,8 @@ extend class FishyPlatform
 					{
 						mo.bNoDropoff = moOldNoDropoff;
 						mo.bNoGravity = moOldNoGrav;
+						if (compat_crossdropoff) //Only do this if really necessary
+							mo.bScrollMove = moOldScrollMove;
 						mo.A_ChangeLinkFlags(YES_BMAP);
 						PassengerPostMove(mo, result);
 					}
@@ -2117,6 +2122,8 @@ extend class FishyPlatform
 
 				mo.bNoDropoff = moOldNoDropoff;
 				mo.bNoGravity = moOldNoGrav;
+				if (compat_crossdropoff) //Only do this if really necessary
+					mo.bScrollMove = moOldScrollMove;
 				mo.angle = moOldAngle; //The angle change is supposed to happen later
 			}
 			else if (teleMove)
@@ -2168,6 +2175,8 @@ extend class FishyPlatform
 				//but the passenger should be treated like a flying object.
 				mo.bNoDropoff = false;
 				mo.bNoGravity = true; //Needed so sloped sectors don't block 'mo'
+				if (compat_crossdropoff) //Only do this if really necessary
+					mo.bScrollMove = true; //Hack: negate the effects of compat_crossdropoff
 				moved = true;
 				for (int step = 0; step < maxSteps; ++step)
 				{
@@ -2217,6 +2226,8 @@ extend class FishyPlatform
 				}
 				mo.bNoDropoff = moOldNoDropoff;
 				mo.bNoGravity = moOldNoGrav;
+				if (compat_crossdropoff) //Only do this if really necessary
+					mo.bScrollMove = moOldScrollMove;
 			}
 
 			if (moved)
