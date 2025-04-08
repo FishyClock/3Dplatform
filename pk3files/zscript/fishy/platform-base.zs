@@ -2015,6 +2015,7 @@ extend class FishyPlatform
 		teleMove |= bPlatPorted;
 		vector3 pushForce = level.Vec3Diff(startPos, endPos);
 		Array<double> preMovePos; //Sadly we can't have a vector2/3 dyn array
+		bool usingCompatCrossDropoff = (level.compatflags & 1048576);
 		for (int i = passengers.Size(); i-- > 0;)
 		{
 			let mo = passengers[i];
@@ -2060,7 +2061,7 @@ extend class FishyPlatform
 			{
 				mo.bNoDropoff = false;
 				mo.bNoGravity = true; //Needed so sloped sectors don't block 'mo'
-				if (level.compatflags & 1048576) //Only do this if really necessary
+				if (usingCompatCrossDropoff) //Only do this if really necessary
 					mo.bScrollMove = true; //Hack: negate the effects of compat_crossdropoff
 				let moOldAngle = mo.angle;
 				let moNewAngle = mo.angle + delta;
@@ -2102,7 +2103,7 @@ extend class FishyPlatform
 					{
 						mo.bNoDropoff = moOldNoDropoff;
 						mo.bNoGravity = moOldNoGrav;
-						if (level.compatflags & 1048576) //Only do this if really necessary
+						if (usingCompatCrossDropoff) //Only do this if really necessary
 							mo.bScrollMove = moOldScrollMove;
 						mo.A_ChangeLinkFlags(YES_BMAP);
 						PassengerPostMove(mo, result);
@@ -2122,7 +2123,7 @@ extend class FishyPlatform
 
 				mo.bNoDropoff = moOldNoDropoff;
 				mo.bNoGravity = moOldNoGrav;
-				if (level.compatflags & 1048576) //Only do this if really necessary
+				if (usingCompatCrossDropoff) //Only do this if really necessary
 					mo.bScrollMove = moOldScrollMove;
 				mo.angle = moOldAngle; //The angle change is supposed to happen later
 			}
@@ -2175,7 +2176,7 @@ extend class FishyPlatform
 				//but the passenger should be treated like a flying object.
 				mo.bNoDropoff = false;
 				mo.bNoGravity = true; //Needed so sloped sectors don't block 'mo'
-				if (level.compatflags & 1048576) //Only do this if really necessary
+				if (usingCompatCrossDropoff) //Only do this if really necessary
 					mo.bScrollMove = true; //Hack: negate the effects of compat_crossdropoff
 				moved = true;
 				for (int step = 0; step < maxSteps; ++step)
@@ -2226,7 +2227,7 @@ extend class FishyPlatform
 				}
 				mo.bNoDropoff = moOldNoDropoff;
 				mo.bNoGravity = moOldNoGrav;
-				if (level.compatflags & 1048576) //Only do this if really necessary
+				if (usingCompatCrossDropoff) //Only do this if really necessary
 					mo.bScrollMove = moOldScrollMove;
 			}
 
