@@ -2060,7 +2060,7 @@ extend class FishyPlatform
 			{
 				mo.bNoDropoff = false;
 				mo.bNoGravity = true; //Needed so sloped sectors don't block 'mo'
-				if (compat_crossdropoff) //Only do this if really necessary
+				if (level.compatflags & 1048576) //Only do this if really necessary
 					mo.bScrollMove = true; //Hack: negate the effects of compat_crossdropoff
 				let moOldAngle = mo.angle;
 				let moNewAngle = mo.angle + delta;
@@ -2102,7 +2102,7 @@ extend class FishyPlatform
 					{
 						mo.bNoDropoff = moOldNoDropoff;
 						mo.bNoGravity = moOldNoGrav;
-						if (compat_crossdropoff) //Only do this if really necessary
+						if (level.compatflags & 1048576) //Only do this if really necessary
 							mo.bScrollMove = moOldScrollMove;
 						mo.A_ChangeLinkFlags(YES_BMAP);
 						PassengerPostMove(mo, result);
@@ -2122,7 +2122,7 @@ extend class FishyPlatform
 
 				mo.bNoDropoff = moOldNoDropoff;
 				mo.bNoGravity = moOldNoGrav;
-				if (compat_crossdropoff) //Only do this if really necessary
+				if (level.compatflags & 1048576) //Only do this if really necessary
 					mo.bScrollMove = moOldScrollMove;
 				mo.angle = moOldAngle; //The angle change is supposed to happen later
 			}
@@ -2175,7 +2175,7 @@ extend class FishyPlatform
 				//but the passenger should be treated like a flying object.
 				mo.bNoDropoff = false;
 				mo.bNoGravity = true; //Needed so sloped sectors don't block 'mo'
-				if (compat_crossdropoff) //Only do this if really necessary
+				if (level.compatflags & 1048576) //Only do this if really necessary
 					mo.bScrollMove = true; //Hack: negate the effects of compat_crossdropoff
 				moved = true;
 				for (int step = 0; step < maxSteps; ++step)
@@ -2226,7 +2226,7 @@ extend class FishyPlatform
 				}
 				mo.bNoDropoff = moOldNoDropoff;
 				mo.bNoGravity = moOldNoGrav;
-				if (compat_crossdropoff) //Only do this if really necessary
+				if (level.compatflags & 1048576) //Only do this if really necessary
 					mo.bScrollMove = moOldScrollMove;
 			}
 
