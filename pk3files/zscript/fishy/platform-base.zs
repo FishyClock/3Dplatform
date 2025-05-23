@@ -2014,18 +2014,21 @@ extend class FishyPlatform
 
 		teleMove |= bPlatPorted;
 		vector3 pushForce = level.Vec3Diff(startPos, endPos);
-		Array<double> preMovePos; //Sadly we can't have a vector2/3 dyn array
+		Array<double> preMoveInfo; //Used to save a passenger's pos and angle in case it needs to be restored
 		bool usingCompatCrossDropoff = (level.compatflags & 1048576);
 		for (int i = passengers.Size(); i-- > 0;)
 		{
 			let mo = passengers[i];
-			let moOldPos = mo.pos;
+			let plat = FishyPlatform(mo);
+
+			let moPreMovePos = mo.pos;
+			let moPreMoveAngle = mo.angle;
+			let moNewAngle = (delta) ? Normalize180(mo.angle + delta) : mo.angle;
 			let moOldNoDropoff = mo.bNoDropoff;
 			let moOldNoGrav = mo.bNoGravity;
 			let moOldScrollMove = mo.bScrollMove;
-			let plat = FishyPlatform(mo);
 
-			vector3 offset = level.Vec3Diff(startPos, moOldPos);
+			vector3 offset = level.Vec3Diff(startPos, moPreMovePos);
 			if (delta) //Will 'offset' get rotated?
 			{
 				double oldOffX = offset.x;
@@ -2063,8 +2066,6 @@ extend class FishyPlatform
 				mo.bNoGravity = true; //Needed so sloped sectors don't block 'mo'
 				if (usingCompatCrossDropoff) //Only do this if really necessary
 					mo.bScrollMove = true; //Hack: negate the effects of compat_crossdropoff
-				let moOldAngle = mo.angle;
-				let moNewAngle = mo.angle + delta;
 				if (bPlatPorted)
 				{
 					plat.bPlatPorted = true;
@@ -2076,7 +2077,7 @@ extend class FishyPlatform
 					(teleMove) ? MOVE_TELEPORT :
 					MOVE_NORMAL;
 
-				int result = plat.PlatMove(moNewPos, moNewAngle, mo.pitch, mo.roll, moveType);
+				int result = plat.PlatMove(moNewPos, moNewAngle, plat.pitch, plat.roll, moveType);
 				moved = (result == 2); //2 == this plat and its groupmates moved. 1 == plat moved but not all groupmates moved.
 				if (plat.bActive)
 				{
@@ -2087,11 +2088,11 @@ extend class FishyPlatform
 					{
 						if (teleMove)
 						{
-							plat.AdjustInterpolationCoordinates(moOldPos, moNewPos, delta);
+							plat.AdjustInterpolationCoordinates(moPreMovePos, moNewPos, delta);
 						}
 						else
 						{
-							plat.pCurr += moNewPos - moOldPos;
+							plat.pCurr += moNewPos - moPreMovePos;
 							if (moNewPos != mo.pos)
 								plat.AdjustInterpolationCoordinates(moNewPos, mo.pos, DeltaAngle(moNewAngle, mo.angle));
 						}
@@ -2118,6 +2119,9 @@ extend class FishyPlatform
 					continue;
 				}
 
+				if (moved)
+					moNewAngle = plat.angle; //In case a portal was crossed that had an angle difference
+
 				if (!mo.bNoBlockmap)
 					mo.A_ChangeLinkFlags(NO_BMAP); //Undo SetActorFlag() shenanigans
 
@@ -2125,14 +2129,12 @@ extend class FishyPlatform
 				mo.bNoGravity = moOldNoGrav;
 				if (usingCompatCrossDropoff) //Only do this if really necessary
 					mo.bScrollMove = moOldScrollMove;
-				mo.angle = moOldAngle; //The angle change is supposed to happen later
 			}
 			else if (teleMove)
 			{
 				if (bPlatPorted)
 				{
-					let moOldAngle = mo.angle;
-					moved = mo.Teleport(moNewPos, mo.angle + delta, platTeleFlags); //Temp angle change for destination telefog position
+					moved = mo.Teleport(moNewPos, moNewAngle, platTeleFlags);
 					if (!mo || mo.bDestroyed)
 					{
 						ForgetPassenger(i);
@@ -2141,8 +2143,6 @@ extend class FishyPlatform
 
 					if (!mo.bNoBlockmap)
 						mo.A_ChangeLinkFlags(NO_BMAP); //Undo SetActorFlag() shenanigans
-
-					mo.angle = moOldAngle; //The angle change is supposed to happen later
 				}
 				else
 				{
@@ -2157,7 +2157,7 @@ extend class FishyPlatform
 			else
 			{
 				int maxSteps = 1;
-				vector3 stepMove = level.Vec3Diff(moOldPos, moNewPos);
+				vector3 stepMove = level.Vec3Diff(moPreMovePos, moNewPos);
 
 				//If the move is equal or larger than the passenger's radius
 				//then it has to be split up into smaller steps.
@@ -2182,12 +2182,11 @@ extend class FishyPlatform
 				for (int step = 0; step < maxSteps; ++step)
 				{
 					let moOldAngle = mo.angle;
-					let moOldZ = mo.pos.z;
 					mo.AddZ(stepMove.z);
 					vector2 tryPos = mo.pos.xy + stepMove.xy;
 					if (!mo.TryMove(tryPos, 1))
 					{
-						mo.SetZ(moOldZ);
+						mo.AddZ(-stepMove.z);
 						moved = false;
 						break;
 					}
@@ -2207,6 +2206,8 @@ extend class FishyPlatform
 						double angDiff = DeltaAngle(moOldAngle, mo.angle);
 						if (angDiff)
 						{
+							moNewAngle += angDiff;
+
 							if (step < maxSteps-1)
 								stepMove.xy = RotateVector(stepMove.xy, angDiff);
 
@@ -2233,23 +2234,33 @@ extend class FishyPlatform
 
 			if (moved)
 			{
+				if (mo.angle != moNewAngle)
+					mo.A_SetAngle(moNewAngle, SPF_INTERPOLATE);
+
 				if (!teleMove)
 				{
-					//Only remember the old position if 'mo' was moved.
+					//Only remember the old position and angle if 'mo' was moved.
 					//(Else we delete the 'passengers' entry containing 'mo', see below.)
-					preMovePos.Push(moOldPos.x);
-					preMovePos.Push(moOldPos.y);
-					preMovePos.Push(moOldPos.z);
+					preMoveInfo.Push(moPreMovePos.x);
+					preMoveInfo.Push(moPreMovePos.y);
+					preMoveInfo.Push(moPreMovePos.z);
+					preMoveInfo.Push(moPreMoveAngle);
 				}
 			}
 			else
 			{
-				if (mo.pos != moOldPos)
+				if (mo.pos != moPreMovePos || mo.angle != moPreMoveAngle)
 				{
 					if (!plat)
-						mo.SetOrigin(moOldPos, true);
+					{
+						if (mo.pos != moPreMovePos)
+							mo.SetOrigin(moPreMovePos, true);
+						mo.angle = moPreMoveAngle;
+					}
 					else
-						plat.PlatMove(moOldPos, mo.angle, mo.pitch, mo.roll, MOVE_TELEPORT);
+					{
+						plat.PlatMove(moPreMovePos, moPreMoveAngle, plat.pitch, plat.roll, MOVE_TELEPORT);
+					}
 				}
 
 				//This passenger will be 'solid' for the others
@@ -2294,18 +2305,24 @@ extend class FishyPlatform
 							continue;
 						}
 
-						//Put 'otherMo' back at its old position
-						int iPreMovePos = (passengers.Size() - 1 - iOther) * 3;
-						vector3 otherOldPos = (preMovePos[iPreMovePos], preMovePos[iPreMovePos + 1], preMovePos[iPreMovePos + 2]);
+						//Put 'otherMo' back at its old position and restore old angle
+						int iPreMoveInfo = (passengers.Size() - 1 - iOther) * 4;
+						vector3 otherOldPos = (preMoveInfo[iPreMoveInfo], preMoveInfo[iPreMoveInfo + 1], preMoveInfo[iPreMoveInfo + 2]);
+						double otherOldAngle = preMoveInfo[iPreMoveInfo + 3];
 						plat = FishyPlatform(otherMo);
 						if (!plat)
-							otherMo.SetOrigin(otherOldPos, true);
+						{
+							if (otherMo.pos != otherOldPos)
+								otherMo.SetOrigin(otherOldPos, true);
+							otherMo.angle = otherOldAngle;
+						}
 						else
-							plat.PlatMove(otherOldPos, plat.angle, plat.pitch, plat.roll, MOVE_TELEPORT);
-
+						{
+							plat.PlatMove(otherOldPos, otherOldAngle, plat.pitch, plat.roll, MOVE_TELEPORT);
+						}
 						otherMo.A_ChangeLinkFlags(YES_BMAP);
 						PassengerPostMove(otherMo, false);
-						preMovePos.Delete(iPreMovePos, 3);
+						preMoveInfo.Delete(iPreMoveInfo, 4);
 						ForgetPassenger(iOther);
 
 						if (!blocked)
@@ -2335,13 +2352,10 @@ extend class FishyPlatform
 		}
 
 		//Anyone left in the 'passengers' array has moved successfully.
-		//Adjust their angles and velocities.
+		//Adjust their velocities.
 		for (int i = passengers.Size(); i-- > 0;)
 		{
 			let mo = passengers[i];
-
-			if (delta)
-				mo.A_SetAngle(Normalize180(mo.angle + delta), SPF_INTERPOLATE);
 
 			if (mo.bOnMobj) //Standing on platform or on another passenger?
 				mo.vel.xy = (mo.vel.x*c - mo.vel.y*s, mo.vel.x*s + mo.vel.y*c); //Rotate its velocity
