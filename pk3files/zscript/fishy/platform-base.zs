@@ -815,11 +815,7 @@ extend class FishyPlatform
 		double qYaw2 = 1.0 - 2.0 * (ySquared + q.z * q.z);
 		double qYaw = atan2(qYaw1, qYaw2);
 
-		double qPitch = 2.0 * (q.w * q.y - q.x * q.z);
-		if (abs(qPitch) >= 1.0)
-			qPitch = (qPitch < 0.0) ? -90.0 : 90.0;
-		else
-			qPitch = asin(qPitch);
+		double qPitch = asin(2.0 * (q.w * q.y - q.x * q.z));
 
 		double qRoll1 = 2.0 * (q.w * q.x + q.y * q.z);
 		double qRoll2 = 1.0 - 2.0 * (q.x * q.x + ySquared);
