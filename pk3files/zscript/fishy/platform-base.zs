@@ -719,11 +719,15 @@ extend class FishyPlatform
 	//============================
 	private void SetOrbitInfo ()
 	{
-		groupOrbitOffset = level.Vec3Diff(group.origin.groupOrbitPos, groupOrbitPos);
+		let ori = group.origin;
+
+		quat q = quat.FromAngles(ori.groupAngle, ori.groupPitch, ori.groupRoll);
+		groupOrbitOffset = q.Inverse() * level.Vec3Diff(ori.groupOrbitPos, groupOrbitPos);
+
 		groupOrbitAngDiff = quat.FromAngles(
-			DeltaAngle(group.origin.groupAngle, groupAngle),
-			DeltaAngle(group.origin.groupPitch, groupPitch),
-			DeltaAngle(group.origin.groupRoll, groupRoll) );
+			DeltaAngle(ori.groupAngle, groupAngle),
+			DeltaAngle(ori.groupPitch, groupPitch),
+			DeltaAngle(ori.groupRoll, groupRoll) );
 	}
 
 	//============================
@@ -760,24 +764,25 @@ extend class FishyPlatform
 		//origin. Or when a group member's mirror flag changes.
 
 		let ori = group.origin;
-		double delta = DeltaAngle(ori.angle, ori.groupAngle);
-		double piDelta = DeltaAngle(ori.pitch, ori.groupPitch);
-		double roDelta = DeltaAngle(ori.roll, ori.groupRoll);
 
 		if (options & OPTFLAG_MIRROR)
 		{
+			double delta = DeltaAngle(ori.angle, ori.groupAngle);
+			double piDelta = DeltaAngle(ori.pitch, ori.groupPitch);
+			double roDelta = DeltaAngle(ori.roll, ori.groupRoll);
 			vector3 offset = level.Vec3Diff(ori.groupMirrorPos, ori.pos);
-			groupMirrorPos = level.Vec3Offset(pos, offset);
 
+			groupMirrorPos = level.Vec3Offset(pos, offset);
 			groupAngle = angle - delta;
 			groupPitch = pitch - piDelta;
 			groupRoll = roll - roDelta;
 		}
 		else //Set up for proper orbiting
 		{
-			quat qRot = GetQuatRotation(-delta, -piDelta, -roDelta, ori.groupAngle);
-			qRot.xyz = -qRot.xyz; //This would be qRot.Conjugate(); if not for the JIT error
-			vector3 offset = qRot * level.Vec3Diff(ori.pos, pos);
+			quat qRot = quat.FromAngles(ori.angle, ori.pitch, ori.roll);
+			vector3 offset = qRot.Inverse() * level.Vec3Diff(ori.pos, pos);
+			qRot = quat.FromAngles(ori.groupAngle, ori.groupPitch, ori.groupRoll);
+			offset = qRot * offset;
 			groupOrbitPos = level.Vec3Offset(ori.groupOrbitPos, offset);
 
 			groupAngle = Normalize180( ori.groupAngle + DeltaAngle(ori.angle, angle) );
@@ -786,22 +791,6 @@ extend class FishyPlatform
 
 			SetOrbitInfo();
 		}
-	}
-
-	//============================
-	// GetQuatRotation
-	//============================
-	static quat GetQuatRotation (double yaDelta, double piDelta, double roDelta, double baseAngle)
-	{
-		//Used by MoveGroup() and UpdateGroupInfo()
-
-		if (!piDelta && !roDelta)
-			return quat.AxisAngle((0, 0, 1), yaDelta); //Simpler yaw-only rotation
-
-		quat qFirst = quat.AxisAngle((0, 0, 1), baseAngle);
-		quat qLast = quat(-qFirst.x, -qFirst.y, -qFirst.z, +qFirst.w); //This would be qFirst.Conjugate(); if not for the JIT error
-
-		return qFirst * quat.FromAngles(yaDelta, piDelta, roDelta) * qLast;
 	}
 
 	//============================
@@ -3599,7 +3588,6 @@ extend class FishyPlatform
 
 		vector3 mirOfs = (double.nan, 0, 0);
 		quat qRot = quat(double.nan, 0, 0, 0);
-		quat qAngs = quat(double.nan, 0, 0, 0);
 
 		for (int iPlat = 0; iPlat < group.members.Size(); ++iPlat)
 		{
@@ -3638,15 +3626,12 @@ extend class FishyPlatform
 			else //Non-mirror movement. Orbiting happens here.
 			{
 				if (qRot != qRot) //NaN check
-					qRot = GetQuatRotation(delta, piDelta, roDelta, groupAngle);
+					qRot = quat.FromAngles(angle, pitch, roll);
 				newPos = level.Vec3Offset(pos, qRot * plat.groupOrbitOffset);
 
 				if (changeAng || changePi || changeRo)
 				{
-					if (qAngs != qAngs) //NaN check
-						qAngs = quat.FromAngles(angle, pitch, roll);
-
-					let [qYaw, qPitch, qRoll] = AnglesFromQuat(qAngs * plat.groupOrbitAngDiff);
+					let [qYaw, qPitch, qRoll] = AnglesFromQuat(qRot * plat.groupOrbitAngDiff);
 
 					if (changeAng)
 						newAngle = qYaw;
