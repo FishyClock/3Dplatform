@@ -3582,10 +3582,9 @@ extend class FishyPlatform
 		if (bPlatPorted)
 			moveType = MOVE_TRUETELE;
 
-		double delta = DeltaAngle(groupAngle, angle);
-		double piDelta = DeltaAngle(groupPitch, pitch);
-		double roDelta = DeltaAngle(groupRoll, roll);
-
+		double delta = double.nan;
+		double piDelta = double.nan;
+		double roDelta = double.nan;
 		vector3 mirOfs = (double.nan, 0, 0);
 		quat qRot = quat(double.nan, 0, 0, 0);
 
@@ -3617,11 +3616,23 @@ extend class FishyPlatform
 				newPos = level.Vec3Offset(plat.groupMirrorPos, mirOfs);
 
 				if (changeAng)
-					newAngle = plat.groupAngle - delta;
+				{
+					if (delta != delta) //NaN check
+						delta = DeltaAngle(angle, groupAngle);
+					newAngle = plat.groupAngle + delta;
+				}
 				if (changePi)
-					newPitch = plat.groupPitch - piDelta;
+				{
+					if (piDelta != piDelta) //NaN check
+						piDelta = DeltaAngle(pitch, groupPitch);
+					newPitch = plat.groupPitch + piDelta;
+				}
 				if (changeRo)
-					newRoll = plat.groupRoll - roDelta;
+				{
+					if (roDelta != roDelta) //NaN check
+						roDelta = DeltaAngle(roll, groupRoll);
+					newRoll = plat.groupRoll + roDelta;
+				}
 			}
 			else //Non-mirror movement. Orbiting happens here.
 			{
