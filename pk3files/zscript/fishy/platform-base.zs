@@ -3066,7 +3066,7 @@ extend class FishyPlatform
 				plat.UnlinkPassengers();
 		}
 
-		if (pivotOffset != (0, 0, 0) && (newAngle != angle || newPitch != pitch || newRoll != roll))
+		if (pivotOffset != (0, 0, 0))
 		{
 			newPos -= quat.FromAngles(angle, pitch, roll) * pivotOffset;
 			newPos += quat.FromAngles(newAngle, newPitch, newRoll) * pivotOffset;
