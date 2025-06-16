@@ -152,15 +152,15 @@ class FishyPlatformNode : InterpolationPoint
 	}
 }
 
-class FishyPlatformPivot : Actor
+class FishyPlatformOrigin : Actor
 {
 	Default
 	{
-		//$Title Platform Pivot
+		//$Title Platform Origin Point
 
 		//$Arg0 Platform
 		//$Arg0Type 14
-		//$Arg0Tooltip Platform(s) whose pivot to become
+		//$Arg0Tooltip Platform(s) whose origin to become\n\nIf set, any position change on the platform will treat this point as "the origin" and the platform will always maintain its distance from it.\nThis is useful if you want the platform orbit around some arbitary point just by changing its angle.
 
 		+NOINTERACTION;
 		+NOBLOCKMAP;
@@ -208,14 +208,14 @@ extend class FishyPlatformNode
 	}
 }
 
-extend class FishyPlatformPivot
+extend class FishyPlatformOrigin
 {
 	override void PostBeginPlay ()
 	{
 		let it = level.CreateActorIterator(args[0], "FishyPlatform");
 		FishyPlatform plat;
 		while (plat = FishyPlatform(it.Next()))
-			plat.SetPivot(pos);
+			plat.SetPlatOrigin(pos);
 		Destroy();
 	}
 }
@@ -344,7 +344,7 @@ extend class FishyPlatform
 	double groupRoll;  //The roll when this platform joins a group - doesn't change when origin changes.
 	vector3 groupOrbitOffset;  //Precalculated offset from origin's groupOrbitPos to orbiter's groupOrbitPos - changes when origin changes.
 	quat groupOrbitAngDiff; //Precalculated deltas from origin's groupAngle/Pitch/Roll to orbiter's groupAngle/Pitch/Roll as a quaternion - changes when origin changes.
-	vector3 pivotOffset;
+	vector3 originOffset;
 	double time;
 	double reachedTime;
 	double timeFrac;
@@ -2904,12 +2904,12 @@ extend class FishyPlatform
 	}
 
 	//============================
-	// SetPivot
+	// SetPlatOrigin
 	//============================
-	void SetPivot (vector3 pivot)
+	void SetPlatOrigin (vector3 pivot)
 	{
 		quat q = quat.FromAngles(angle, pitch, roll);
-		pivotOffset = q.Inverse() * level.Vec3Diff(pivot, pos);
+		originOffset = q.Inverse() * level.Vec3Diff(pivot, pos);
 	}
 
 	//============================
@@ -3066,10 +3066,10 @@ extend class FishyPlatform
 				plat.UnlinkPassengers();
 		}
 
-		if (pivotOffset != (0, 0, 0))
+		if (originOffset != (0, 0, 0))
 		{
-			newPos -= quat.FromAngles(angle, pitch, roll) * pivotOffset;
-			newPos += quat.FromAngles(newAngle, newPitch, newRoll) * pivotOffset;
+			newPos -= quat.FromAngles(angle, pitch, roll) * originOffset;
+			newPos += quat.FromAngles(newAngle, newPitch, newRoll) * originOffset;
 		}
 
 		int result = DoMove(newPos, newAngle, newPitch, newRoll, moveType) ? 1 : 0;
