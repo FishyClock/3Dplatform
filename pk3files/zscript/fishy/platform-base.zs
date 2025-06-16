@@ -215,7 +215,7 @@ extend class FishyPlatformOrigin
 		let it = level.CreateActorIterator(args[0], "FishyPlatform");
 		FishyPlatform plat;
 		while (plat = FishyPlatform(it.Next()))
-			plat.SetPlatOrigin(pos);
+			plat.SetPlatOriginOffset(pos);
 		Destroy();
 	}
 }
@@ -2904,15 +2904,6 @@ extend class FishyPlatform
 	}
 
 	//============================
-	// SetPlatOrigin
-	//============================
-	void SetPlatOrigin (vector3 pivot)
-	{
-		quat q = quat.FromAngles(angle, pitch, roll);
-		originOffset = q.Inverse() * level.Vec3Diff(pivot, pos);
-	}
-
-	//============================
 	// PlatMove
 	//============================
 	private int PlatMove (vector3 newPos, double newAngle, double newPitch, double newRoll, PMoveTypes moveType)
@@ -3494,6 +3485,15 @@ extend class FishyPlatform
 		t *= time;
 		res += (3*p2 - 3*p3 + p4 - p1) * t;
 		return 0.5 * res;
+	}
+
+	//============================
+	// SetPlatOriginOffset
+	//============================
+	void SetPlatOriginOffset (vector3 oriPos)
+	{
+		quat q = quat.FromAngles(angle, pitch, roll);
+		originOffset = q.Inverse() * level.Vec3Diff(oriPos, pos);
 	}
 
 	//============================
