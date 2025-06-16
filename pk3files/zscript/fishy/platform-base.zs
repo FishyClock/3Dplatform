@@ -152,6 +152,22 @@ class FishyPlatformNode : InterpolationPoint
 	}
 }
 
+class FishyPlatformPivot : Actor
+{
+	Default
+	{
+		//$Title Platform Pivot
+
+		//$Arg0 Platform
+		//$Arg0Type 14
+		//$Arg0Tooltip Platform(s) whose pivot to become
+
+		+NOINTERACTION;
+		+NOBLOCKMAP;
+		+NOSECTOR;
+	}
+}
+
 //Ultimate Doom Builder doesn't need to read the rest
 //$GZDB_SKIP
 
@@ -189,6 +205,18 @@ extend class FishyPlatformNode
 				return;
 			}
 		}
+	}
+}
+
+extend class FishyPlatformPivot
+{
+	override void PostBeginPlay ()
+	{
+		let it = level.CreateActorIterator(args[0], "FishyPlatform");
+		FishyPlatform plat;
+		while (plat = FishyPlatform(it.Next()))
+			plat.SetPivot(pos);
+		Destroy();
 	}
 }
 
@@ -316,6 +344,7 @@ extend class FishyPlatform
 	double groupRoll;  //The roll when this platform joins a group - doesn't change when origin changes.
 	vector3 groupOrbitOffset;  //Precalculated offset from origin's groupOrbitPos to orbiter's groupOrbitPos - changes when origin changes.
 	quat groupOrbitAngDiff; //Precalculated deltas from origin's groupAngle/Pitch/Roll to orbiter's groupAngle/Pitch/Roll as a quaternion - changes when origin changes.
+	vector3 pivotOffset;
 	double time;
 	double reachedTime;
 	double timeFrac;
@@ -2875,6 +2904,15 @@ extend class FishyPlatform
 	}
 
 	//============================
+	// SetPivot
+	//============================
+	void SetPivot (vector3 pivot)
+	{
+		quat q = quat.FromAngles(angle, pitch, roll);
+		pivotOffset = q.Inverse() * level.Vec3Diff(pivot, pos);
+	}
+
+	//============================
 	// PlatMove
 	//============================
 	private int PlatMove (vector3 newPos, double newAngle, double newPitch, double newRoll, PMoveTypes moveType)
@@ -3026,6 +3064,12 @@ extend class FishyPlatform
 
 			if (group && group.origin && (group.origin.options & OPTFLAG_DIFFPASSCOLL))
 				plat.UnlinkPassengers();
+		}
+
+		if (pivotOffset != (0, 0, 0) && (newAngle != angle || newPitch != pitch || newRoll != roll))
+		{
+			newPos -= quat.FromAngles(angle, pitch, roll) * pivotOffset;
+			newPos += quat.FromAngles(newAngle, newPitch, newRoll) * pivotOffset;
 		}
 
 		int result = DoMove(newPos, newAngle, newPitch, newRoll, moveType) ? 1 : 0;
