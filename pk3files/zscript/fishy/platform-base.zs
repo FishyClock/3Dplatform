@@ -3617,7 +3617,7 @@ extend class FishyPlatform
 		}
 
 		vector3 newPosMaybePivot = newPos;
-		if (!teleMove && pivotOffset != (0, 0, 0) &&
+		if (pivotOffset != (0, 0, 0) &&
 			(angle != newAngle || pitch != newPitch || roll != newRoll) )
 		{
 			newPosMaybePivot -= quat.FromAngles(angle, pitch, roll) * pivotOffset;
