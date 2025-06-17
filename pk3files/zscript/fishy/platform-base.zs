@@ -218,6 +218,13 @@ extend class FishyPlatformNode
 
 extend class FishyPlatformPivot
 {
+	override void BeginPlay ()
+	{
+		ChangeStatNum(FishyPlatform.STAT_FPLAT - 1); //Our PostBeginPlay() must run before any platform's PostBeginPlay()
+
+		//NOTE TO SELF: Setting the statnum to a non-thinker makes it not call PostBeginPlay() so let's not do that
+	}
+
 	override void PostBeginPlay ()
 	{
 		let it = level.CreateActorIterator(args[0], "FishyPlatform");
@@ -340,6 +347,7 @@ extend class FishyPlatform
 		MOVE_QUICKTELE =	-2,
 	};
 
+	const STAT_FPLAT = STAT_SECTOREFFECT + 1; //Platforms tick after sector thinkers - and pivot offsets tick before platforms
 	const TOP_EPSILON = 1.0; //For Z checks (if something is on top of something else)
 	const YES_BMAP = 0; //For A_ChangeLinkFlags()
 	const NO_BMAP = 1;
@@ -427,7 +435,7 @@ extend class FishyPlatform
 		// Feel free to comment-out or remove this if it's causing
 		// problems for you and you don't have platforms that get
 		// in the way of moving ceilings or 3D floors.
-		ChangeStatNum(STAT_SECTOREFFECT + 1);
+		ChangeStatNum(STAT_FPLAT); //This is STAT_SECTOREFFECT + 1
 
 		oldPos = pos;
 		oldAngle = angle;
