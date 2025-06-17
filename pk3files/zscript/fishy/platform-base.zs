@@ -3628,7 +3628,7 @@ extend class FishyPlatform
 		//(If this platform isn't in a group then the result is likewise 2 if it moved.)
 		int result = PlatMove(newPos, newAngle, newPitch, newRoll, teleMove);
 
-		if (result == 2 && pos != newPos) //Crossed a portal?
+		if (result == 2 && pos != newPos) //Crossed a portal or did a "pivot move?"
 			AdjustInterpolationCoordinates(newPos, pos, DeltaAngle(newAngle, angle));
 		else if (result == 1)
 			PlatMove(startPos, startAngle, startPitch, startRoll, MOVE_QUICKTELE); //Move the group back
