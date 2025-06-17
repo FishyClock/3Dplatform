@@ -30,6 +30,9 @@
  FishyPlatformNode - a platform-centric interpolation point class
  (though GZDoom's "InterpolationPoint" is still perfectly usable);
 
+ FishyPlatformPivot - a pivot point for any platform to rotate around
+ just by changing its own yaw/pitch/roll.
+
  FishyPlatformGroup - a class to help with the "group" logic;
 
  And lastly
@@ -152,15 +155,20 @@ class FishyPlatformNode : InterpolationPoint
 	}
 }
 
-class FishyPlatformOrigin : Actor
+class FishyPlatformPivot : Actor
 {
 	Default
 	{
-		//$Title Platform Origin Point
+		//$Title Platform Pivot
 
 		//$Arg0 Platform
 		//$Arg0Type 14
-		//$Arg0Tooltip Platform(s) whose origin to become\n\nIf set, any position change on the platform will treat this point as "the origin" and the platform will always maintain its distance from it.\nThis is useful if you want the platform orbit around some arbitary point just by changing its angle.
+		//$Arg0Tooltip Platform(s) whose pivot to become\n\nThis only makes sense if you want the platform to rotate\naround this point when the platform's angle/pitch/roll changes
+
+		//$Arg1 Stay On The Map
+		//$Arg1Type 11
+		//$Arg1Enum {0 = "No"; 1 = "Yes";}
+		//$Arg1Tooltip Stay on the map after setting the pivot data for the platform(s)?
 
 		+NOINTERACTION;
 		+NOBLOCKMAP;
@@ -208,15 +216,23 @@ extend class FishyPlatformNode
 	}
 }
 
-extend class FishyPlatformOrigin
+extend class FishyPlatformPivot
 {
 	override void PostBeginPlay ()
 	{
 		let it = level.CreateActorIterator(args[0], "FishyPlatform");
 		FishyPlatform plat;
 		while (plat = FishyPlatform(it.Next()))
-			plat.SetPlatOriginOffset(pos);
-		Destroy();
+			plat.SetPivotOffset(pos);
+
+		if (args[1]) //Stay on the map?
+			Super.PostBeginPlay();
+		else
+			Destroy();
+	}
+
+	override void Tick ()
+	{
 	}
 }
 
@@ -344,7 +360,7 @@ extend class FishyPlatform
 	double groupRoll;  //The roll when this platform joins a group - doesn't change when origin changes.
 	vector3 groupOrbitOffset;  //Precalculated offset from origin's groupOrbitPos to orbiter's groupOrbitPos - changes when origin changes.
 	quat groupOrbitAngDiff; //Precalculated deltas from origin's groupAngle/Pitch/Roll to orbiter's groupAngle/Pitch/Roll as a quaternion - changes when origin changes.
-	vector3 originOffset;
+	vector3 pivotOffset;
 	double time;
 	double reachedTime;
 	double timeFrac;
@@ -2904,6 +2920,15 @@ extend class FishyPlatform
 	}
 
 	//============================
+	// SetPivotOffset
+	//============================
+	void SetPivotOffset (vector3 pivot)
+	{
+		quat q = quat.FromAngles(angle, pitch, roll);
+		pivotOffset = q.Inverse() * level.Vec3Diff(pivot, pos);
+	}
+
+	//============================
 	// PlatMove
 	//============================
 	private int PlatMove (vector3 newPos, double newAngle, double newPitch, double newRoll, PMoveTypes moveType)
@@ -3057,10 +3082,12 @@ extend class FishyPlatform
 				plat.UnlinkPassengers();
 		}
 
-		if (originOffset != (0, 0, 0))
+		if (moveType == MOVE_NORMAL &&
+			pivotOffset != (0, 0, 0) &&
+			(angle != newAngle || pitch != newPitch || roll != newRoll) )
 		{
-			newPos -= quat.FromAngles(angle, pitch, roll) * originOffset;
-			newPos += quat.FromAngles(newAngle, newPitch, newRoll) * originOffset;
+			newPos -= quat.FromAngles(angle, pitch, roll) * pivotOffset;
+			newPos += quat.FromAngles(newAngle, newPitch, newRoll) * pivotOffset;
 		}
 
 		int result = DoMove(newPos, newAngle, newPitch, newRoll, moveType) ? 1 : 0;
@@ -3485,15 +3512,6 @@ extend class FishyPlatform
 		t *= time;
 		res += (3*p2 - 3*p3 + p4 - p1) * t;
 		return 0.5 * res;
-	}
-
-	//============================
-	// SetPlatOriginOffset
-	//============================
-	void SetPlatOriginOffset (vector3 oriPos)
-	{
-		quat q = quat.FromAngles(angle, pitch, roll);
-		originOffset = q.Inverse() * level.Vec3Diff(oriPos, pos);
 	}
 
 	//============================
