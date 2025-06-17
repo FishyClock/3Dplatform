@@ -2920,15 +2920,6 @@ extend class FishyPlatform
 	}
 
 	//============================
-	// SetPivotOffset
-	//============================
-	void SetPivotOffset (vector3 pivot)
-	{
-		quat q = quat.FromAngles(angle, pitch, roll);
-		pivotOffset = q.Inverse() * level.Vec3Diff(pivot, pos);
-	}
-
-	//============================
 	// PlatMove
 	//============================
 	private int PlatMove (vector3 newPos, double newAngle, double newPitch, double newRoll, PMoveTypes moveType)
@@ -3080,14 +3071,6 @@ extend class FishyPlatform
 
 			if (group && group.origin && (group.origin.options & OPTFLAG_DIFFPASSCOLL))
 				plat.UnlinkPassengers();
-		}
-
-		if (moveType == MOVE_NORMAL &&
-			pivotOffset != (0, 0, 0) &&
-			(angle != newAngle || pitch != newPitch || roll != newRoll) )
-		{
-			newPos -= quat.FromAngles(angle, pitch, roll) * pivotOffset;
-			newPos += quat.FromAngles(newAngle, newPitch, newRoll) * pivotOffset;
 		}
 
 		int result = DoMove(newPos, newAngle, newPitch, newRoll, moveType) ? 1 : 0;
@@ -3515,6 +3498,15 @@ extend class FishyPlatform
 	}
 
 	//============================
+	// SetPivotOffset
+	//============================
+	void SetPivotOffset (vector3 pivot)
+	{
+		quat q = quat.FromAngles(angle, pitch, roll);
+		pivotOffset = q.Inverse() * level.Vec3Diff(pivot, pos);
+	}
+
+	//============================
 	// Interpolate
 	//============================
 	private bool Interpolate (bool teleMove = false)
@@ -3624,9 +3616,17 @@ extend class FishyPlatform
 			}
 		}
 
+		vector3 newPosMaybePivot = newPos;
+		if (!teleMove && pivotOffset != (0, 0, 0) &&
+			(angle != newAngle || pitch != newPitch || roll != newRoll) )
+		{
+			newPosMaybePivot -= quat.FromAngles(angle, pitch, roll) * pivotOffset;
+			newPosMaybePivot += quat.FromAngles(newAngle, newPitch, newRoll) * pivotOffset;
+		}
+
 		//Result == 2 means everyone moved. 1 == this platform moved but not all its groupmates moved.
 		//(If this platform isn't in a group then the result is likewise 2 if it moved.)
-		int result = PlatMove(newPos, newAngle, newPitch, newRoll, teleMove);
+		int result = PlatMove(newPosMaybePivot, newAngle, newPitch, newRoll, teleMove);
 
 		if (result == 2 && pos != newPos) //Crossed a portal or did a "pivot move?"
 			AdjustInterpolationCoordinates(newPos, pos, DeltaAngle(newAngle, angle));
