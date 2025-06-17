@@ -1398,7 +1398,7 @@ extend class FishyPlatform
 	//============================
 	private void AdjustInterpolationCoordinates (vector3 startPos, vector3 endPos, double delta)
 	{
-		//Used for when crossing portals
+		//Used for when crossing portals or pivot-rotations
 
 		//Offset and possibly rotate the coordinates
 		pPrev -= startPos;
