@@ -30,7 +30,7 @@
  FishyPlatformNode - a platform-centric interpolation point class
  (though GZDoom's "InterpolationPoint" is still perfectly usable);
 
- FishyPlatformPivot - a pivot point for any platform to rotate around
+ FishyPlatformPivot - a pivot for any platform to rotate around
  just by changing its own yaw/pitch/roll.
 
  FishyPlatformGroup - a class to help with the "group" logic;
@@ -159,11 +159,11 @@ class FishyPlatformPivot : Actor
 {
 	Default
 	{
-		//$Title Platform Pivot
+		//$Title Platform Pivot Offset
 
 		//$Arg0 Platform
 		//$Arg0Type 14
-		//$Arg0Tooltip Platform(s) whose pivot to become\n\nThis only makes sense if you want the platform to rotate\naround this point when the platform's angle/pitch/roll changes
+		//$Arg0Tooltip Platform(s) whose pivot offset to become\n\nThis only makes sense if you want the platform to rotate\naround this point when the platform's angle/pitch/roll changes
 
 		//$Arg1 Stay On The Map
 		//$Arg1Type 11
