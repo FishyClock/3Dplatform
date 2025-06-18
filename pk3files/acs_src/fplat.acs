@@ -355,7 +355,7 @@ function int FishyPlat_NextNode (int platTid)
 	(Does nothing if there is no "next" point.)
 	Returns how many platforms have switched to their "next" point.**
 
-	- platTID = TID of the platform(s) who will switch to the "next" point. If 0 then this is the script activator.
+	- platTid = TID of the platform(s) who will switch to the "next" point. If 0 then this is the script activator.
 
 	NOTE: The following applies for non-looping paths:
 	If the "next" point is the last one then it won't switch.
@@ -373,7 +373,7 @@ function int FishyPlat_PrevNode (int platTid)
 	(Does nothing if there is no "previous" point.)
 	Returns how many platforms have switched to their "previous" point.**
 
-	- platTID = TID of the platform(s) who will switch to the "previous" point. If 0 then this is the script activator.
+	- platTid = TID of the platform(s) who will switch to the "previous" point. If 0 then this is the script activator.
 
 	NOTE: The following applies for non-looping paths:
 	If the path is a spline and the "previous" point is the first one then it won't switch.
@@ -381,4 +381,21 @@ function int FishyPlat_PrevNode (int platTid)
 	NOTE: Switching interpolation points will not trigger interpolation specials.
 	*********************************************************************************/
 	return ScriptCall("FishyPlatform", "ACSFuncPrevNode", platTid);
+}
+
+function void FishyPlat_SetPivot (int platTid, int/*fixed*/ x, int/*fixed*/ y, int/*fixed*/ z, bool exactPos)
+{
+	/*********************************************************************************
+	** Sets a "pivot" for the platform(s). Meaning whenever the platform's angle/pitch/roll changes it will
+	rotate/orbit around this "pivot." This "pivot" will always "move" with the platform and not be a constant
+	position in the world. ----- This needs a better description
+
+	- platTid = TID of the platform(s) whose pivot data to set. If 0 then this is the script activator.
+
+	- x/y/z = see exactPos.
+
+	- exactPos = if "false" x/y/z are offsets from the platform's current position.
+	  If "true" x/y/z are absolute map coordinates.
+	*********************************************************************************/
+	ScriptCall("FishyPlatform", "ACSFuncSetPivot", platTid, x, y, z, exactPos);
 }

@@ -5028,6 +5028,19 @@ extend class FishyPlatform
 		}
 		return count;
 	}
+
+	//============================
+	// ACSFuncSetPivot
+	//============================
+	static void ACSFuncSetPivot (Actor act, int platTid, double x, double y, double z, bool exactPos)
+	{
+		ActorIterator it = platTid ? level.CreateActorIterator(platTid, "FishyPlatform") : null;
+		for (let plat = FishyPlatform(it ? it.Next() : act); plat; plat = it ? FishyPlatform(it.Next()) : null)
+		{
+			vector3 pivot = exactPos ? (x, y, z) : level.Vec3Offset(plat.pos, (x, y, z));
+			plat.SetPivotOffset(pivot);
+		}
+	}
 } //End of FishyPlatform class definition
 
 /******************************************************************************
