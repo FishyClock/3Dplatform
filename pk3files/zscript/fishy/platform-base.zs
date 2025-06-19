@@ -159,16 +159,22 @@ class FishyPlatformPivot : Actor
 {
 	Default
 	{
-		//$Title Platform Pivot Offset
+		//$Title Platform Pivot
+		//$NotAngled
 
 		//$Arg0 Platform
 		//$Arg0Type 14
-		//$Arg0Tooltip Platform(s) whose pivot offset to become\n\nThis only makes sense if you want the platform to rotate\naround this point when the platform's angle/pitch/roll changes
+		//$Arg0Tooltip Platform(s) whose pivot to become.\nNOTE: Any platform that activates this spot will make it the platform's pivot
 
 		//$Arg1 Stay On The Map
 		//$Arg1Type 11
 		//$Arg1Enum {0 = "No"; 1 = "Yes";}
 		//$Arg1Tooltip Stay on the map after setting the pivot data for the platform(s)?
+
+		//$Arg2 Needs Activation
+		//$Arg2Type 11
+		//$Arg2Enum {0 = "No"; 1 = "Yes";}
+		//$Arg2Tooltip Must be activated before setting the pivot data for the platform(s)?
 
 		+NOINTERACTION;
 		+NOBLOCKMAP;
@@ -218,6 +224,13 @@ extend class FishyPlatformNode
 
 extend class FishyPlatformPivot
 {
+	enum ArgValues
+	{
+		ARG_PLAT		= 0,
+		ARG_STAY		= 1,
+		ARG_NEEDSACT	= 2,
+	};
+
 	override void BeginPlay ()
 	{
 		ChangeStatNum(FishyPlatform.STAT_FPLAT - 1); //Our PostBeginPlay() must run before any platform's PostBeginPlay()
@@ -227,14 +240,27 @@ extend class FishyPlatformPivot
 
 	override void PostBeginPlay ()
 	{
-		let it = level.CreateActorIterator(args[0], "FishyPlatform");
-		FishyPlatform plat;
-		while (plat = FishyPlatform(it.Next()))
+		if (!args[ARG_NEEDSACT])
+			Activate(null);
+
+		if (!bDestroyed)
+			Super.PostBeginPlay();
+	}
+
+	override void Activate (Actor activator)
+	{
+		let plat = FishyPlatform(activator);
+		if (plat)
 			plat.SetPivotOffset(pos);
 
-		if (args[1]) //Stay on the map?
-			Super.PostBeginPlay();
-		else
+		if (args[ARG_PLAT])
+		{
+			let it = level.CreateActorIterator(args[ARG_PLAT], "FishyPlatform");
+			while (plat = FishyPlatform(it.Next()))
+				plat.SetPivotOffset(pos);
+		}
+
+		if (!args[ARG_STAY])
 			Destroy();
 	}
 
