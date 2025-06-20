@@ -176,6 +176,12 @@ class FishyPlatformPivot : Actor
 		//$Arg2Enum {0 = "No"; 1 = "Yes";}
 		//$Arg2Tooltip Must be activated before setting the pivot data for the platform(s)?
 
+		//$Arg3 Attached Pivot
+		//$Arg3Type 11
+		//$Arg3Enum {0 = "No"; 1 = "Yes";}
+		//$Arg3Default 1
+		//$Arg3Tooltip If yes, the pivot will follow the platform around. If no, the pivot is a constant point on the map.\n\nNOTE: The pivot data is set internally for each platform.\nJust moving this spot around will NOT affect the platform's pivot data!
+
 		+NOINTERACTION;
 		+NOBLOCKMAP;
 		+NOSECTOR;
@@ -229,6 +235,7 @@ extend class FishyPlatformPivot
 		ARG_PLAT		= 0,
 		ARG_STAY		= 1,
 		ARG_NEEDSACT	= 2,
+		ARG_ATTACH		= 3,
 	};
 
 	override void BeginPlay ()
@@ -251,13 +258,13 @@ extend class FishyPlatformPivot
 	{
 		let plat = FishyPlatform(activator);
 		if (plat)
-			plat.SetPivotOffset(pos);
+			plat.SetPivot(pos, args[ARG_ATTACH]);
 
 		if (args[ARG_PLAT])
 		{
 			let it = level.CreateActorIterator(args[ARG_PLAT], "FishyPlatform");
 			while (plat = FishyPlatform(it.Next()))
-				plat.SetPivotOffset(pos);
+				plat.SetPivot(pos, args[ARG_ATTACH]);
 		}
 
 		if (!args[ARG_STAY])
@@ -394,7 +401,8 @@ extend class FishyPlatform
 	double groupRoll;  //The roll when this platform joins a group - doesn't change when origin changes.
 	vector3 groupOrbitOffset;  //Precalculated offset from origin's groupOrbitPos to orbiter's groupOrbitPos - changes when origin changes.
 	quat groupOrbitAngDiff; //Precalculated deltas from origin's groupAngle/Pitch/Roll to orbiter's groupAngle/Pitch/Roll as a quaternion - changes when origin changes.
-	vector3 pivotOffset;
+	vector3 pivotData;
+	bool pivotDataIsPos; //Otherwise it's an offset
 	double time;
 	double reachedTime;
 	double timeFrac;
@@ -3532,12 +3540,20 @@ extend class FishyPlatform
 	}
 
 	//============================
-	// SetPivotOffset
+	// SetPivot
 	//============================
-	void SetPivotOffset (vector3 pivot)
+	void SetPivot (vector3 pivot, bool attach)
 	{
-		quat q = quat.FromAngles(angle, pitch, roll);
-		pivotOffset = q.Inverse() * level.Vec3Diff(pivot, pos);
+		pivotDataIsPos = !attach;
+		if (pivotDataIsPos)
+		{
+			pivotData = pivot;
+		}
+		else
+		{
+			quat q = quat.FromAngles(angle, pitch, roll);
+			pivotData = q.Inverse() * level.Vec3Diff(pivot, pos);
+		}
 	}
 
 	//============================
@@ -3651,11 +3667,21 @@ extend class FishyPlatform
 		}
 
 		vector3 newPosMaybePivot = newPos;
-		if (pivotOffset != (0, 0, 0) &&
-			(angle != newAngle || pitch != newPitch || roll != newRoll) )
+		if (angle != newAngle || pitch != newPitch || roll != newRoll)
 		{
-			newPosMaybePivot -= quat.FromAngles(angle, pitch, roll) * pivotOffset;
-			newPosMaybePivot += quat.FromAngles(newAngle, newPitch, newRoll) * pivotOffset;
+			if (pivotDataIsPos)
+			{
+				quat qRot = quat.FromAngles(angle, pitch, roll);
+				vector3 offset = qRot.Inverse() * level.Vec3Diff(pivotData, newPos);
+				qRot = quat.FromAngles(newAngle, newPitch, newRoll);
+				offset = qRot * offset;
+				newPosMaybePivot = pivotData + offset;
+			}
+			else if (pivotData != (0, 0, 0)) //Is non-zero offset?
+			{
+				newPosMaybePivot -= quat.FromAngles(angle, pitch, roll) * pivotData;
+				newPosMaybePivot += quat.FromAngles(newAngle, newPitch, newRoll) * pivotData;
+			}
 		}
 
 		//Result == 2 means everyone moved. 1 == this platform moved but not all its groupmates moved.
@@ -5058,13 +5084,26 @@ extend class FishyPlatform
 	//============================
 	// ACSFuncSetPivot
 	//============================
-	static void ACSFuncSetPivot (Actor act, int platTid, double x, double y, double z, bool exactPos)
+	static void ACSFuncSetPivot (Actor act, int platTid, double x, double y, double z, bool exactPos, bool attach)
 	{
 		ActorIterator it = platTid ? level.CreateActorIterator(platTid, "FishyPlatform") : null;
 		for (let plat = FishyPlatform(it ? it.Next() : act); plat; plat = it ? FishyPlatform(it.Next()) : null)
 		{
 			vector3 pivot = exactPos ? (x, y, z) : level.Vec3Offset(plat.pos, (x, y, z));
-			plat.SetPivotOffset(pivot);
+			plat.SetPivot(pivot, attach);
+		}
+	}
+
+	//============================
+	// ACSFuncRemovePivot
+	//============================
+	static void ACSFuncRemovePivot (Actor act, int platTid)
+	{
+		ActorIterator it = platTid ? level.CreateActorIterator(platTid, "FishyPlatform") : null;
+		for (let plat = FishyPlatform(it ? it.Next() : act); plat; plat = it ? FishyPlatform(it.Next()) : null)
+		{
+			plat.pivotData = (0, 0, 0);
+			plat.pivotDataIsPos = false;
 		}
 	}
 } //End of FishyPlatform class definition

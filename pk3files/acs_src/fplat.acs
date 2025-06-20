@@ -383,19 +383,38 @@ function int FishyPlat_PrevNode (int platTid)
 	return ScriptCall("FishyPlatform", "ACSFuncPrevNode", platTid);
 }
 
-function void FishyPlat_SetPivot (int platTid, int/*fixed*/ x, int/*fixed*/ y, int/*fixed*/ z, bool exactPos)
+function void FishyPlat_SetPivot (int platTid, int/*fixed*/ x, int/*fixed*/ y, int/*fixed*/ z, bool exactPos, bool attach)
 {
 	/*********************************************************************************
-	** Sets a "pivot" for the platform(s). Meaning whenever the platform's angle/pitch/roll changes it will
-	rotate/orbit around this "pivot." This "pivot" will always "move" with the platform and not be a constant
-	position in the world. ----- This needs a better description
+	**Sets a pivot for the platform(s). Meaning whenever the platform's angle/pitch/roll changes it will
+	rotate/orbit around this pivot. The pivot can be attached to the platform or it can be
+	a constant point on the map.
 
 	- platTid = TID of the platform(s) whose pivot data to set. If 0 then this is the script activator.
 
 	- x/y/z = see exactPos.
 
 	- exactPos = if "false" x/y/z are offsets from the platform's current position.
-	  If "true" x/y/z are absolute map coordinates.
+	If "true" x/y/z are absolute map coordinates.
+
+	- attach = if "true" the pivot is attached to the affected platform(s). Meaning the distance between
+	the platform and its pivot is always the same length.
+	If "false" then the pivot is a constant point on the map.
+
+	NOTE: The pivot data is set up internally for each platform and is, technically speaking, never
+	the position of another actor! If you use a spot to get the pivot coordinates, moving that spot
+	around will NOT affect the platform's pivot!
+	You can get around this by calling *_SetPivot() repeatedly.
 	*********************************************************************************/
-	ScriptCall("FishyPlatform", "ACSFuncSetPivot", platTid, x, y, z, exactPos);
+	ScriptCall("FishyPlatform", "ACSFuncSetPivot", platTid, x, y, z, exactPos, attach);
+}
+
+function void FishyPlat_RemovePivot (int platTid)
+{
+	/*********************************************************************************
+	**Removes/clears the pivot data of affected platform(s).
+
+	- platTid = TID of the platform(s) whose pivot data to remove. If 0 then this is the script activator.
+	*********************************************************************************/
+	ScriptCall("FishyPlatform", "ACSFuncRemovePivot", platTid);
 }
