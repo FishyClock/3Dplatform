@@ -866,15 +866,20 @@ extend class FishyPlatform
 		}
 		else //Set up for proper orbiting
 		{
-			quat qRot = quat.FromAngles(ori.angle, ori.pitch, ori.roll);
-			vector3 offset = qRot.Inverse() * level.Vec3Diff(ori.pos, pos);
-			qRot = quat.FromAngles(ori.groupAngle, ori.groupPitch, ori.groupRoll);
-			offset = qRot * offset;
+			quat qOriAngsInv = quat.FromAngles(ori.angle, ori.pitch, ori.roll);
+			qOriAngsInv = qOriAngsInv.Inverse(); //Declaring "quat.FromAngles(bla, bla, bla).Inverse();" gives me a startup error
+			quat qOriGrpAngs = quat.FromAngles(ori.groupAngle, ori.groupPitch, ori.groupRoll);
+
+			//Compute the position offsets and save into 'groupOrbitPos' so SetOrbitInfo() works consistently.
+			vector3 offset = qOriAngsInv * level.Vec3Diff(ori.pos, pos);
+			offset = qOriGrpAngs * offset;
 			groupOrbitPos = level.Vec3Offset(ori.groupOrbitPos, offset);
 
-			groupAngle = Normalize180( ori.groupAngle + DeltaAngle(ori.angle, angle) );
-			groupPitch = Normalize180( ori.groupPitch + DeltaAngle(ori.pitch, pitch) );
-			groupRoll  = Normalize180( ori.groupRoll  + DeltaAngle(ori.roll, roll) );
+			//Compute the angle deltas and save into all "group angles" so SetOrbitInfo() works consistently.
+			//Note: this cannot be done here by relying on DeltaAngle() results and feeding that into a quat! (I've tried.)
+			quat qSelfAngs = quat.FromAngles(angle, pitch, roll);
+			quat qDeltas = qOriAngsInv * qSelfAngs;
+			[groupAngle, groupPitch, groupRoll] = AnglesFromQuat(qOriGrpAngs * qDeltas);
 
 			SetOrbitInfo();
 		}
