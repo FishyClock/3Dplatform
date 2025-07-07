@@ -809,12 +809,10 @@ extend class FishyPlatform
 		let ori = group.origin;
 
 		quat q = quat.FromAngles(ori.groupAngle, ori.groupPitch, ori.groupRoll);
-		groupOrbitOffset = q.Inverse() * level.Vec3Diff(ori.groupOrbitPos, groupOrbitPos);
+		q = q.Inverse(); //Declaring "quat.FromAngles(bla, bla, bla).Inverse();" gives me a startup error
 
-		groupOrbitAngDiff = quat.FromAngles(
-			DeltaAngle(ori.groupAngle, groupAngle),
-			DeltaAngle(ori.groupPitch, groupPitch),
-			DeltaAngle(ori.groupRoll, groupRoll) );
+		groupOrbitOffset = q * level.Vec3Diff(ori.groupOrbitPos, groupOrbitPos);
+		groupOrbitAngDiff = q * quat.FromAngles(groupAngle, groupPitch, groupRoll);
 	}
 
 	//============================
@@ -876,7 +874,7 @@ extend class FishyPlatform
 			groupOrbitPos = level.Vec3Offset(ori.groupOrbitPos, offset);
 
 			//Compute the angle deltas and save into all "group angles" so SetOrbitInfo() works consistently.
-			//Note: this cannot be done here by relying on DeltaAngle() results and feeding that into a quat! (I've tried.)
+			//Note: this cannot be done by relying on DeltaAngle() results and feeding those results into a quat! (I've tried.)
 			quat qSelfAngs = quat.FromAngles(angle, pitch, roll);
 			quat qDeltas = qOriAngsInv * qSelfAngs;
 			[groupAngle, groupPitch, groupRoll] = AnglesFromQuat(qOriGrpAngs * qDeltas);
@@ -892,15 +890,16 @@ extend class FishyPlatform
 	{
 		//Credits to Boondorl and Lewisk3
 		double ySquared = q.y * q.y;
-		double qYaw1 = 2.0 * (q.w * q.z + q.x * q.y);
-		double qYaw2 = 1.0 - 2.0 * (ySquared + q.z * q.z);
-		double qYaw = atan2(qYaw1, qYaw2);
+
+		double qYawS = 2.0 * (q.w * q.z + q.x * q.y);
+		double qYawC = 1.0 - 2.0 * (ySquared + q.z * q.z);
+		double qYaw = atan2(qYawS, qYawC);
 
 		double qPitch = asin(2.0 * (q.w * q.y - q.x * q.z));
 
-		double qRoll1 = 2.0 * (q.w * q.x + q.y * q.z);
-		double qRoll2 = 1.0 - 2.0 * (q.x * q.x + ySquared);
-		double qRoll = atan2(qRoll1, qRoll2);
+		double qRollS = 2.0 * (q.w * q.x + q.y * q.z);
+		double qRollC = 1.0 - 2.0 * (q.x * q.x + ySquared);
+		double qRoll = atan2(qRollS, qRollC);
 
 		return qYaw, qPitch, qRoll;
 	}
