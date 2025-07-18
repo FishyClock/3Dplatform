@@ -61,6 +61,10 @@ map PLATATAK "Fireblu Heartache"
 {
 }
 
+map DMDLSIZE "Dynamic Model Size (Model determines size)"
+{
+}
+
 clearEpisodes
 episode MAP01 { name = "Demo map" }
 episode TEST01 { name = "Test map #1" }
@@ -69,3 +73,4 @@ episode TEST02 { name = "Stress test" }
 episode SPEED { name = "Speed test" }
 episode PLATATAK { name = "Hostile test" }
 episode VMABORT { name = "VM abort test" }
+episode DMDLSIZE { name = "Dynamic Model Size" }
