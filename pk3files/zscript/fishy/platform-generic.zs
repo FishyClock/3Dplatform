@@ -10,7 +10,7 @@ class FishyPlatformGeneric : FishyPlatform
 	States
 	{
 	Spawn:
-		MODL A -1; //In order to use A_ChangeModel() it needs to have a modeldef entry with a sprite other than TNT1A0
+		MODL A -1; //In order to use A_ChangeModel() it needs to have a MODELDEF entry with a sprite other than TNT1A0
 		Stop;
 	}
 
@@ -89,13 +89,11 @@ class FishyPlatformGeneric : FishyPlatform
 		string path = user_cm_modelpath;
 		string model = user_cm_model;
 
-		//Make sure the last character of 'path' is /
 		if (path != "" && model != "" && path.Mid(path.Length() - 1, 1) != "/")
-			path = path .. "/";
-
+			path = path .. "/"; //Make sure the last character of 'path' is "/"
 		string fullName = path .. model;
 
-		if (fullName == "")
+		if (fullName == "" && user_cm_modeldef != "")
 		{
 			//Attempt to fetch model from MODELDEF.
 			//If the matching MODELDEF entry contains multiple models
@@ -130,16 +128,15 @@ class FishyPlatformGeneric : FishyPlatform
 				
 			}
 
-			//Make sure the last character of 'path' is /
 			if (path != "" && model != "" && path.Mid(path.Length() - 1, 1) != "/")
-				path = path .. "/";
-
+				path = path .. "/"; //Make sure the last character of 'path' is "/"
 			fullName = path .. model;
 		}
 
 		if (fullName != "")
 		{
-			if (!(fullName.Mid(fullName.Length() - 4, 4) ~== ".obj"))
+			int len = fullName.Length();
+			if (len <= 4 || !(fullName.Mid(len - 4, 4) ~== ".obj"))
 				ThrowAbortException("SetSizeFromModel(): only .obj files can be parsed at the moment. Sorry!");
 
 			lump = Wads.FindLumpFullName(fullName);
