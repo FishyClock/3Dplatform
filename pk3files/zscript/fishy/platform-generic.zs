@@ -146,8 +146,8 @@ class FishyPlatformGeneric : FishyPlatform
 
 		if (lump >= 0)
 		{
-			double newRad = radius;
-			double newHi = height;
+			double newRad = 0;
+			double newHi = 0;
 
 			if (!scanner)
 				scanner = new("ScriptScanner");
@@ -162,14 +162,15 @@ class FishyPlatformGeneric : FishyPlatform
 					scanner.MustGetFloat(); double y = scanner.float;
 
 					newRad = max(newRad, abs(x), abs(y));
-					newHi = max(newHi, z * 0.85); //The highest Z is too tall for what it visually looks like. Need to figure out better conversion method.
+					newHi = max(newHi, z);
 				}
 			}
-			if (radius != newRad || height != newHi)
-			{
-				A_SetSize(newRad, newHi);
-				return true;
-			}
+
+			//I don't know how UDB does the conversion but the highest Z of any vertex
+			//is always higher than the resulting height for an actor when exporting OBJ models.
+			newHi *= 0.83333; //This should give the appropriate height in most cases.
+			A_SetSize(newRad, newHi);
+			return true;
 		}
 		return false;
 	}
