@@ -125,7 +125,6 @@ class FishyPlatformGeneric : FishyPlatform
 						}
 					}
 				}
-				
 			}
 
 			if (path != "" && model != "" && path.Mid(path.Length() - 1, 1) != "/")
