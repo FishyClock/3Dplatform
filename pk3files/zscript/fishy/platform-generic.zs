@@ -165,7 +165,7 @@ class FishyPlatformGeneric : FishyPlatform
 				}
 			}
 
-			//I don't know how UDB does the conversion but the highest Z of any vertex
+			//I don't know how UDB does the conversion but the highest Z vertex
 			//is always higher than the resulting height for an actor when exporting OBJ models.
 			newHi *= 0.83333; //This should give the appropriate height in most cases.
 			A_SetSize(newRad, newHi);
