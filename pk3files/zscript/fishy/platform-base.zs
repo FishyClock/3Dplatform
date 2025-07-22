@@ -380,7 +380,7 @@ extend class FishyPlatform
 		MOVE_QUICKTELE =	-2,
 	};
 
-	const STAT_FPLAT = STAT_SECTOREFFECT + 1; //Platforms tick after sector thinkers - and pivot offsets tick before platforms
+	const STAT_FPLAT = STAT_SECTOREFFECT + 1; //Platforms tick after sector thinkers - and pivot spots tick before platforms
 	const TOP_EPSILON = 1.0; //For Z checks (if something is on top of something else)
 	const YES_BMAP = 0; //For A_ChangeLinkFlags()
 	const NO_BMAP = 1;
