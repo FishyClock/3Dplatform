@@ -143,7 +143,7 @@ class FishyPlatformGeneric : FishyPlatform
 				return false;
 			}
 
-			lump = Wads.FindLumpFullName(fullName);
+			lump = Wads.CheckNumForFullName(fullName);
 			if (lump < 0)
 			{
 				Console.Printf("\ckSetSizeFromModel(): invalid model: '"..fullName.."' can't be found."..
