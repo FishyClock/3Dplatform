@@ -77,15 +77,15 @@ class FishyPlatformGeneric : FishyPlatform
 	// void MustGetFloat() advances the parser.
 	// void MustGetNumber() advances the parser.
 
-	private bool NextStringIs (string compare, out ScriptScanner scanner)
+	private string GetNextString (out ScriptScanner sc)
 	{
-		return (scanner.GetString() && scanner.GetStringContents() ~== compare); //Just to make things a tad more readable
+		return sc.GetString() ? sc.GetStringContents() : ""; //Just to make things a tad more readable
 	}
 
 	private bool SetSizeFromModel ()
 	{
 		int lump = -1;
-		ScriptScanner scanner = null;
+		ScriptScanner sc = null;
 		string path = user_cm_modelpath;
 		string model = user_cm_model;
 
@@ -100,27 +100,27 @@ class FishyPlatformGeneric : FishyPlatform
 			//then the last defined model is going to be used.
 			while ((lump = Wads.FindLump("MODELDEF", lump + 1)) >= 0) //Go through every MODELDEF lump/file
 			{
-				if (!scanner)
-					scanner = new("ScriptScanner");
-				scanner.OpenLumpNum(lump);
-				scanner.SetPrependMessage("Expected numeric value, but\n"); //Part of error message if MustGetNumber() doesn't get a number
-				while (!scanner.end)
+				if (!sc)
+					sc = new("ScriptScanner");
+				sc.OpenLumpNum(lump);
+				sc.SetPrependMessage("Expected numeric value, but\n"); //Part of error message if MustGetNumber() doesn't get a number
+				while (!sc.end)
 				{
-					if (NextStringIs("model", scanner) &&
-						NextStringIs(user_cm_modeldef, scanner) &&
-						NextStringIs("{", scanner))
+					if (GetNextString(sc) ~== "model" &&
+						GetNextString(sc) ~== user_cm_modeldef &&
+						GetNextString(sc) == "{")
 					{
-						while (!scanner.end && !NextStringIs("}", scanner))
+						string str;
+						while (!sc.end && (str = GetNextString(sc)) != "}")
 						{
-							string contents = scanner.GetStringContents();
-							if (contents ~== "path")
+							if (str ~== "path")
 							{
-								scanner.GetString(); path = scanner.GetStringContents();
+								path = GetNextString(sc);
 							}
-							else if (contents ~== "model")
+							else if (str ~== "model")
 							{
-								scanner.MustGetNumber(); //Get this out of the way
-								scanner.GetString(); model = scanner.GetStringContents();
+								sc.MustGetNumber(); //Get this out of the way
+								model = GetNextString(sc);
 							}
 						}
 					}
@@ -136,11 +136,21 @@ class FishyPlatformGeneric : FishyPlatform
 		{
 			int len = fullName.Length();
 			if (len <= 4 || !(fullName.Mid(len - 4, 4) ~== ".obj"))
-				ThrowAbortException("SetSizeFromModel(): only .obj files can be parsed at the moment. Sorry!");
+			{
+				Console.Printf("\ckSetSizeFromModel(): invalid model: '"..fullName.."' only .obj files can be parsed."..
+					"\n\ckPlatform position: "..pos.." tid: "..tid.."\n.");
+				new("FishyModelDelayedAbort");
+				return false;
+			}
 
 			lump = Wads.FindLumpFullName(fullName);
 			if (lump < 0)
-				ThrowAbortException("SetSizeFromModel(): invalid model: "..fullName);
+			{
+				Console.Printf("\ckSetSizeFromModel(): invalid model: '"..fullName.."' can't be found."..
+					"\n\ckPlatform position: "..pos.." tid: "..tid.."\n.");
+				new("FishyModelDelayedAbort");
+				return false;
+			}
 		}
 
 		if (lump >= 0)
@@ -148,17 +158,17 @@ class FishyPlatformGeneric : FishyPlatform
 			double newRad = 0;
 			double newHi = 0;
 
-			if (!scanner)
-				scanner = new("ScriptScanner");
-			scanner.OpenLumpNum(lump);
-			scanner.SetPrependMessage("Expected float value, but\n"); //Part of error message if MustGetFloat() doesn't get a number
-			while (!scanner.end)
+			if (!sc)
+				sc = new("ScriptScanner");
+			sc.OpenLumpNum(lump);
+			sc.SetPrependMessage("Expected float value, but\n"); //Part of error message if MustGetFloat() doesn't get a number
+			while (!sc.end)
 			{
-				if (NextStringIs("v", scanner))
+				if (GetNextString(sc) ~== "v")
 				{
-					scanner.MustGetFloat(); double x = scanner.float;
-					scanner.MustGetFloat(); double z = scanner.float;
-					scanner.MustGetFloat(); double y = scanner.float;
+					sc.MustGetFloat(); double x = sc.float;
+					sc.MustGetFloat(); double z = sc.float;
+					sc.MustGetFloat(); double y = sc.float;
 
 					newRad = max(newRad, abs(x), abs(y));
 					newHi = max(newHi, z);
@@ -172,5 +182,21 @@ class FishyPlatformGeneric : FishyPlatform
 			return true;
 		}
 		return false;
+	}
+}
+
+class FishyModelDelayedAbort : Thinker
+{
+	int startTime;
+
+	override void PostBeginPlay ()
+	{
+		startTime = level.mapTime;
+	}
+
+	override void Tick ()
+	{
+		if (level.mapTime - startTime > 2)
+			ThrowAbortException("SetSizeFromModel() errors.");
 	}
 }
