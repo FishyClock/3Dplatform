@@ -14,15 +14,16 @@ class FishyPlatformGeneric : FishyPlatform
 		Stop;
 	}
 
-	//===User variables that are parameters for A_SetSize() and A_ChangeModel()===//
+	//===User variables that are parameters for A_SetSize()===//
 	//$UserDefaultValue -1
 	double user_set_radius;
 	//$UserDefaultValue -1
 	double user_set_height;
 
 	//$UserDefaultValue true
-	bool user_modelsetssize; //If "true" and the model is valid, this will override user_set_height and user_set_radius
+	bool user_modelsetssize; //If "true" and a model is provided, this will override user_set_height and user_set_radius
 
+	//===User variables that are parameters for A_ChangeModel()===//
 	string user_cm_modeldef;
 	int user_cm_modelindex;
 	string user_cm_modelpath;
@@ -36,7 +37,13 @@ class FishyPlatformGeneric : FishyPlatform
 	int user_cm_animationindex;
 	string user_cm_animationpath;
 	string user_cm_animation;
+}
 
+//Ultimate Doom Builder doesn't need to read the rest
+//$GZDB_SKIP
+
+extend class FishyPlatformGeneric
+{
 	override void BeginPlay () //This gets called before any user vars are set - any atypical default values have to be set here
 	{
 		Super.BeginPlay();
