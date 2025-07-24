@@ -1,12 +1,15 @@
-version "4.14"
+version "4.14.2"
 
-//Core file
+//Core file - all the major platform logic is here
 #include "zscript/fishy/platform-base.zs"
 
-//Examples of platform subclasses
+//Generic platform class - can have its model and size set while mapping.
+//Can also set its size based on the model it was given, but only if the model is a .OBJ
 #include "zscript/fishy/platform-generic.zs"
+
+//Examples of minor platform subclasses (before the generic platform class existed)
 #include "zscript/fishy/test-platforms.zs"
 #include "zscript/fishy/demo-platforms.zs"
 
-//Throwaway test material
+//Throwaway test material - no platform subclasses here
 #include "zscript/fishy/misc-test.zs"

@@ -21,7 +21,7 @@ class FishyPlatformGeneric : FishyPlatform
 	double user_set_height;
 
 	//$UserDefaultValue true
-	bool user_modelsetssize;
+	bool user_modelsetssize; //If "true" and the model is valid, this will override user_set_height and user_set_radius
 
 	string user_cm_modeldef;
 	int user_cm_modelindex;
@@ -43,7 +43,7 @@ class FishyPlatformGeneric : FishyPlatform
 		user_set_radius = -1; //Passing a negative value to A_SetSize() means "don't change"
 		user_set_height = -1;
 		user_cm_generatorindex = -1;
-		//Will not set 'user_modelsetssize' to "true" here
+		//Will not set 'user_modelsetssize' to "true" here - so it doesn't affect maps before this was implemented
 	}
 
 	override void PostBeginPlay ()
@@ -71,121 +71,90 @@ class FishyPlatformGeneric : FishyPlatform
 		Super.PostBeginPlay();
 	}
 
-	// Notes about the ScriptScanner:
-	// bool GetString() advances the parser.
-	// string GetStringContents() does NOT advance the parser.
-	// void MustGetFloat() advances the parser.
-	// void MustGetNumber() advances the parser.
-
-	private string GetNextString (out ScriptScanner sc)
-	{
-		return sc.GetString() ? sc.GetStringContents() : ""; //Just to make things a tad more readable
-	}
-
 	private bool SetSizeFromModel ()
 	{
-		int lump = -1;
-		ScriptScanner sc = null;
-		string path = user_cm_modelpath;
-		string model = user_cm_model;
-
-		if (path != "" && model != "" && path.Mid(path.Length() - 1, 1) != "/")
-			path = path .. "/"; //Make sure the last character of 'path' is "/"
-		string fullName = path .. model;
-
-		if (fullName == "" && user_cm_modeldef != "")
+		string fullName;
+		if (user_cm_modelpath != "" &&
+			user_cm_model != "" &&
+			user_cm_modelpath.Mid(user_cm_modelpath.Length() - 1, 1) != "/") //The last character of *modelpath is not "/"?
 		{
-			//Attempt to fetch model from MODELDEF.
-			//If the matching MODELDEF entry contains multiple models
-			//then the last defined model is going to be used.
-			while ((lump = Wads.FindLump("MODELDEF", lump + 1)) >= 0) //Go through every MODELDEF lump/file
-			{
-				if (!sc)
-					sc = new("ScriptScanner");
-				sc.OpenLumpNum(lump);
-				sc.SetPrependMessage("Expected numeric value, but\n"); //Part of error message if MustGetNumber() doesn't get a number
-				while (!sc.end)
-				{
-					if (GetNextString(sc) ~== "model" &&
-						GetNextString(sc) ~== user_cm_modeldef &&
-						GetNextString(sc) == "{")
-					{
-						string str;
-						while (!sc.end && (str = GetNextString(sc)) != "}")
-						{
-							if (str ~== "path")
-							{
-								path = GetNextString(sc);
-							}
-							else if (str ~== "model")
-							{
-								sc.MustGetNumber(); //Get this out of the way
-								model = GetNextString(sc);
-							}
-						}
-					}
-				}
-			}
-
-			if (path != "" && model != "" && path.Mid(path.Length() - 1, 1) != "/")
-				path = path .. "/"; //Make sure the last character of 'path' is "/"
-			fullName = path .. model;
+			fullName = user_cm_modelpath .. "/" .. user_cm_model;
+		}
+		else
+		{
+			fullName = user_cm_modelpath .. user_cm_model;
 		}
 
-		if (fullName != "")
-		{
-			int len = fullName.Length();
-			if (len <= 4 || !(fullName.Mid(len - 4, 4) ~== ".obj"))
-			{
-				Console.Printf("\ckSetSizeFromModel(): invalid model: '"..fullName.."' only .obj files can be parsed."..
-					"\n\ckPlatform position: "..pos.." tid: "..tid.."\n.");
-				new("FishyModelDelayedAbort");
-				return false;
-			}
+		if (fullName == "")
+			return false; //No abort exceptions if no model was provided
 
-			lump = Wads.CheckNumForFullName(fullName);
-			if (lump < 0)
+		int len = fullName.Length();
+		if (len <= 4 || !(fullName.Mid(len - 4, 4) ~== ".obj"))
+		{
+			string why = (len <= 4) ? "it's too short." : "only .obj files can be parsed.";
+
+			Console.Printf("\ckSetSizeFromModel(): invalid model: '" .. fullName .. "' " .. why ..
+				"\n\ckPlatform position: " .. pos .. " tid: " .. tid .. "\n.");
+			new("FishyPlatGenDelayedAbort");
+			return false;
+		}
+
+		int lump = Wads.CheckNumForFullName(fullName);
+		if (lump < 0)
+		{
+			Console.Printf("\ckSetSizeFromModel(): invalid model: '" .. fullName .. "' can't be found." ..
+				"\n\ckPlatform position: " .. pos .. " tid: " .. tid .. "\n.");
+			new("FishyPlatGenDelayedAbort");
+			return false;
+		}
+
+		double newRad = 0;
+		double newHi = 0;
+
+		// Notes about the ScriptScanner:
+		// bool GetString() advances the parser. It returns false when reaching the end of the file.
+		// string GetStringContents() does NOT advance the parser.
+		// void MustGetFloat() advances the parser.
+
+		let sc = new("ScriptScanner");
+		sc.OpenLumpNum(lump);
+		while (sc.GetString())
+		{
+			if (sc.GetStringContents() ~== "v")
 			{
-				Console.Printf("\ckSetSizeFromModel(): invalid model: '"..fullName.."' can't be found."..
-					"\n\ckPlatform position: "..pos.." tid: "..tid.."\n.");
-				new("FishyModelDelayedAbort");
-				return false;
+				// WARNING
+				// We're running with the assumption that this
+				// .OBJ model is created from exported level geometry
+				// WITH THE FOLLOWING OPTIONS CHECKED!
+				// --Center model--
+				// --Normalize lowest vertex z to 0--
+				// --Ignore 3D floor control sectors--
+				//
+				// Quick tests showed having either "Center model"
+				// or "Normalize lowest vertex z to 0" unchecked
+				// produces undesired results!
+				//
+				// Fortunately they're checked by default
+				// when exporting.
+
+				sc.MustGetFloat(); double x = sc.float;
+				sc.MustGetFloat(); double z = sc.float;
+				sc.MustGetFloat(); double y = sc.float;
+
+				newRad = max(newRad, abs(x), abs(y));
+				newHi = max(newHi, z);
 			}
 		}
 
-		if (lump >= 0)
-		{
-			double newRad = 0;
-			double newHi = 0;
-
-			if (!sc)
-				sc = new("ScriptScanner");
-			sc.OpenLumpNum(lump);
-			sc.SetPrependMessage("Expected float value, but\n"); //Part of error message if MustGetFloat() doesn't get a number
-			while (!sc.end)
-			{
-				if (GetNextString(sc) ~== "v")
-				{
-					sc.MustGetFloat(); double x = sc.float;
-					sc.MustGetFloat(); double z = sc.float;
-					sc.MustGetFloat(); double y = sc.float;
-
-					newRad = max(newRad, abs(x), abs(y));
-					newHi = max(newHi, z);
-				}
-			}
-
-			//I don't know how UDB does the conversion but the highest Z vertex
-			//is always higher than the resulting height for an actor when exporting OBJ models.
-			newHi *= 0.83333; //This should give the appropriate height in most cases.
-			A_SetSize(newRad, newHi);
-			return true;
-		}
-		return false;
+		//I don't know how UDB does the conversion but the highest Z vertex
+		//is always higher than the resulting height for an actor when exporting OBJ models.
+		newHi *= 0.83333; //This should give the appropriate height in most cases.
+		A_SetSize(newRad, newHi);
+		return true;
 	}
 }
 
-class FishyModelDelayedAbort : Thinker
+class FishyPlatGenDelayedAbort : Thinker
 {
 	int startTime;
 
