@@ -160,6 +160,7 @@ class FishyPlatformPivot : Actor
 	Default
 	{
 		//$Title Platform Pivot
+		//$Sprite pivot
 		//$NotAngled
 
 		//$Arg0 Platform
