@@ -124,6 +124,13 @@ class FishyPlatform : Actor abstract
 	//===User variables===//
 	//$UserDefaultValue true
 	bool user_scalesize; //If true, the radius and height will be affected by its scale values
+
+	string user_snd_start; //NOTE: Variable type must be "string", not "sound" or UDB won't recognize them
+	string user_snd_stop;
+	string user_snd_blocked;
+	string user_snd_move;
+	bool user_snd_movestopsstart;
+	int user_snd_delaytomove; //If 0, wait until 'snd_start' is done
 }
 
 class FishyPlatformNode : InterpolationPoint
@@ -389,6 +396,7 @@ extend class FishyPlatform
 	const INTERNALFLAG_ACSMOVE = 1; //When reaching destination, disregard any set nodes and pretend we're finished
 	const BMAP_SEARCH_INTERVAL = 35; //See GetNewBmapResults() for comments about this
 	const BMAP_RADIUS_MULTIPLIER = 2; //Ditto
+	const CHAN_USERSND = 50; //For the user variables related to sound
 
 	vector3 oldPos;
 	double oldAngle;
@@ -403,12 +411,14 @@ extend class FishyPlatform
 	vector3 groupOrbitOffset;  //Precalculated offset from origin's groupOrbitPos to orbiter's groupOrbitPos - changes when origin changes.
 	quat groupOrbitAngDiff; //Precalculated deltas from origin's groupAngle/Pitch/Roll to orbiter's groupAngle/Pitch/Roll as a quaternion - changes when origin changes.
 	vector3 pivotData;
-	bool pivotDataIsPos; //Otherwise it's an offset
+	bool bPivotDataIsPos; //Otherwise it's an offset
 	double time;
 	double reachedTime;
 	double timeFrac;
 	int holdTime;
+	int startMoveTime;
 	bool bActive;
+	bool bWasMoving;
 	transient bool bRanActivationRoutine; //Used to check if SetInterpolationCoordinates() or "resume path" Activate() was called on self through CallNodeSpecials().
 	transient bool bRanACSSetupRoutine; //Used to check if CommonACSSetup() was called on self through CallNodeSpecials().
 	transient bool bTimeAlreadySet; //Used to check if 'time' was set on self through CallNodeSpecials().
@@ -3549,8 +3559,8 @@ extend class FishyPlatform
 	//============================
 	void SetPivot (vector3 pivot, bool attach)
 	{
-		pivotDataIsPos = !attach;
-		if (pivotDataIsPos)
+		bPivotDataIsPos = !attach;
+		if (bPivotDataIsPos)
 		{
 			pivotData = pivot;
 		}
@@ -3674,7 +3684,7 @@ extend class FishyPlatform
 		vector3 newPosMaybePivot = newPos;
 		if (angle != newAngle || pitch != newPitch || roll != newRoll)
 		{
-			if (pivotDataIsPos)
+			if (bPivotDataIsPos)
 			{
 				quat qRot = quat.FromAngles(angle, pitch, roll);
 				vector3 offset = qRot.Inverse() * level.Vec3Diff(pivotData, newPos);
@@ -4013,6 +4023,62 @@ extend class FishyPlatform
 	}
 
 	//============================
+	// MarkPrecacheSounds (override)
+	//============================
+	override void MarkPrecacheSounds ()
+	{
+		Super.MarkPrecacheSounds();
+		MarkSound(user_snd_start);
+		MarkSound(user_snd_stop);
+		MarkSound(user_snd_blocked);
+		MarkSound(user_snd_move);
+	}
+
+	//============================
+	// HandleUserSounds
+	//============================
+	private void HandleUserSounds (bool shouldMove, bool isMoving)
+	{
+		if (shouldMove && !bWasMoving && isMoving)
+		{
+			//Stop the looping "move" sound in case the next sound is invalid
+			if (IsActorPlayingSound(CHAN_USERSND, user_snd_move))
+				A_StopSound(CHAN_USERSND);
+			A_StartSound(user_snd_start, CHAN_USERSND);
+			startMoveTime = level.mapTime;
+		}
+		else if (!shouldMove && bWasMoving)
+		{
+			//Stop the looping "move" sound in case the next sound is invalid
+			if (IsActorPlayingSound(CHAN_USERSND, user_snd_move))
+				A_StopSound(CHAN_USERSND);
+			A_StartSound(user_snd_stop, CHAN_USERSND);
+		}
+		else if (shouldMove && bWasMoving)
+		{
+			if (isMoving)
+			{
+				if ( ( user_snd_delaytomove > 0 && level.mapTime - startMoveTime > user_snd_delaytomove ) ||
+					 ( user_snd_delaytomove <= 0 && !IsActorPlayingSound(CHAN_USERSND) ) )
+				{
+					int sndFlags = CHANF_LOOPING;
+					if (!user_snd_movestopsstart)
+						sndFlags |= CHANF_OVERLAP;
+					A_StartSound(user_snd_move, CHAN_USERSND, sndFlags);
+				}
+			}
+			else
+			{
+				//Stop the looping "move" sound in case the next sound is invalid
+				if (IsActorPlayingSound(CHAN_USERSND, user_snd_move))
+					A_StopSound(CHAN_USERSND);
+				A_StartSound(user_snd_blocked, CHAN_USERSND);
+			}
+		}
+		bWasMoving = isMoving;
+	}
+
+	//============================
 	// Tick (override)
 	//============================
 	override void Tick ()
@@ -4348,7 +4414,10 @@ extend class FishyPlatform
 		}
 
 		if (callActorTick)
+		{
+			HandleUserSounds(!holdTime && IsActive(), HasMoved());
 			return;
+		}
 
 		//Handle friction, gravity, and other misc things
 		if (!group || !group.origin || group.origin == self)
@@ -4468,19 +4537,26 @@ extend class FishyPlatform
 			}
 		}
 
-		//Advance actor states
+		//Handle user variable sounds and advance actor states
 		if (!group || !group.origin || group.origin == self)
-		for (int i = -1; i == -1 || (group && group.origin == self && i < group.members.Size()); ++i)
 		{
-			let plat = (i == -1) ? self : group.GetMember(i);
-			if (i > -1 && (!plat || plat == self)) //Already handled self
-				continue;
+			bool shouldMove = (!holdTime && IsActive());
+			bool hasMoved = HasMoved();
 
-			if (!plat.CheckNoDelay())
-				continue; //Freed itself (ie got destroyed)
+			for (int i = -1; i == -1 || (group && group.origin == self && i < group.members.Size()); ++i)
+			{
+				let plat = (i == -1) ? self : group.GetMember(i);
+				if (i > -1 && (!plat || plat == self)) //Already handled self
+					continue;
 
-			if (plat.tics != -1 && --plat.tics <= 0)
-				plat.SetState(plat.curState.nextState);
+				plat.HandleUserSounds(shouldMove, hasMoved);
+
+				if (!plat.CheckNoDelay())
+					continue; //Freed itself (ie got destroyed)
+
+				if (plat.tics != -1 && --plat.tics <= 0)
+					plat.SetState(plat.curState.nextState);
+			}
 		}
 	}
 
@@ -5108,7 +5184,7 @@ extend class FishyPlatform
 		for (let plat = FishyPlatform(it ? it.Next() : act); plat; plat = it ? FishyPlatform(it.Next()) : null)
 		{
 			plat.pivotData = (0, 0, 0);
-			plat.pivotDataIsPos = false;
+			plat.bPivotDataIsPos = false;
 		}
 	}
 } //End of FishyPlatform class definition

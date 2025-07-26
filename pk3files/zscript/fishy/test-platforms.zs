@@ -235,6 +235,12 @@ class TESTNastyHeart : FishyPlatform
 	States
 	{
 	Spawn:
+		MODL A 10 NoDelay
+		{
+			if (user_snd_move == "")
+				user_snd_move = "brain/cube";
+		}
+	Idle:
 		MODL A 10 A_LookEx(fov: 360); //"Wake up" as soon as player is in sight
 		Loop;
 	See:

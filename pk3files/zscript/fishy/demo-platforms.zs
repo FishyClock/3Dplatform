@@ -8,31 +8,6 @@ class DemoGenericPlat : FishyPlatform abstract
 	}
 }
 
-class DemoPlatWithSnd : FishyPlatform abstract
-{
-	bool wasMoving;
-	Name sndSeq;
-	Property Seq: sndSeq;
-
-	States
-	{
-	Spawn:
-		MODL A 1 NoDelay { wasMoving = false; }
-		MODL A 1
-		{
-			bool isMoving = HasMoved();
-			if (isMoving == wasMoving)
-				return;
-
-			if (wasMoving = isMoving)
-				StartSoundSequence(sndSeq, 0);
-			else
-				StopSoundSequence();
-		}
-		Wait;
-	}
-}
-
 //
 //
 //
@@ -46,13 +21,25 @@ class DemoCavePlat : DemoGenericPlat
 	}
 }
 
-class DemoTwistingLift : DemoPlatWithSnd
+class DemoTwistingLift : FishyPlatform
 {
 	Default
 	{
 		Radius 64;
 		Height 128;
-		DemoPlatWithSnd.Seq 'Platform';
+	}
+
+	States
+	{
+	Spawn:
+		MODL A -1 NoDelay
+		{
+			if (user_snd_start == "")
+				user_snd_start = "plats/pt1_strt";
+			if (user_snd_stop == "")
+				user_snd_stop = "plats/pt1_stop";
+		}
+		Stop;
 	}
 }
 
@@ -74,13 +61,25 @@ class DemoSpinningSegment2 : DemoGenericPlat
 	}
 }
 
-class DemoSlidingFloor : DemoPlatWithSnd
+class DemoSlidingFloor : FishyPlatform
 {
 	Default
 	{
 		Radius 32;
 		Height 16;
-		DemoPlatWithSnd.Seq 'Floor';
+	}
+
+	States
+	{
+	Spawn:
+		MODL A -1 NoDelay
+		{
+			if (user_snd_move == "")
+				user_snd_move = "plats/pt1_mid";
+			if (user_snd_stop == "")
+				user_snd_stop = "plats/pt1_stop";
+		}
+		Stop;
 	}
 }
 

@@ -31,6 +31,11 @@ DoomEdNums
 	15511 = TESTCybie
 }
 
+defaultmap
+{
+	Sky1 = "SKY1"
+}
+
 map MAP01 "Fishy's 3D Platforms: Demo"
 {
 	Music = D_ROMERO
@@ -41,29 +46,13 @@ map TEST01 "A very crappy test map"
 	UsePlayerStartZ
 }
 
-map TEST02 "Stress test"
-{
-}
-
-map TEST03 "Another crappy test map"
-{
-}
-
-map VMABORT "Don't do that! test"
-{
-}
-
-map SPEED "Platform racing"
-{
-}
-
-map PLATATAK "Fireblu Heartache"
-{
-}
-
-map DMDLSIZE "Dynamic Model Size (Model determines size)"
-{
-}
+map TEST02 "Stress test" {}
+map TEST03 "Another crappy test map" {}
+map VMABORT "Don't do that! test" {}
+map SPEED "Platform racing" {}
+map PLATATAK "Fireblu Heartache" {}
+map DMDLSIZE "Dynamic Model Size (Model determines size)" {}
+map SNDTEST "Generic sound test" {}
 
 clearEpisodes
 episode MAP01 { name = "Demo map" }
@@ -74,3 +63,4 @@ episode SPEED { name = "Speed test" }
 episode PLATATAK { name = "Hostile test" }
 episode VMABORT { name = "VM abort test" }
 episode DMDLSIZE { name = "Dynamic Model Size" }
+episode SNDTEST { name = "Generic sound test" }
