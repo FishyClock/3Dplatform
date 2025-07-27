@@ -2729,13 +2729,18 @@ extend class FishyPlatform
 	//============================
 	// GoBack
 	//============================
-	private void GoBack ()
+	private void GoBack (vector3 goPos = (double.nan, 0, 0), double goAngle = double.nan, double goPitch = double.nan, double goRoll = double.nan)
 	{
-		if (pos != oldPos)
-			SetOrigin(oldPos, true);
-		angle = oldAngle;
-		pitch = oldPitch;
-		roll = oldRoll;
+		//Going back to our old position/angle/pitch/roll is what would usually happen
+		if (goPos != goPos) //NaN check
+			goPos = oldPos;
+
+		if (pos != goPos)
+			SetOrigin(goPos, true);
+
+		angle = (goAngle == goAngle) ? goAngle : oldAngle;
+		pitch = (goPitch == goPitch) ? goPitch : oldPitch;
+		roll = (goRoll == goRoll) ? goRoll : oldRoll;
 	}
 
 	//============================
@@ -2743,6 +2748,8 @@ extend class FishyPlatform
 	//============================
 	private bool PlatTakeOneStep (vector3 newPos)
 	{
+		double startZ = pos.z;
+
 		//The "invisible" portal twin (copy) isn't meant to go through portals.
 		//Don't call TryMove() nor Vec3Offset() for it.
 		SetZ(newPos.z);
@@ -2801,7 +2808,7 @@ extend class FishyPlatform
 			{
 				moved = true;
 				if (!bPortCopy)
-					SetOrigin(level.Vec3Offset(oldPos, newPos - oldPos), true);
+					SetOrigin(level.Vec3Offset(pos, newPos - pos), true);
 			}
 		}
 
@@ -2811,13 +2818,13 @@ extend class FishyPlatform
 		}
 		else if (!moved)
 		{
-			SetZ(oldPos.z);
-			if (newPos.z < oldPos.z)
+			SetZ(startZ);
+			if (newPos.z < startZ)
 			{
 				//If an obstacle is below us and we're attempting to go down, try to stand on it
 				let mo = blockingMobj;
 				double moTop;
-				if (mo && (moTop = mo.pos.z + mo.height) < oldPos.z && OverlapXY(self, mo) && FitsAtPosition(self, (oldPos.xy, moTop)))
+				if (mo && (moTop = mo.pos.z + mo.height) < startZ && OverlapXY(self, mo) && FitsAtPosition(self, (pos.xy, moTop)))
 				{
 					bOnMobj = true;
 					SetZ(moTop);
@@ -2832,17 +2839,15 @@ extend class FishyPlatform
 					//Try to adjust our twin
 					if (portTwin && (!portTwin.bNoBlockmap || !portTwin.bPortCopy))
 					{
-						double twinZ = portTwin.pos.z + moTop - oldPos.z;
+						double twinZ = portTwin.pos.z + moTop - startZ;
 						if (portTwin.pos.z != twinZ && FitsAtPosition(portTwin, (portTwin.pos.xy, twinZ)))
 						{
 							portTwin.bOnMobj = true;
 							portTwin.SetZ(twinZ);
-							portTwin.oldPos.z = twinZ;
 							if (!portTwin.bPortCopy)
 								portTwin.CheckPortalTransition(); //Handle sector portals properly
 						}
 					}
-					oldPos.z = moTop;
 				}
 			}
 		}
@@ -3156,11 +3161,14 @@ extend class FishyPlatform
 		if (pos == newPos && angle == newAngle && pitch == newPitch && roll == newRoll)
 			return true;
 
+		vector3 startPos = pos;
+		double startAngle = angle;
+		double startPitch = pitch;
+		double startRoll = roll;
+
 		double delta, piDelta, roDelta;
 		if (moveType != MOVE_NORMAL || pos == newPos)
 		{
-			UpdateOldInfo();
-
 			if (moveType == MOVE_TRUETELE)
 			{
 				//Handle this early in case something goes wrong
@@ -3180,17 +3188,17 @@ extend class FishyPlatform
 			roll = newRoll;
 
 			//For MovePassengers()
-			delta = DeltaAngle(oldAngle, newAngle);
-			piDelta = (moveType == MOVE_TELEPORT) ? 0 : DeltaAngle(oldPitch, newPitch);
-			roDelta = (moveType == MOVE_TELEPORT) ? 0 : DeltaAngle(oldRoll, newRoll);
+			delta = DeltaAngle(startAngle, newAngle);
+			piDelta = (moveType == MOVE_TELEPORT) ? 0 : DeltaAngle(startPitch, newPitch);
+			roDelta = (moveType == MOVE_TELEPORT) ? 0 : DeltaAngle(startRoll, newRoll);
 
 			if (lastUPort)
 			{
 				double angDiff;
-				[portTwin.oldPos, angDiff] = TranslatePortalVector(oldPos, lastUPort, true, false);
+				[portTwin.oldPos, angDiff] = TranslatePortalVector(startPos, lastUPort, true, false);
 				portTwin.angle = newAngle + angDiff;
 
-				if (oldPos != newPos)
+				if (startPos != newPos)
 					portTwin.SetOrigin(TranslatePortalVector(newPos, lastUPort, true, false), true);
 				else if (portTwin.oldPos != portTwin.pos)
 					portTwin.SetOrigin(portTwin.oldPos, true);
@@ -3209,7 +3217,7 @@ extend class FishyPlatform
 
 			bool telePass = (moveType == MOVE_QUICKTELE);
 
-			MovePassengers(oldPos, pos, angle, delta, piDelta, roDelta, telePass);
+			MovePassengers(startPos, pos, angle, delta, piDelta, roDelta, telePass);
 			if (lastUPort)
 				portTwin.MovePassengers(portTwin.oldPos, portTwin.pos, portTwin.angle, delta, piDelta, roDelta, telePass);
 			ExchangePassengersWithTwin();
@@ -3228,15 +3236,15 @@ extend class FishyPlatform
 
 			bool result = true;
 			bool telePass = (moveType == MOVE_TELEPORT);
-			bool movedMine = MovePassengers(oldPos, pos, angle, delta, piDelta, roDelta, telePass);
+			bool movedMine = MovePassengers(startPos, pos, angle, delta, piDelta, roDelta, telePass);
 
 			if (!movedMine || (lastUPort &&
 				!portTwin.MovePassengers(portTwin.oldPos, portTwin.pos, portTwin.angle, delta, piDelta, roDelta, telePass) ) )
 			{
 				if (movedMine)
-					MovePassengers(pos, oldPos, angle, -delta, -piDelta, -roDelta, true); //Move them back
+					MovePassengers(pos, startPos, angle, -delta, -piDelta, -roDelta, true); //Move them back
 
-				GoBack();
+				GoBack(startPos, startAngle, startPitch, startRoll);
 				if (lastUPort)
 					portTwin.GoBack();
 				result = false;
@@ -3269,7 +3277,10 @@ extend class FishyPlatform
 		for (int step = 0; step < maxSteps; ++step)
 		{
 			let oldPGroup = curSector.portalGroup;
-			UpdateOldInfo();
+			startPos = pos;
+			startAngle = angle;
+			startPitch = pitch;
+			startRoll = roll;
 			newPos = pos + stepMove;
 			if (!PlatTakeOneStep(newPos))
 			{
@@ -3304,31 +3315,30 @@ extend class FishyPlatform
 				//Keep it simple
 				newPos = pos;
 				newAngle = angle;
-				portDelta += DeltaAngle(oldAngle, angle); //For SetInterpolationCoordinates()
-				GoBack();
+				portDelta += DeltaAngle(startAngle, angle); //For SetInterpolationCoordinates()
+				GoBack(startPos, startAngle, startPitch, startRoll);
 				return DoMove(newPos, newAngle, newPitch, newRoll, MOVE_QUICKTELE);
 			}
 
 			//For MovePassengers().
 			//Any portal induced angle changes
 			//should not affect passenger rotation.
-			vector3 myStartPos = oldPos;
-			delta = (step > 0) ? 0 : DeltaAngle(oldAngle, newAngle);
-			piDelta = (step > 0) ? 0 : DeltaAngle(oldPitch, newPitch);
-			roDelta = (step > 0) ? 0 : DeltaAngle(oldRoll, newRoll);
+			vector3 portalAwareStartPos = startPos;
+			delta = (step > 0) ? 0 : DeltaAngle(startAngle, newAngle);
+			piDelta = (step > 0) ? 0 : DeltaAngle(startPitch, newPitch);
+			roDelta = (step > 0) ? 0 : DeltaAngle(startRoll, newRoll);
 
 			double angDiff;
 			if (newPos.xy != pos.xy)
 			{
 				//If we have passed through a (non-static) portal
-				//then adjust 'stepMove' and 'newAngle' if our angle changed.
-				//We also need to adjust 'myStartPos' for MovePassengers().
-				myStartPos -= newPos;
-				angDiff = DeltaAngle(oldAngle, angle);
+				//then adjust a few things.
+				portalAwareStartPos -= newPos;
+				angDiff = DeltaAngle(startAngle, angle);
 				if (angDiff)
 				{
 					portDelta += angDiff; //For SetInterpolationCoordinates()
-					myStartPos.xy = RotateVector(myStartPos.xy, angDiff);
+					portalAwareStartPos.xy = RotateVector(portalAwareStartPos.xy, angDiff);
 
 					if (step == 0)
 						newAngle += angDiff;
@@ -3336,7 +3346,7 @@ extend class FishyPlatform
 					if (step < maxSteps - 1)
 						stepMove.xy = RotateVector(stepMove.xy, angDiff);
 				}
-				myStartPos += pos;
+				portalAwareStartPos += pos;
 			}
 
 			if (step == 0)
@@ -3352,13 +3362,13 @@ extend class FishyPlatform
 				vector3 twinPos;
 				if (newPos.xy == pos.xy)
 				{
-					[portTwin.oldPos, angDiff] = TranslatePortalVector(oldPos, lastUPort, true, false);
+					[portTwin.oldPos, angDiff] = TranslatePortalVector(startPos, lastUPort, true, false);
 					portTwin.angle = angle + angDiff;
 					twinPos = TranslatePortalVector(pos, lastUPort, true, false);
 				}
 				else
 				{
-					portTwin.oldPos = oldPos;
+					portTwin.oldPos = startPos;
 					portTwin.angle = angle - angDiff;
 					twinPos = newPos;
 					angDiff = 0;
@@ -3372,7 +3382,7 @@ extend class FishyPlatform
 				}
 				else if (!moved)
 				{
-					GoBack();
+					GoBack(startPos, startAngle, startPitch, startRoll);
 					if (portTwin.blockingMobj)
 					{
 						vector3 twinPushForce = pushForce;
@@ -3384,14 +3394,14 @@ extend class FishyPlatform
 				}
 			}
 
-			bool movedMine = MovePassengers(myStartPos, pos, angle, delta, piDelta, roDelta, false);
+			bool movedMine = MovePassengers(portalAwareStartPos, pos, angle, delta, piDelta, roDelta, false);
 			if (!movedMine || (lastUPort &&
 				!portTwin.MovePassengers(portTwin.oldPos, portTwin.pos, portTwin.angle, delta, piDelta, roDelta, false) ) )
 			{
 				if (movedMine)
-					MovePassengers(pos, myStartPos, angle, -delta, -piDelta, -roDelta, true); //Move them back
+					MovePassengers(pos, portalAwareStartPos, angle, -delta, -piDelta, -roDelta, true); //Move them back
 
-				GoBack();
+				GoBack(startPos, startAngle, startPitch, startRoll);
 				if (lastUPort)
 					portTwin.GoBack();
 				return false;
