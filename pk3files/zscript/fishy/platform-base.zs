@@ -396,7 +396,8 @@ extend class FishyPlatform
 	const INTERNALFLAG_ACSMOVE = 1; //When reaching destination, disregard any set nodes and pretend we're finished
 	const BMAP_SEARCH_INTERVAL = 35; //See GetNewBmapResults() for comments about this
 	const BMAP_RADIUS_MULTIPLIER = 2; //Ditto
-	const CHAN_USERSND = 50; //For the user variables related to sound
+	const CHAN_USERSND = 50; //Sound channel for user var sounds
+	const USERSND_LOWVEL = 0.1; //For user var sounds, we're "not moving" if velocity square length is below this
 
 	vector3 oldPos;
 	double oldAngle;
@@ -419,6 +420,7 @@ extend class FishyPlatform
 	int startMoveTime;
 	bool bActive;
 	bool bWasMoving;
+	transient bool bUserSoundsMove;
 	transient bool bRanActivationRoutine; //Used to check if SetInterpolationCoordinates() or "resume path" Activate() was called on self through CallNodeSpecials().
 	transient bool bRanACSSetupRoutine; //Used to check if CommonACSSetup() was called on self through CallNodeSpecials().
 	transient bool bTimeAlreadySet; //Used to check if 'time' was set on self through CallNodeSpecials().
@@ -3977,6 +3979,7 @@ extend class FishyPlatform
 	private void PlatVelMove ()
 	{
 		//Handles velocity based movement (from being pushed around)
+		vector3 startVel = vel;
 
 		//Apparently slamming into the floor/ceiling doesn't
 		//count as a cancelled move so take care of that.
@@ -3988,7 +3991,11 @@ extend class FishyPlatform
 		}
 
 		if (vel == (0, 0, 0))
-			return; //Nothing to do here
+		{
+			if (startVel.z != 0)
+				bUserSoundsMove = true; //Play "blocked" sound
+			return; //Nothing else to do here
+		}
 
 		double startAngle = angle;
 		vector3 startPos = pos;
@@ -4021,6 +4028,9 @@ extend class FishyPlatform
 		{
 			PlatMove(startPos, startAngle, pitch, roll, MOVE_QUICKTELE); //...So move them back
 		}
+
+		if (vel == (0, 0, 0) && startVel != (0, 0, 0))
+			bUserSoundsMove = true; //Play "blocked" sound
 	}
 
 	//============================
@@ -4045,11 +4055,32 @@ extend class FishyPlatform
 	}
 
 	//============================
+	// CheckUserSoundsMovement
+	//============================
+	private bool, bool CheckUserSoundsMovement ()
+	{
+		bool shouldMove = (
+			(!holdTime && bActive) ||
+			bUserSoundsMove || //Blocked velocity or called ACSFuncInterpolate()
+			(vel != (0, 0, 0) && vel.LengthSquared() > USERSND_LOWVEL)
+		);
+
+		bool hasMoved = ( shouldMove && (
+			pos != oldPos ||
+			angle != oldAngle ||
+			pitch != oldPitch ||
+			roll != oldRoll )
+		);
+
+		return shouldMove, hasMoved;
+	}
+
+	//============================
 	// HandleUserSounds
 	//============================
-	private void HandleUserSounds (bool shouldMove, bool isMoving)
+	private void HandleUserSounds (bool shouldMove, bool hasMoved)
 	{
-		if (shouldMove && !bWasMoving && isMoving)
+		if (shouldMove && !bWasMoving && hasMoved)
 		{
 			//Stop the looping "move" sound in case the next sound is invalid
 			if (IsActorPlayingSound(CHAN_USERSND, user_snd_move))
@@ -4066,7 +4097,7 @@ extend class FishyPlatform
 		}
 		else if (shouldMove && bWasMoving)
 		{
-			if (isMoving)
+			if (hasMoved)
 			{
 				if ( ( user_snd_delaytomove > 0 && level.mapTime - startMoveTime > user_snd_delaytomove ) ||
 					 ( user_snd_delaytomove <= 0 && !IsActorPlayingSound(CHAN_USERSND) ) )
@@ -4085,7 +4116,8 @@ extend class FishyPlatform
 				A_StartSound(user_snd_blocked, CHAN_USERSND);
 			}
 		}
-		bWasMoving = isMoving;
+		bWasMoving = hasMoved;
+		bUserSoundsMove = false;
 	}
 
 	//============================
@@ -4169,10 +4201,8 @@ extend class FishyPlatform
 		// (In other words, the others think when the origin thinks/ticks.)
 		//
 		// The intent behind this is to keep the whole group in sync.
-		// For example if the advancing of actor states was left up
-		// to the thinker list (like with every other actor)
-		// the moving bridge construct in the demo map would play
-		// its lift sounds slightly out of sync. (2 actors play the sounds.)
+		// Especially when playing user var sounds as a group.
+		// Like the moving bridge construct in map01.
 
 		bool inactive;
 
@@ -4226,6 +4256,10 @@ extend class FishyPlatform
 
 		if (callActorTick)
 		{
+			vector3 startVel = vel;
+			if (startVel != (0, 0, 0) && startVel.LengthSquared() <= USERSND_LOWVEL)
+				startVel = (0, 0, 0);
+
 			if (lastGetBmapTime == level.mapTime)
 				GetNewPassengers(false); //Call this early if we just did a blockmap search
 
@@ -4269,6 +4303,9 @@ extend class FishyPlatform
 				if (abs(vel.y) < minVel) vel.y = 0;
 				if (abs(vel.z) < minVel) vel.z = 0;
 			}
+
+			if (vel == (0, 0, 0) && startVel != (0, 0, 0))
+				bUserSoundsMove = true; //Play "blocked" sound
 		}
 		else if (!group || group.origin == self)
 		{
@@ -4425,7 +4462,8 @@ extend class FishyPlatform
 
 		if (callActorTick)
 		{
-			HandleUserSounds(!holdTime && IsActive(), HasMoved());
+			let [shouldMove, hasMoved] = CheckUserSoundsMovement();
+			HandleUserSounds(shouldMove, hasMoved);
 			return;
 		}
 
@@ -4550,8 +4588,7 @@ extend class FishyPlatform
 		//Handle user variable sounds and advance actor states
 		if (!group || !group.origin || group.origin == self)
 		{
-			bool shouldMove = (!holdTime && IsActive());
-			bool hasMoved = HasMoved();
+			let [shouldMove, hasMoved] = CheckUserSoundsMovement();
 
 			for (int i = -1; i == -1 || (group && group.origin == self && i < group.members.Size()); ++i)
 			{
@@ -5074,6 +5111,7 @@ extend class FishyPlatform
 				{
 					platList[i].reachedTime = newTime;
 					platList[i].bTimeAlreadySet = true;
+					platList[i].bUserSoundsMove = true;
 				}
 				++count;
 			}
