@@ -38,6 +38,8 @@ class DemoTwistingLift : FishyPlatform
 				user_snd_start = "plats/pt1_strt";
 			if (user_snd_stop == "")
 				user_snd_stop = "plats/pt1_stop";
+			if (user_snd_blocked == "")
+				user_snd_blocked = "plats/pt1_stop";
 		}
 		Stop;
 	}
@@ -78,6 +80,8 @@ class DemoSlidingFloor : FishyPlatform
 				user_snd_move = "plats/pt1_mid";
 			if (user_snd_stop == "")
 				user_snd_stop = "plats/pt1_stop";
+			if (user_snd_blocked == "")
+				user_snd_blocked = "plats/pt1_stop";
 		}
 		Stop;
 	}
