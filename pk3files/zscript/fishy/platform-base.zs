@@ -4065,6 +4065,9 @@ extend class FishyPlatform
 			(vel != (0, 0, 0) && vel.LengthSquared() > USERSND_LOWVEL)
 		);
 
+		//'shouldMove' being false nullifies the rest because we don't
+		//want random teleportation to trigger "start"/"move" sounds
+		//unless the teleportation is caused by ACSFuncInterpolate()
 		bool hasMoved = ( shouldMove && (
 			pos != oldPos ||
 			angle != oldAngle ||
@@ -4080,19 +4083,17 @@ extend class FishyPlatform
 	//============================
 	private void HandleUserSounds (bool shouldMove, bool hasMoved)
 	{
+		//Stop the looping "move" sound in case the next sound is invalid
+		if ((!shouldMove || !bWasMoving) && IsActorPlayingSound(CHAN_USERSND, user_snd_move))
+			A_StopSound(CHAN_USERSND);
+
 		if (shouldMove && !bWasMoving && hasMoved)
 		{
-			//Stop the looping "move" sound in case the next sound is invalid
-			if (IsActorPlayingSound(CHAN_USERSND, user_snd_move))
-				A_StopSound(CHAN_USERSND);
 			A_StartSound(user_snd_start, CHAN_USERSND);
 			startMoveTime = level.mapTime;
 		}
 		else if (!shouldMove && bWasMoving)
 		{
-			//Stop the looping "move" sound in case the next sound is invalid
-			if (IsActorPlayingSound(CHAN_USERSND, user_snd_move))
-				A_StopSound(CHAN_USERSND);
 			A_StartSound(user_snd_stop, CHAN_USERSND);
 		}
 		else if (shouldMove && bWasMoving)
@@ -4110,12 +4111,10 @@ extend class FishyPlatform
 			}
 			else
 			{
-				//Stop the looping "move" sound in case the next sound is invalid
-				if (IsActorPlayingSound(CHAN_USERSND, user_snd_move))
-					A_StopSound(CHAN_USERSND);
 				A_StartSound(user_snd_blocked, CHAN_USERSND);
 			}
 		}
+
 		bWasMoving = hasMoved;
 		bUserSoundsMove = false;
 	}
