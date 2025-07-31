@@ -56,7 +56,7 @@ map TEST03 "Another crappy test map" {}
 map VMABORT "Don't do that! test" {}
 map SPEED "Platform racing" {}
 map PLATATAK "Fireblu Heartache" {}
-map DMDLSIZE "Dynamic Model Size (Model determines size)" {}
+map MODLSIZE "Model sets size test" {}
 
 clearEpisodes
 episode MAP01 { name = "Demo map" }
@@ -66,5 +66,5 @@ episode TEST02 { name = "Stress test" }
 episode SPEED { name = "Speed test" }
 episode PLATATAK { name = "Hostile test" }
 episode VMABORT { name = "VM abort test" }
-episode DMDLSIZE { name = "Dynamic Model Size" }
+episode MODLSIZE { name = "Model sets size test" }
 episode SNDTEST { name = "Generic sound test" }
