@@ -46,13 +46,17 @@ map TEST01 "A very crappy test map"
 	UsePlayerStartZ
 }
 
+map SNDTEST "Generic sound test"
+{
+	Sky1 = "SKY2"
+}
+
 map TEST02 "Stress test" {}
 map TEST03 "Another crappy test map" {}
 map VMABORT "Don't do that! test" {}
 map SPEED "Platform racing" {}
 map PLATATAK "Fireblu Heartache" {}
 map DMDLSIZE "Dynamic Model Size (Model determines size)" {}
-map SNDTEST "Generic sound test" {}
 
 clearEpisodes
 episode MAP01 { name = "Demo map" }

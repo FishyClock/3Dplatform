@@ -417,10 +417,11 @@ extend class FishyPlatform
 	double reachedTime;
 	double timeFrac;
 	int holdTime;
-	int startMoveTime;
 	bool bActive;
-	bool bWasMoving;
-	transient bool bUserSoundsMove;
+	int startSoundTime;
+	bool bUserSoundsWasMoving;
+	transient bool bUserSoundsShouldMove;
+	transient bool bUserSoundsHasMoved;
 	transient bool bRanActivationRoutine; //Used to check if SetInterpolationCoordinates() or "resume path" Activate() was called on self through CallNodeSpecials().
 	transient bool bRanACSSetupRoutine; //Used to check if CommonACSSetup() was called on self through CallNodeSpecials().
 	transient bool bTimeAlreadySet; //Used to check if 'time' was set on self through CallNodeSpecials().
@@ -3993,7 +3994,7 @@ extend class FishyPlatform
 		if (vel == (0, 0, 0))
 		{
 			if (startVel.z != 0)
-				bUserSoundsMove = true; //Play "blocked" sound
+				bUserSoundsShouldMove = true; //Play "blocked" sound
 			return; //Nothing else to do here
 		}
 
@@ -4030,7 +4031,7 @@ extend class FishyPlatform
 		}
 
 		if (vel == (0, 0, 0) && startVel != (0, 0, 0))
-			bUserSoundsMove = true; //Play "blocked" sound
+			bUserSoundsShouldMove = true; //Play "blocked" sound
 	}
 
 	//============================
@@ -4061,7 +4062,7 @@ extend class FishyPlatform
 	{
 		bool shouldMove = (
 			(!holdTime && bActive) ||
-			bUserSoundsMove || //Blocked velocity or called ACSFuncInterpolate()
+			bUserSoundsShouldMove ||
 			(vel != (0, 0, 0) && vel.LengthSquared() > USERSND_LOWVEL)
 		);
 
@@ -4072,7 +4073,8 @@ extend class FishyPlatform
 			pos != oldPos ||
 			angle != oldAngle ||
 			pitch != oldPitch ||
-			roll != oldRoll )
+			roll != oldRoll ||
+			bUserSoundsHasMoved )
 		);
 
 		return shouldMove, hasMoved;
@@ -4084,23 +4086,23 @@ extend class FishyPlatform
 	private void HandleUserSounds (bool shouldMove, bool hasMoved)
 	{
 		//Stop the looping "move" sound in case the next sound is invalid
-		if ((!shouldMove || !bWasMoving) && IsActorPlayingSound(CHAN_USERSND, user_snd_move))
+		if ((!shouldMove || !bUserSoundsWasMoving) && IsActorPlayingSound(CHAN_USERSND, user_snd_move))
 			A_StopSound(CHAN_USERSND);
 
-		if (shouldMove && !bWasMoving && hasMoved)
+		if (shouldMove && !bUserSoundsWasMoving && hasMoved)
 		{
 			A_StartSound(user_snd_start, CHAN_USERSND);
-			startMoveTime = level.mapTime;
+			startSoundTime = level.mapTime;
 		}
-		else if (!shouldMove && bWasMoving)
+		else if (!shouldMove && bUserSoundsWasMoving)
 		{
 			A_StartSound(user_snd_stop, CHAN_USERSND);
 		}
-		else if (shouldMove && bWasMoving)
+		else if (shouldMove && bUserSoundsWasMoving)
 		{
 			if (hasMoved)
 			{
-				if ( ( user_snd_delaytomove > 0 && level.mapTime - startMoveTime > user_snd_delaytomove ) ||
+				if ( ( user_snd_delaytomove > 0 && level.mapTime - startSoundTime > user_snd_delaytomove ) ||
 					 ( user_snd_delaytomove <= 0 && !IsActorPlayingSound(CHAN_USERSND) ) )
 				{
 					int sndFlags = CHANF_LOOPING;
@@ -4115,8 +4117,9 @@ extend class FishyPlatform
 			}
 		}
 
-		bWasMoving = hasMoved;
-		bUserSoundsMove = false;
+		bUserSoundsWasMoving = hasMoved;
+		bUserSoundsShouldMove = false;
+		bUserSoundsHasMoved = false;
 	}
 
 	//============================
@@ -4304,7 +4307,7 @@ extend class FishyPlatform
 			}
 
 			if (vel == (0, 0, 0) && startVel != (0, 0, 0))
-				bUserSoundsMove = true; //Play "blocked" sound
+				bUserSoundsShouldMove = true; //Play "blocked" sound
 		}
 		else if (!group || group.origin == self)
 		{
@@ -5104,13 +5107,14 @@ extend class FishyPlatform
 		{
 			let oldTime = platList[i].time;
 			platList[i].time = newTime;
+			platList[i].bUserSoundsShouldMove = true;
 			if (platList[i].Interpolate(teleMove))
 			{
 				if (platList[i] && !platList[i].bDestroyed) //Make sure it wasn't Thing_Remove()'d
 				{
 					platList[i].reachedTime = newTime;
 					platList[i].bTimeAlreadySet = true;
-					platList[i].bUserSoundsMove = true;
+					platList[i].bUserSoundsHasMoved = true;
 				}
 				++count;
 			}
