@@ -57,6 +57,7 @@ map VMABORT "Don't do that! test" {}
 map SPEED "Platform racing" {}
 map PLATATAK "Fireblu Heartache" {}
 map MODLSIZE "Model sets size test" {}
+map PIVOTS "Pivot test" {}
 
 clearEpisodes
 episode MAP01 { name = "Demo map" }
@@ -65,6 +66,8 @@ episode TEST03 { name = "Test map #2" }
 episode TEST02 { name = "Stress test" }
 episode SPEED { name = "Speed test" }
 episode PLATATAK { name = "Hostile test" }
-episode VMABORT { name = "VM abort test" }
+//The episode list was getting too long and this is the least interesting test map
+//episode VMABORT { name = "VM abort test" }
+episode PIVOTS { name = "Pivot test" }
 episode MODLSIZE { name = "Model sets size test" }
 episode SNDTEST { name = "Generic sound test" }
