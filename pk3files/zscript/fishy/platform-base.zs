@@ -25,15 +25,15 @@
  horizontally moving geometry that you can stand on and be carried by.
 
  In a nutshell this file contains:
- FishyPlatform - The main platform class;
+ FishyPlatform - The main platform actor class;
 
- FishyPlatformNode - a platform-centric interpolation point class
+ FishyPlatformNode - a platform-centric interpolation point actor class
  (though GZDoom's "InterpolationPoint" is still perfectly usable);
 
- FishyPlatformPivot - a pivot for any platform to rotate around
- just by changing its own yaw/pitch/roll.
+ FishyPlatformPivot - a special map spot (actor class) for any platform
+ to rotate around just by changing its own yaw/pitch/roll.
 
- FishyPlatformGroup - a class to help with the "group" logic;
+ FishyPlatformGroup - a non-actor class to help with the "group" logic;
 
  And lastly
  FishyOldStuff_* - a measure that takes into account old
@@ -460,6 +460,7 @@ extend class FishyPlatform
 	//3) If following a path, can course correct itself after being pushed or carried by another platform.
 	vector3 pCurr, pPrev, pNext, pLast; //Positions in the world.
 	vector3 pCurrAngs, pPrevAngs, pNextAngs, pLastAngs; //X = angle, Y = pitch, Z = roll.
+	vector3 interpolatedPivotOffset;
 
 	//============================
 	// BeginPlay (override)
@@ -1458,7 +1459,7 @@ extend class FishyPlatform
 	//============================
 	private void AdjustInterpolationCoordinates (vector3 startPos, vector3 endPos, double delta)
 	{
-		//Used for when crossing portals or pivot-rotations
+		//Used for when crossing portals
 
 		//Offset and possibly rotate the coordinates
 		pPrev -= startPos;
@@ -1479,6 +1480,11 @@ extend class FishyPlatform
 			pCurr.xy = (pCurr.x*c - pCurr.y*s, pCurr.x*s + pCurr.y*c);
 			pNext.xy = (pNext.x*c - pNext.y*s, pNext.x*s + pNext.y*c);
 			pLast.xy = (pLast.x*c - pLast.y*s, pLast.x*s + pLast.y*c);
+
+			//Not one of the coordinates, but we need to rotate this too
+			interpolatedPivotOffset.xy = (
+				interpolatedPivotOffset.x*c - interpolatedPivotOffset.y*s,
+				interpolatedPivotOffset.x*s + interpolatedPivotOffset.y*c);
 		}
 		pPrev += endPos;
 		pCurr += endPos;
@@ -3694,30 +3700,32 @@ extend class FishyPlatform
 			}
 		}
 
-		vector3 newPosMaybePivot = newPos;
+		vector3 pivotAdjustedPos = newPos + interpolatedPivotOffset;
 		if (angle != newAngle || pitch != newPitch || roll != newRoll)
 		{
 			if (bPivotDataIsPos)
 			{
 				quat qRot = quat.FromAngles(angle, pitch, roll);
-				vector3 offset = qRot.Inverse() * level.Vec3Diff(pivotData, newPos);
+				vector3 offset = qRot.Inverse() * level.Vec3Diff(pivotData, pivotAdjustedPos);
 				qRot = quat.FromAngles(newAngle, newPitch, newRoll);
 				offset = qRot * offset;
-				newPosMaybePivot = pivotData + offset;
+				pivotAdjustedPos = pivotData + offset;
 			}
 			else if (pivotData != (0, 0, 0)) //Is non-zero offset?
 			{
-				newPosMaybePivot -= quat.FromAngles(angle, pitch, roll) * pivotData;
-				newPosMaybePivot += quat.FromAngles(newAngle, newPitch, newRoll) * pivotData;
+				pivotAdjustedPos -= quat.FromAngles(angle, pitch, roll) * pivotData;
+				pivotAdjustedPos += quat.FromAngles(newAngle, newPitch, newRoll) * pivotData;
 			}
 		}
 
 		//Result == 2 means everyone moved. 1 == this platform moved but not all its groupmates moved.
 		//(If this platform isn't in a group then the result is likewise 2 if it moved.)
-		int result = PlatMove(newPosMaybePivot, newAngle, newPitch, newRoll, teleMove);
+		int result = PlatMove(pivotAdjustedPos, newAngle, newPitch, newRoll, teleMove);
+		if (result == 2)
+			interpolatedPivotOffset = pivotAdjustedPos - newPos;
 
-		if (result == 2 && pos != newPos) //Crossed a portal or did a "pivot move?"
-			AdjustInterpolationCoordinates(newPos, pos, DeltaAngle(newAngle, angle));
+		if (result == 2 && pos != pivotAdjustedPos) //Crossed a portal?
+			AdjustInterpolationCoordinates(pivotAdjustedPos, pos, DeltaAngle(newAngle, angle));
 		else if (result == 1)
 			PlatMove(startPos, startAngle, startPitch, startRoll, MOVE_QUICKTELE); //Move the group back
 
@@ -5236,6 +5244,10 @@ extend class FishyPlatform
 		{
 			plat.pivotData = (0, 0, 0);
 			plat.bPivotDataIsPos = false;
+
+			//If the pivot is gone then this should no longer influence
+			//path-following/interpolation behavior.
+			plat.interpolatedPivotOffset = (0, 0, 0);
 		}
 	}
 } //End of FishyPlatform class definition
