@@ -137,6 +137,11 @@ class FishyPlatformNode : InterpolationPoint
 {
 	//===User variables===//
 	bool user_nopositionchange; //If true, will not become travel destination but only be used to change angle/pitch/roll
+	bool user_ignoreaxis_x; //If true, will ignore any position change on the X axis
+	bool user_ignoreaxis_y; //If true, will ignore any position change on the Y axis
+	bool user_ignoreaxis_z; //If true, will ignore any position change on the Z axis
+
+	//Setting "nopositionchange" to true has the same effect as setting all three "ignoreaxis" variables to true
 
 	Default
 	{
@@ -1387,14 +1392,36 @@ extend class FishyPlatform
 		InterpolationPoint nextNode = !currNode ? null :
 			bGoToNode ? currNode : currNode.next;
 
-		bool noPosChange = (nextNode && nextNode is "FishyPlatformNode" && FishyPlatformNode(nextNode).user_nopositionchange);
+		bool ignoreX = false;
+		bool ignoreY = false;
+		bool ignoreZ = false;
+		if (nextNode && nextNode is "FishyPlatformNode")
+		{
+			let fishyNode = FishyPlatformNode(nextNode);
+			ignoreX = (fishyNode.user_ignoreaxis_x || fishyNode.user_nopositionchange);
+			ignoreY = (fishyNode.user_ignoreaxis_y || fishyNode.user_nopositionchange);
+			ignoreZ = (fishyNode.user_ignoreaxis_z || fishyNode.user_nopositionchange);
+		}
+		bool noPosChange = (ignoreX && ignoreY && ignoreZ);
+		vector3 offset;
 
 		//Take into account angle changes when
 		//passing through non-static line portals.
 		//All checked angles have to be adjusted.
 		if (prevNode && !bGoToNode)
 		{
-			pPrev = currPos + (noPosChange ? (0, 0, 0) : level.Vec3Diff(currPos, prevNode.pos)); //Make it portal aware in a way so TryMove() can handle it
+			if (noPosChange)
+			{
+				offset = (0, 0, 0);
+			}
+			else
+			{
+				offset = level.Vec3Diff(currPos, prevNode.pos); //Make it portal aware in a way so TryMove() can handle it
+				if (ignoreX) offset.x = 0;
+				if (ignoreY) offset.y = 0;
+				if (ignoreZ) offset.z = 0;
+			}
+			pPrev = currPos + offset;
 			pPrevAngs = (
 			Normalize180(prevNode.angle + portDelta),
 			Normalize180(prevNode.pitch),
@@ -1419,7 +1446,18 @@ extend class FishyPlatform
 
 		if (nextNode)
 		{
-			pNext = currPos + (noPosChange ? (0, 0, 0) : level.Vec3Diff(currPos, nextNode.pos)); //Make it portal aware in a way so TryMove() can handle it
+			if (noPosChange)
+			{
+				offset = (0, 0, 0);
+			}
+			else
+			{
+				offset = level.Vec3Diff(currPos, nextNode.pos); //Make it portal aware in a way so TryMove() can handle it
+				if (ignoreX) offset.x = 0;
+				if (ignoreY) offset.y = 0;
+				if (ignoreZ) offset.z = 0;
+			}
+			pNext = currPos + offset;
 			pNextAngs = pCurrAngs + (
 			DeltaAngle(pCurrAngs.x, nextNode.angle + portDelta),
 			DeltaAngle(pCurrAngs.y, nextNode.pitch),
@@ -1427,7 +1465,18 @@ extend class FishyPlatform
 
 			if (nextNode.next && !bGoToNode)
 			{
-				pLast = currPos + (noPosChange ? (0, 0, 0) : level.Vec3Diff(currPos, nextNode.next.pos)); //Make it portal aware in a way so TryMove() can handle it
+				if (noPosChange)
+				{
+					offset = (0, 0, 0);
+				}
+				else
+				{
+					offset = level.Vec3Diff(currPos, nextNode.next.pos); //Make it portal aware in a way so TryMove() can handle it
+					if (ignoreX) offset.x = 0;
+					if (ignoreY) offset.y = 0;
+					if (ignoreZ) offset.z = 0;
+				}
+				pLast = currPos + offset;
 				pLastAngs = pNextAngs + (
 				DeltaAngle(pNextAngs.x, nextNode.next.angle + portDelta),
 				DeltaAngle(pNextAngs.y, nextNode.next.pitch),
@@ -3921,7 +3970,17 @@ extend class FishyPlatform
 
 				if (!bGoToNode)
 				{
-					vector3 newPos = (currNode is "FishyPlatformNode" && FishyPlatformNode(currNode).user_nopositionchange) ? pos : currNode.pos;
+					vector3 newPos = currNode.pos;
+					let fishyNode = FishyPlatformNode(currNode);
+					if (fishyNode)
+					{
+						if (fishyNode.user_ignoreaxis_x || fishyNode.user_nopositionchange)
+							newPos.x = pos.x;
+						if (fishyNode.user_ignoreaxis_y || fishyNode.user_nopositionchange)
+							newPos.y = pos.y;
+						if (fishyNode.user_ignoreaxis_z || fishyNode.user_nopositionchange)
+							newPos.z = pos.z;
+					}
 					double newAngle = (options & OPTFLAG_ANGLE) ? currNode.angle : angle;
 					double newPitch = (options & OPTFLAG_PITCH) ? currNode.pitch : pitch;
 					double newRoll = (options & OPTFLAG_ROLL) ? currNode.roll : roll;
@@ -3936,6 +3995,7 @@ extend class FishyPlatform
 					bGoToNode ? pitch : currNode.pitch,
 					bGoToNode ? roll : currNode.roll);
 				SetInterpolationCoordinates(pos, startAngs);
+				interpolatedPivotOffset = (0, 0, 0);
 				SetTimeFraction();
 				SetHoldTime();
 				time = 0;
@@ -5092,13 +5152,26 @@ extend class FishyPlatform
 				plat.portDelta = 0;
 				plat.acsFlags = 0;
 
-				vector3 startPos = (plat.bGoToNode ||
-								(plat.currNode is "FishyPlatformNode" && FishyPlatformNode(plat.currNode).user_nopositionchange) ) ?
-								plat.pos : plat.currNode.pos;
+				vector3 startPos = plat.pos;
+				if (!plat.bGoToNode)
+				{
+					startPos = plat.currNode.pos;
+					let fishyNode = FishyPlatformNode(plat.currNode);
+					if (fishyNode)
+					{
+						if (fishyNode.user_ignoreaxis_x || fishyNode.user_nopositionchange)
+							startPos.x = plat.pos.x;
+						if (fishyNode.user_ignoreaxis_y || fishyNode.user_nopositionchange)
+							startPos.y = plat.pos.y;
+						if (fishyNode.user_ignoreaxis_z || fishyNode.user_nopositionchange)
+							startPos.z = plat.pos.z;
+					}
+				}
 				vector3 startAngs = (plat.bGoToNode ? plat.angle : plat.currNode.angle,
 					plat.bGoToNode ? plat.pitch : plat.currNode.pitch,
 					plat.bGoToNode ? plat.roll : plat.currNode.roll);
 				plat.SetInterpolationCoordinates(startPos, startAngs);
+				plat.interpolatedPivotOffset = (0, 0, 0);
 				plat.SetTimeFraction();
 				plat.SetHoldTime();
 				plat.bRanActivationRoutine = true;
@@ -5164,8 +5237,17 @@ extend class FishyPlatform
 			}
 
 			//In case the platform is active and/or uses OPTFLAG_RESUMEPATH
-			vector3 startPos = (plat.currNode is "FishyPlatformNode" && FishyPlatformNode(plat.currNode).user_nopositionchange) ?
-							plat.pos : plat.currNode.pos;
+			vector3 startPos = plat.currNode.pos;
+			let fishyNode = FishyPlatformNode(plat.currNode);
+			if (fishyNode)
+			{
+				if (fishyNode.user_ignoreaxis_x || fishyNode.user_nopositionchange)
+					startPos.x = plat.pos.x;
+				if (fishyNode.user_ignoreaxis_y || fishyNode.user_nopositionchange)
+					startPos.y = plat.pos.y;
+				if (fishyNode.user_ignoreaxis_z || fishyNode.user_nopositionchange)
+					startPos.z = plat.pos.z;
+			}
 			plat.SetInterpolationCoordinates(startPos, (plat.currNode.angle, plat.currNode.pitch, plat.currNode.roll));
 			plat.SetTimeFraction();
 			plat.SetHoldTime();
@@ -5207,8 +5289,17 @@ extend class FishyPlatform
 			plat.prevNode = nextPrevNode;
 
 			//In case the platform is active and/or uses OPTFLAG_RESUMEPATH
-			vector3 startPos = (plat.currNode is "FishyPlatformNode" && FishyPlatformNode(plat.currNode).user_nopositionchange) ?
-							plat.pos : plat.currNode.pos;
+			vector3 startPos = plat.currNode.pos;
+			let fishyNode = FishyPlatformNode(plat.currNode);
+			if (fishyNode)
+			{
+				if (fishyNode.user_ignoreaxis_x || fishyNode.user_nopositionchange)
+					startPos.x = plat.pos.x;
+				if (fishyNode.user_ignoreaxis_y || fishyNode.user_nopositionchange)
+					startPos.y = plat.pos.y;
+				if (fishyNode.user_ignoreaxis_z || fishyNode.user_nopositionchange)
+					startPos.z = plat.pos.z;
+			}
 			plat.SetInterpolationCoordinates(startPos, (plat.currNode.angle, plat.currNode.pitch, plat.currNode.roll));
 			plat.SetTimeFraction();
 			plat.SetHoldTime();
