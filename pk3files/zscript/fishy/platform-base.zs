@@ -4815,6 +4815,7 @@ extend class FishyPlatform
 			Normalize180(pitch),
 			Normalize180(roll));
 		pPrevAngs = pCurrAngs;
+		interpolatedPivotOffset = (0, 0, 0);
 		vel = (0, 0, 0);
 		MustGetNewPassengers(); //Ignore search tic rate; do a search now
 		bRanACSSetupRoutine = true;
