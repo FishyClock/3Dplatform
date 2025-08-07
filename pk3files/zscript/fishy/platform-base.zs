@@ -5336,10 +5336,6 @@ extend class FishyPlatform
 		{
 			plat.pivotData = (0, 0, 0);
 			plat.bPivotDataIsPos = false;
-
-			//If the pivot is gone then this should no longer influence
-			//path-following/interpolation behavior.
-			plat.interpolatedPivotOffset = (0, 0, 0);
 		}
 	}
 } //End of FishyPlatform class definition
