@@ -418,6 +418,7 @@ extend class FishyPlatform
 	quat groupOrbitAngDiff; //Precalculated deltas from origin's groupAngle/Pitch/Roll to orbiter's groupAngle/Pitch/Roll as a quaternion - changes when origin changes.
 	vector3 pivotData;
 	bool bPivotDataIsPos; //Otherwise it's an offset
+	int pivotPortalGroup;
 	double time;
 	double reachedTime;
 	double timeFrac;
@@ -3631,6 +3632,8 @@ extend class FishyPlatform
 		if (bPivotDataIsPos)
 		{
 			pivotData = pivot;
+			Sector sec = level.PointInSector(pivot.xy);
+			pivotPortalGroup = sec ? sec.portalGroup : 0;
 		}
 		else
 		{
@@ -3754,8 +3757,25 @@ extend class FishyPlatform
 		{
 			if (bPivotDataIsPos)
 			{
+				// We're supposed to get the correct offset from 'pivotData' to 'pivotAdjustedPos'.
+				// Usually I would use level.Vec3Diff() and level.Vec3Offset() to handle portal
+				// awareness, but the way the coordinate system is set up makes that an issue here.
+				//
+				// If the pivot's portal group and our portal group is the same then Diff/Offset()
+				// shouldn't be called because the portal crossing is done within PlatMove() later.
+				// If Vec3Offset() crosses the hypothetical portal here, it would be unacceptable.
+				// However, if the portal groups are different then Diff/Offset() should be called
+				// because we are already on the other side of the portal.
+				//
+				// To resolve this, shift the pivot position so it's aligned with our portal group.
+				//
+				if (pivotPortalGroup && curSector.portalGroup && pivotPortalGroup != curSector.portalGroup)
+				{
+					pivotData.xy += level.GetDisplacement(pivotPortalGroup, curSector.portalGroup);
+					pivotPortalGroup = curSector.portalGroup;
+				}
 				quat qRot = quat.FromAngles(angle, pitch, roll);
-				vector3 offset = qRot.Inverse() * level.Vec3Diff(pivotData, pivotAdjustedPos);
+				vector3 offset = qRot.Inverse() * (pivotAdjustedPos - pivotData);
 				qRot = quat.FromAngles(newAngle, newPitch, newRoll);
 				offset = qRot * offset;
 				pivotAdjustedPos = pivotData + offset;
