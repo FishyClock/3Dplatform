@@ -3886,8 +3886,10 @@ extend class FishyPlatform
 		//messed up. Gather all specials before
 		//calling them.
 		Array<int> specList;
-		while ((spec = it.Next()) && spec.special)
+		while (spec = it.Next())
 		{
+			if (!spec.special)
+				continue;
 			specList.Push(spec.special);
 			for (int i = 0; i < 5; ++i)
 				specList.Push(spec.args[i]);
