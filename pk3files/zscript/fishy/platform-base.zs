@@ -33,6 +33,9 @@
  FishyPlatformPivot - a special map spot (actor class) for any platform
  to rotate around just by changing its own yaw/pitch/roll.
 
+ FishyDelayedAbort - a non-actor class that throws abort exceptions
+ after an arbitrary delay.
+
  FishyPlatformGroup - a non-actor class to help with the "group" logic;
 
  And lastly
@@ -234,7 +237,7 @@ extend class FishyPlatformNode
 			{
 				Console.Printf("\ckPlatform interpolation point with tid " .. node.tid .. " at position " ..node.pos ..
 				":\n\ckis pointing at a non-platform interpolation point with tid " .. node.args[0] .. " at position " .. node.next.pos .. "\n.");
-				new("FishyOldStuff_DelayedAbort"); //For what this does, see bottom of this file
+				FishyDelayedAbort.Create(TICRATE, FishyDelayedAbort.INTERPOLATIONPOINT_ERROR);
 				return;
 			}
 		}
@@ -286,6 +289,35 @@ extend class FishyPlatformPivot
 
 	override void Tick ()
 	{
+	}
+}
+
+//I needed something that would issue the fatal error message after
+//flooding the console with problematic map setups that cannot
+//or should not be ignored. Like mixing up the old and new
+//interpolation points. Or in the case of the generic subclass,
+//declaring an invalid model which can't be read to set the
+//collision size. (See platform-generic.zs)
+class FishyDelayedAbort : Thinker
+{
+	const INTERPOLATIONPOINT_ERROR = "Path followers, moving cameras, and actor movers are not meant to use 'Platform Interpolation Points'." ..
+		"\nPlease use the old 'Interpolation Point' instead." ..
+		"\n\nLikewise, the old 'Interpolation Point' should not point to a 'Platform Interpolation Point' nor vice-versa.\n.";
+
+	int abortTime;
+	string message;
+
+	static void Create (int delay, string theProblem)
+	{
+		let fishyAbort = new("FishyDelayedAbort");
+		fishyAbort.abortTime = level.mapTime + delay;
+		fishyAbort.message = theProblem;
+	}
+
+	override void Tick ()
+	{
+		if (level.mapTime >= abortTime)
+			ThrowAbortException(message);
 	}
 }
 
@@ -5381,7 +5413,7 @@ struct FishyOldStuff_Common play
 				cls.Replace("FishyOldStuff_", "");
 				Console.Printf("\ck'" .. cls .. "' with tid " .. pointer.tid .. " at position " .. pointer.pos ..
 							":\nis pointing at a 'Platform Interpolation Point' with tid ".. node.tid .. " at position " .. node.pos .. "\n.");
-				new("FishyOldStuff_DelayedAbort");
+				FishyDelayedAbort.Create(Object.TICRATE, FishyDelayedAbort.INTERPOLATIONPOINT_ERROR);
 			}
 
 			pointer = node;
@@ -5402,19 +5434,3 @@ mixin class FishyOldStuff
 class FishyOldStuff_PathFollower : PathFollower replaces PathFollower { mixin FishyOldStuff; }
 class FishyOldStuff_MovingCamera : MovingCamera replaces MovingCamera { mixin FishyOldStuff; }
 class FishyOldStuff_ActorMover : ActorMover replaces ActorMover { mixin FishyOldStuff; }
-
-class FishyOldStuff_DelayedAbort : Thinker
-{
-	int startTime;
-
-	override void PostBeginPlay ()
-	{
-		startTime = level.mapTime;
-	}
-
-	override void Tick ()
-	{
-		if (level.mapTime - startTime >= TICRATE)
-			ThrowAbortException("Path followers, moving cameras, and actor movers are not meant to use 'Platform Interpolation Points'. Please use the old 'Interpolation Point' instead. \n\nLikewise, the old 'Interpolation Point' should not point to a 'Platform Interpolation Point' nor vice-versa.\n.");
-	}
-}

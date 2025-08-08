@@ -102,7 +102,7 @@ extend class FishyPlatformGeneric
 
 			Console.Printf("\ckSetSizeFromModel(): invalid model: '" .. fullName .. "' " .. why ..
 				"\n\ckPlatform position: " .. pos .. " tid: " .. tid .. "\n.");
-			new("FishyPlatGenDelayedAbort");
+			FishyDelayedAbort.Create(2, "SetSizeFromModel() errors.");
 			return false;
 		}
 
@@ -111,7 +111,7 @@ extend class FishyPlatformGeneric
 		{
 			Console.Printf("\ckSetSizeFromModel(): invalid model: '" .. fullName .. "' can't be found." ..
 				"\n\ckPlatform position: " .. pos .. " tid: " .. tid .. "\n.");
-			new("FishyPlatGenDelayedAbort");
+			FishyDelayedAbort.Create(2, "SetSizeFromModel() errors.");
 			return false;
 		}
 
@@ -158,21 +158,5 @@ extend class FishyPlatformGeneric
 		newHi *= 0.83333; //This should give the appropriate height in most cases.
 		A_SetSize(newRad, newHi);
 		return true;
-	}
-}
-
-class FishyPlatGenDelayedAbort : Thinker
-{
-	int startTime;
-
-	override void PostBeginPlay ()
-	{
-		startTime = level.mapTime;
-	}
-
-	override void Tick ()
-	{
-		if (level.mapTime - startTime > 2)
-			ThrowAbortException("SetSizeFromModel() errors.");
 	}
 }
