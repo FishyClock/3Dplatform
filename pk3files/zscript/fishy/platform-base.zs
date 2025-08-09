@@ -1565,7 +1565,8 @@ extend class FishyPlatform
 			pCurr.xy = (pCurr.x*c - pCurr.y*s, pCurr.x*s + pCurr.y*c);
 			pNext.xy = (pNext.x*c - pNext.y*s, pNext.x*s + pNext.y*c);
 			pLast.xy = (pLast.x*c - pLast.y*s, pLast.x*s + pLast.y*c);
-			pivotData.xy = (pivotData.x*c - pivotData.y*s, pivotData.x*s + pivotData.y*c);
+			if (bPivotDataIsPos)
+				pivotData.xy = (pivotData.x*c - pivotData.y*s, pivotData.x*s + pivotData.y*c);
 			interpolatedPivotOffset.xy = (
 				interpolatedPivotOffset.x*c - interpolatedPivotOffset.y*s,
 				interpolatedPivotOffset.x*s + interpolatedPivotOffset.y*c);
