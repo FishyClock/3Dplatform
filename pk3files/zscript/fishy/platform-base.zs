@@ -3679,7 +3679,7 @@ extend class FishyPlatform
 	//============================
 	// Interpolate
 	//============================
-	private bool Interpolate (bool teleMove = false)
+	private bool Interpolate (PMoveTypes moveType = MOVE_NORMAL)
 	{
 		//A heavily modified version of the
 		//original function from PathFollower.
@@ -3806,7 +3806,7 @@ extend class FishyPlatform
 
 		//Result == 2 means everyone moved. 1 == this platform moved but not all its groupmates moved.
 		//(If this platform isn't in a group then the result is likewise 2 if it moved.)
-		int result = PlatMove(pivotAdjustedPos, newAngle, newPitch, newRoll, teleMove);
+		int result = PlatMove(pivotAdjustedPos, newAngle, newPitch, newRoll, moveType);
 		if (result == 2)
 			interpolatedPivotOffset = pivotAdjustedPos - newPos;
 
@@ -4526,17 +4526,15 @@ extend class FishyPlatform
 					}
 				}
 
-				if ((finishedPath || holdTime > 0) && (finishedPath || !bTimeAlreadySet) && !bRanActivationRoutine)
+				if (time != 1.0 && (finishedPath || holdTime > 0) && (finishedPath || !bTimeAlreadySet) && !bRanActivationRoutine)
 				{
 					//Make sure we're exactly at our intended position.
 					//(It doesn't matter if we can't fit at this "intended position"
 					//because that's what the "stuck actors" logic is there for.)
-					bool changeAng = (!(options & OPTFLAG_FACEMOVE) && ((options | acsFlags) & OPTFLAG_ANGLE));
-					bool changePi =  (!(options & OPTFLAG_FACEMOVE) && ((options | acsFlags) & OPTFLAG_PITCH));
-					bool changeRo =  (!(options & OPTFLAG_FACEMOVE) && ((options | acsFlags) & OPTFLAG_ROLL));
-					PlatMove(pNext, changeAng ? pNextAngs.x : angle,
-									changePi  ? pNextAngs.y : pitch,
-									changeRo  ? pNextAngs.z : roll, MOVE_QUICK);
+					let oldTime = time;
+					time = 1.0;
+					Interpolate(MOVE_QUICK);
+					time = oldTime;
 				}
 
 				if (finishedPath)
@@ -5229,7 +5227,7 @@ extend class FishyPlatform
 			let oldTime = platList[i].time;
 			platList[i].time = newTime;
 			platList[i].bUserSoundsShouldMove = true;
-			if (platList[i].Interpolate(teleMove))
+			if (platList[i].Interpolate(teleMove ? MOVE_TELEPORT : MOVE_NORMAL))
 			{
 				if (platList[i] && !platList[i].bDestroyed) //Make sure it wasn't Thing_Remove()'d
 				{
