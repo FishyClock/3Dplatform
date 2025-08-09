@@ -3638,7 +3638,7 @@ extend class FishyPlatform
 		}
 		else //World coordinate
 		{
-			if (p1 ~== p2 && p1 ~== p3 && p1 ~== p4)
+			if (p1 ~== p2 && p2 ~== p3 && p2 ~== p4)
 				return p2;
 		}
 
