@@ -174,29 +174,29 @@ class FishyPlatformPivot : Actor
 {
 	Default
 	{
-		//$Title Platform Pivot
+		//$Title Platform Pivot Setter/Remover
 		//$Sprite pivot0
 		//$NotAngled
 
-		//$Arg0 Platform
+		//$Arg0 Platform(s)
 		//$Arg0Type 14
-		//$Arg0Tooltip Platform(s) whose pivot to become.\nNOTE: Any platform that activates this spot will make it the platform's pivot
+		//$Arg0Tooltip Platform(s) whose pivot to set/remove.\nNOTE: Any platform that activates this thing will be affected as well.
 
 		//$Arg1 Stay On The Map
 		//$Arg1Type 11
 		//$Arg1Enum {0 = "No"; 1 = "Yes";}
-		//$Arg1Tooltip Stay on the map after setting the pivot data for the platform(s)?
+		//$Arg1Tooltip Stay on the map after setting/removing the pivot data for the platform(s)?
 
 		//$Arg2 Needs Activation
 		//$Arg2Type 11
 		//$Arg2Enum {0 = "No"; 1 = "Yes";}
-		//$Arg2Tooltip Must be activated before setting the pivot data for the platform(s)?
+		//$Arg2Tooltip Must be activated before setting/removing the pivot data for the platform(s)?
 
-		//$Arg3 Attached Pivot
+		//$Arg3 Pivot Setting
 		//$Arg3Type 11
-		//$Arg3Enum {0 = "No"; 1 = "Yes";}
+		//$Arg3Enum {0 = "Set unattached pivot"; 1 = "Set attached pivot"; 2 = "Remove pivot";}
 		//$Arg3Default 1
-		//$Arg3Tooltip If yes, the pivot will follow the platform around. If no, the pivot is a constant point on the map.\n\nNOTE: The pivot data is set internally for each platform.\nJust moving this spot around will NOT affect the platform's pivot data!
+		//$Arg3Tooltip An attached pivot follows the platform around\nwhile an unattached pivot is a constant point on the map.\n\nNOTE: This 'constant point' gets shifted when the platform crosses a portal,\nincluding non-static portals.\n\nNOTE: The pivot data is set internally for each platform.\nJust moving this spot around will NOT affect the platform's pivot data!
 
 		+NOINTERACTION;
 		+NOBLOCKMAP;
@@ -248,10 +248,15 @@ extend class FishyPlatformPivot
 {
 	enum ArgValues
 	{
-		ARG_PLAT		= 0,
-		ARG_STAY		= 1,
-		ARG_NEEDSACT	= 2,
-		ARG_ATTACH		= 3,
+		PIVOTARG_PLAT		= 0,
+		PIVOTARG_STAY		= 1,
+		PIVOTARG_NEEDSACT	= 2,
+		PIVOTARG_SETTING	= 3,
+
+		//For "PIVOTARG_SETTING"
+		SETTING_DONTATTACH = 0, //Not referenced anywhere for now
+		SETTING_ATTACH = 1,
+		SETTING_REMOVE = 2,
 	};
 
 	override void BeginPlay ()
@@ -263,7 +268,7 @@ extend class FishyPlatformPivot
 
 	override void PostBeginPlay ()
 	{
-		if (!args[ARG_NEEDSACT])
+		if (!args[PIVOTARG_NEEDSACT])
 			Activate(null);
 
 		if (!bDestroyed)
@@ -274,16 +279,26 @@ extend class FishyPlatformPivot
 	{
 		let plat = FishyPlatform(activator);
 		if (plat)
-			plat.SetPivot(pos, args[ARG_ATTACH]);
-
-		if (args[ARG_PLAT])
 		{
-			let it = level.CreateActorIterator(args[ARG_PLAT], "FishyPlatform");
-			while (plat = FishyPlatform(it.Next()))
-				plat.SetPivot(pos, args[ARG_ATTACH]);
+			if (args[PIVOTARG_SETTING] == SETTING_REMOVE)
+				plat.RemovePivot();
+			else
+				plat.SetPivot(pos, args[PIVOTARG_SETTING] == SETTING_ATTACH);
 		}
 
-		if (!args[ARG_STAY])
+		if (args[PIVOTARG_PLAT])
+		{
+			let it = level.CreateActorIterator(args[PIVOTARG_PLAT], "FishyPlatform");
+			while (plat = FishyPlatform(it.Next()))
+			{
+				if (args[PIVOTARG_SETTING] == SETTING_REMOVE)
+					plat.RemovePivot();
+				else
+					plat.SetPivot(pos, args[PIVOTARG_SETTING] == SETTING_ATTACH);
+			}
+		}
+
+		if (!args[PIVOTARG_STAY])
 			Destroy();
 	}
 
@@ -3678,6 +3693,15 @@ extend class FishyPlatform
 	}
 
 	//============================
+	// RemovePivot
+	//============================
+	void RemovePivot ()
+	{
+		bPivotDataIsPos = false;
+		pivotData = (0, 0, 0);
+	}
+
+	//============================
 	// Interpolate
 	//============================
 	private bool Interpolate (PMoveTypes moveType = MOVE_NORMAL)
@@ -5371,10 +5395,7 @@ extend class FishyPlatform
 	{
 		ActorIterator it = platTid ? level.CreateActorIterator(platTid, "FishyPlatform") : null;
 		for (let plat = FishyPlatform(it ? it.Next() : act); plat; plat = it ? FishyPlatform(it.Next()) : null)
-		{
-			plat.pivotData = (0, 0, 0);
-			plat.bPivotDataIsPos = false;
-		}
+			plat.RemovePivot();
 	}
 } //End of FishyPlatform class definition
 
