@@ -139,10 +139,11 @@ class FishyPlatform : Actor abstract
 class FishyPlatformNode : InterpolationPoint
 {
 	//===User variables===//
-	bool user_nopositionchange; //If true, will not become travel destination but only be used to change angle/pitch/roll
-	bool user_ignoreaxis_x; //If true, will ignore any position change on the X axis
-	bool user_ignoreaxis_y; //If true, will ignore any position change on the Y axis
-	bool user_ignoreaxis_z; //If true, will ignore any position change on the Z axis
+	bool user_nopositionchange; //If true, this point will not become travel destination but only be used to change angle/pitch/roll
+	bool user_ignoreaxis_x; //If true, platform will ignore this point's position on the X axis
+	bool user_ignoreaxis_y; //If true, platform will ignore this point's position on the Y axis
+	bool user_ignoreaxis_z; //If true, platform will ignore this point's position on the Z axis
+	bool user_ignorepivot; //If true, platform will not use its pivot when this point is the platform's destination
 
 	//Setting "nopositionchange" to true has the same effect as setting all three "ignoreaxis" variables to true
 
@@ -521,6 +522,7 @@ extend class FishyPlatform
 	vector3 interpolatedPivotOffset;
 	vector3 pivotData;
 	bool bPivotDataIsPos; //Otherwise it's an offset
+	bool bIgnorePivot;
 
 	//============================
 	// BeginPlay (override)
@@ -1450,6 +1452,7 @@ extend class FishyPlatform
 		FishyPlatformNode platNode = !nextNode ? null :
 			FishyPlatformNode(nextNode);
 
+		bIgnorePivot = (platNode && platNode.user_ignorepivot);
 		bool noPosChange = (platNode && platNode.HasNoPosChange());
 		vector3 offset = (0, 0, 0);
 
@@ -3787,7 +3790,7 @@ extend class FishyPlatform
 		}
 
 		vector3 pivotAdjustedPos = newPos + interpolatedPivotOffset;
-		if (angle != newAngle || pitch != newPitch || roll != newRoll)
+		if (!bIgnorePivot && (angle != newAngle || pitch != newPitch || roll != newRoll))
 		{
 			if (bPivotDataIsPos)
 			{
