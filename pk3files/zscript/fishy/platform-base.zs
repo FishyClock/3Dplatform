@@ -4521,7 +4521,7 @@ extend class FishyPlatform
 					}
 				}
 
-				if (time != 1.0 && (finishedPath || holdTime > 0) && (finishedPath || !bTimeAlreadySet) && !bRanActivationRoutine)
+				if (reachedTime != 1.0 && (finishedPath || holdTime > 0) && (finishedPath || !bTimeAlreadySet) && !bRanActivationRoutine)
 				{
 					//Make sure we're exactly at our intended position.
 					//(It doesn't matter if we can't fit at this "intended position"
