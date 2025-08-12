@@ -84,7 +84,7 @@ class FishyPlatform : Actor abstract
 		//$Arg1 Options
 		//$Arg1Type 12
 		//$Arg1Enum {1 = "Linear path <- Does nothing for non-origin group members"; 2 = "Use point angle <- ACS commands don't need this / Group move: Rotate angle"; 4 = "Use point pitch <- ACS commands don't need this / Group move: Rotate pitch"; 8 = "Use point roll <- ACS commands don't need this / Group move: Rotate roll"; 16 = "Face movement direction <- Does nothing for non-origin group members"; 32 = "Don't clip against geometry and other platforms"; 64 = "Start active"; 128 = "Group move: Mirror group origin's movement"; 256 = "Add velocity to passengers when they jump away"; 512 = "Add velocity to passengers when stopping (and not blocked)"; 1024 = "Interpolation point is destination"; 2048 = "Resume path when activated again"; 4096 = "Always do 'crush damage' when pushing obstacles"; 8192 = "Pitch/roll changes don't affect passengers"; 16384 = "Passengers can push obstacles"; 32768 = "All passengers get temp NOBLOCKMAP'd before moving platform group <- Set on group origin"; 65536 = "When moving, allow walking monsters to cross onto other platforms and 'bridge' things"; 131072 = "Check for nearby things and line portals every tic";}
-		//$Arg1Tooltip 'Group move' affects movement imposed by the group origin. (It only has an effect on non-origin group members.)\nThe 'group origin' is the platform that other members move with and orbit around.\nActivating any group member will turn it into the group origin.\nFlag 32768 is for cases where you want all passengers from the entire group to not collide with each other and to not collide with other platforms in the group (when moving everyone).
+		//$Arg1Tooltip 'Group move' affects movement imposed by the group origin. (It only has an effect on non-origin group members.)\nThe 'group origin' is the platform that other members move with and rotate around.\nActivating any group member will turn it into the group origin.\nFlag 32768 is for cases where you want all passengers from the entire group to not collide with each other and to not collide with other platforms in the group (when moving everyone).
 
 		//$Arg2 Platform(s) To Group With
 		//$Arg2Type 14
@@ -475,12 +475,12 @@ extend class FishyPlatform
 	double oldRoll;
 	FishyPlatformGroup group;
 	vector3 groupMirrorPos; //The position when this platform joins a group - used for mirroring behaviour - changes when origin changes.
-	vector3 groupOrbitPos;  //The position when this platform joins a group - used for orbiting behaviour - doesn't change when origin changes.
+	vector3 groupRotPos;  //The position when this platform joins a group - used for rotation behaviour - doesn't change when origin changes.
 	double groupAngle; //The angle when this platform joins a group - doesn't change when origin changes.
 	double groupPitch; //The pitch when this platform joins a group - doesn't change when origin changes.
 	double groupRoll;  //The roll when this platform joins a group - doesn't change when origin changes.
-	vector3 groupOrbitOffset;  //Precalculated offset from origin's groupOrbitPos to orbiter's groupOrbitPos - changes when origin changes.
-	quat groupOrbitAngDiff; //Precalculated deltas from origin's groupAngle/Pitch/Roll to orbiter's groupAngle/Pitch/Roll as a quaternion - changes when origin changes.
+	vector3 groupRotOffset;  //Precalculated offset from origin's groupRotPos to rotator's groupRotPos - changes when origin changes.
+	quat groupRotAngDiff; //Precalculated deltas from origin's groupAngle/Pitch/Roll to rotator's groupAngle/Pitch/Roll as a quaternion - changes when origin changes.
 	double time;
 	double reachedTime;
 	double timeFrac;
@@ -564,7 +564,7 @@ extend class FishyPlatform
 		oldPitch = pitch;
 		oldRoll = roll;
 		groupMirrorPos = pos;
-		groupOrbitPos = pos;
+		groupRotPos = pos;
 		groupAngle = angle;
 		groupPitch = pitch;
 		groupRoll = roll;
@@ -637,7 +637,7 @@ extend class FishyPlatform
 		{
 			let ori = group.origin;
 			if (!(options & OPTFLAG_MIRROR))
-				SetOrbitInfo();
+				SetGroupRotationInfo();
 			ori.PlatMove(ori.pos, ori.angle, ori.pitch, ori.roll, MOVE_TELEPORT);
 		}
 		else if (group && !group.origin)
@@ -869,7 +869,7 @@ extend class FishyPlatform
 			if (plat)
 			{
 				plat.groupMirrorPos = plat.pos;
-				plat.groupOrbitPos = plat.pos;
+				plat.groupRotPos = plat.pos;
 				plat.groupAngle = plat.angle;
 				plat.groupPitch = plat.pitch;
 				plat.groupRoll = plat.roll;
@@ -890,17 +890,17 @@ extend class FishyPlatform
 	}
 
 	//============================
-	// SetOrbitInfo
+	// SetGroupRotationInfo
 	//============================
-	private void SetOrbitInfo ()
+	private void SetGroupRotationInfo ()
 	{
 		let ori = group.origin;
 
 		quat q = quat.FromAngles(ori.groupAngle, ori.groupPitch, ori.groupRoll);
 		q = q.Inverse(); //Declaring "quat.FromAngles(bla, bla, bla).Inverse();" gives me a startup error
 
-		groupOrbitOffset = q * level.Vec3Diff(ori.groupOrbitPos, groupOrbitPos);
-		groupOrbitAngDiff = q * quat.FromAngles(groupAngle, groupPitch, groupRoll);
+		groupRotOffset = q * level.Vec3Diff(ori.groupRotPos, groupRotPos);
+		groupRotAngDiff = q * quat.FromAngles(groupAngle, groupPitch, groupRoll);
 	}
 
 	//============================
@@ -920,7 +920,7 @@ extend class FishyPlatform
 				if (plat != group.origin)
 				{
 					if (!(plat.options & OPTFLAG_MIRROR))
-						plat.SetOrbitInfo();
+						plat.SetGroupRotationInfo();
 					if (setNonOriginInactive)
 						plat.bActive = false;
 				}
@@ -950,24 +950,24 @@ extend class FishyPlatform
 			groupPitch = pitch - piDelta;
 			groupRoll = roll - roDelta;
 		}
-		else //Set up for proper orbiting
+		else //Set up for proper rotation
 		{
 			quat qOriAngsInv = quat.FromAngles(ori.angle, ori.pitch, ori.roll);
 			qOriAngsInv = qOriAngsInv.Inverse(); //Declaring "quat.FromAngles(bla, bla, bla).Inverse();" gives me a startup error
 			quat qOriGrpAngs = quat.FromAngles(ori.groupAngle, ori.groupPitch, ori.groupRoll);
 
-			//Compute the position offsets and save into 'groupOrbitPos' so SetOrbitInfo() works consistently.
+			//Compute the position offsets and save into 'groupRotPos' so SetGroupRotationInfo() works consistently.
 			vector3 offset = qOriAngsInv * level.Vec3Diff(ori.pos, pos);
 			offset = qOriGrpAngs * offset;
-			groupOrbitPos = level.Vec3Offset(ori.groupOrbitPos, offset);
+			groupRotPos = level.Vec3Offset(ori.groupRotPos, offset);
 
-			//Compute the angle deltas and save into all "group angles" so SetOrbitInfo() works consistently.
+			//Compute the angle deltas and save into all "group angles" so SetGroupRotationInfo() works consistently.
 			//Note: this cannot be done by relying on DeltaAngle() results and feeding those results into a quat! (I've tried.)
 			quat qSelfAngs = quat.FromAngles(angle, pitch, roll);
 			quat qDeltas = qOriAngsInv * qSelfAngs;
 			[groupAngle, groupPitch, groupRoll] = AnglesFromQuat(qOriGrpAngs * qDeltas);
 
-			SetOrbitInfo();
+			SetGroupRotationInfo();
 		}
 	}
 
@@ -3892,15 +3892,15 @@ extend class FishyPlatform
 					newRoll = plat.groupRoll + roDelta;
 				}
 			}
-			else //Non-mirror movement. Orbiting happens here.
+			else //Non-mirror movement. Rotation happens here.
 			{
 				if (qRot != qRot) //NaN check
 					qRot = quat.FromAngles(angle, pitch, roll);
-				newPos = level.Vec3Offset(pos, qRot * plat.groupOrbitOffset);
+				newPos = level.Vec3Offset(pos, qRot * plat.groupRotOffset);
 
 				if (changeAng || changePi || changeRo)
 				{
-					let [qYaw, qPitch, qRoll] = AnglesFromQuat(qRot * plat.groupOrbitAngDiff);
+					let [qYaw, qPitch, qRoll] = AnglesFromQuat(qRot * plat.groupRotAngDiff);
 
 					if (changeAng)
 						newAngle = qYaw;
