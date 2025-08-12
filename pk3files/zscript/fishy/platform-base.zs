@@ -4549,8 +4549,8 @@ extend class FishyPlatform
 				}
 				else if (!bRanActivationRoutine)
 				{
-					InterpolationPoint nextNode = currNode ? currNode.next : null;
-					if (nextNode && nextNode is "FishyPlatformNode" && FishyPlatformNode(nextNode).user_undopivotadjustment)
+					let platNode = FishyPlatformNode(currNode.next);
+					if (platNode && platNode.user_undopivotadjustment)
 					{
 						pNext += interpolatedPivotOffset;
 						interpolatedPivotOffset = (0, 0, 0);
