@@ -143,9 +143,20 @@ class FishyPlatformNode : InterpolationPoint
 	bool user_ignoreaxis_x; //If true, platform will ignore this point's position on the X axis
 	bool user_ignoreaxis_y; //If true, platform will ignore this point's position on the Y axis
 	bool user_ignoreaxis_z; //If true, platform will ignore this point's position on the Z axis
-	bool user_ignorepivot; //If true, platform will not use its pivot when this point is the platform's destination
+	bool user_ignorepivot; //If true, platform will not rotate around its pivot when this point is the platform's destination
 
-	//Setting "nopositionchange" to true has the same effect as setting all three "ignoreaxis" variables to true
+	// Path following and pivot behavior can coexist.
+	//
+	// "Pivot behavior" is the platform's position being changed just by changing its angle/pitch/roll.
+	// This position adjustment affects the travel path.
+	//
+	// NOTE: The user variables that tell to ignore position changes
+	// ONLY have an effect on path following; they do NOT affect position changes caused by the platform rotating around its pivot!
+	//
+	// If you want the platform to always go to this point's exact position and ignore any pivot adjustment
+	// then set this user variable to true.
+	//
+	bool user_undopivotadjustment;
 
 	Default
 	{
@@ -4538,6 +4549,12 @@ extend class FishyPlatform
 				}
 				else if (!bRanActivationRoutine)
 				{
+					InterpolationPoint nextNode = currNode ? currNode.next : null;
+					if (nextNode && nextNode is "FishyPlatformNode" && FishyPlatformNode(nextNode).user_undopivotadjustment)
+					{
+						pNext += interpolatedPivotOffset;
+						interpolatedPivotOffset = (0, 0, 0);
+					}
 					SetInterpolationCoordinates(pNext, pNextAngs);
 					SetTimeFraction();
 					if (!bTimeAlreadySet)
