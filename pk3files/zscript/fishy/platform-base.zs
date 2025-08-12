@@ -531,8 +531,8 @@ extend class FishyPlatform
 
 	//The pivot behavior is tied with the path following behavior
 	vector3 interpolatedPivotOffset;
-	vector3 pivotData;
-	bool bPivotDataIsPos; //Otherwise it's an offset
+	vector3 pivotVector;
+	bool bPivotVectorIsPosition; //Otherwise it's an offset
 	bool bIgnorePivot;
 
 	//============================
@@ -1562,8 +1562,8 @@ extend class FishyPlatform
 		pCurr -= startPos;
 		pNext -= startPos;
 		pLast -= startPos;
-		if (bPivotDataIsPos)
-			pivotData -= startPos;
+		if (bPivotVectorIsPosition)
+			pivotVector -= startPos;
 
 		if (delta)
 		{
@@ -1578,8 +1578,8 @@ extend class FishyPlatform
 			pCurr.xy = (pCurr.x*c - pCurr.y*s, pCurr.x*s + pCurr.y*c);
 			pNext.xy = (pNext.x*c - pNext.y*s, pNext.x*s + pNext.y*c);
 			pLast.xy = (pLast.x*c - pLast.y*s, pLast.x*s + pLast.y*c);
-			if (bPivotDataIsPos)
-				pivotData.xy = (pivotData.x*c - pivotData.y*s, pivotData.x*s + pivotData.y*c);
+			if (bPivotVectorIsPosition)
+				pivotVector.xy = (pivotVector.x*c - pivotVector.y*s, pivotVector.x*s + pivotVector.y*c);
 			interpolatedPivotOffset.xy = (
 				interpolatedPivotOffset.x*c - interpolatedPivotOffset.y*s,
 				interpolatedPivotOffset.x*s + interpolatedPivotOffset.y*c);
@@ -1588,8 +1588,8 @@ extend class FishyPlatform
 		pCurr += endPos;
 		pNext += endPos;
 		pLast += endPos;
-		if (bPivotDataIsPos)
-			pivotData += endPos;
+		if (bPivotVectorIsPosition)
+			pivotVector += endPos;
 	}
 
 	//============================
@@ -3678,15 +3678,15 @@ extend class FishyPlatform
 	//============================
 	void SetPivot (vector3 pivot, bool attach)
 	{
-		bPivotDataIsPos = !attach;
-		if (bPivotDataIsPos)
+		bPivotVectorIsPosition = !attach;
+		if (bPivotVectorIsPosition)
 		{
-			pivotData = pos + level.Vec3Diff(pos, pivot);
+			pivotVector = pos + level.Vec3Diff(pos, pivot);
 		}
 		else
 		{
 			quat q = quat.FromAngles(angle, pitch, roll);
-			pivotData = q.Inverse() * level.Vec3Diff(pivot, pos);
+			pivotVector = q.Inverse() * level.Vec3Diff(pivot, pos);
 		}
 	}
 
@@ -3803,18 +3803,18 @@ extend class FishyPlatform
 		vector3 pivotAdjustedPos = newPos + interpolatedPivotOffset;
 		if (!bIgnorePivot && (angle != newAngle || pitch != newPitch || roll != newRoll))
 		{
-			if (bPivotDataIsPos)
+			if (bPivotVectorIsPosition)
 			{
 				quat qRot = quat.FromAngles(angle, pitch, roll);
-				vector3 offset = qRot.Inverse() * (pivotAdjustedPos - pivotData);
+				vector3 offset = qRot.Inverse() * (pivotAdjustedPos - pivotVector);
 				qRot = quat.FromAngles(newAngle, newPitch, newRoll);
 				offset = qRot * offset;
-				pivotAdjustedPos = pivotData + offset;
+				pivotAdjustedPos = pivotVector + offset;
 			}
-			else if (pivotData != (0, 0, 0)) //Is non-zero offset?
+			else if (pivotVector != (0, 0, 0)) //Is non-zero offset?
 			{
-				pivotAdjustedPos -= quat.FromAngles(angle, pitch, roll) * pivotData;
-				pivotAdjustedPos += quat.FromAngles(newAngle, newPitch, newRoll) * pivotData;
+				pivotAdjustedPos -= quat.FromAngles(angle, pitch, roll) * pivotVector;
+				pivotAdjustedPos += quat.FromAngles(newAngle, newPitch, newRoll) * pivotVector;
 			}
 		}
 
@@ -5359,8 +5359,8 @@ extend class FishyPlatform
 		ActorIterator it = platTid ? level.CreateActorIterator(platTid, "FishyPlatform") : null;
 		for (let plat = FishyPlatform(it ? it.Next() : act); plat; plat = it ? FishyPlatform(it.Next()) : null)
 		{
-			plat.bPivotDataIsPos = false;
-			plat.pivotData = (0, 0, 0);
+			plat.bPivotVectorIsPosition = false;
+			plat.pivotVector = (0, 0, 0);
 		}
 	}
 } //End of FishyPlatform class definition
