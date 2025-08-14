@@ -305,18 +305,31 @@ extend class FishyPlatformPivot
 
 	override void Activate (Actor activator)
 	{
+		bool didSomething = false;
+
 		let plat = FishyPlatform(activator);
 		if (plat)
+		{
 			plat.SetPivot(pos, args[PIVOTARG_ATTACH]);
+			didSomething = true;
+		}
 
 		if (args[PIVOTARG_PLAT])
 		{
+			bool foundOne = false;
 			let it = level.CreateActorIterator(args[PIVOTARG_PLAT], "FishyPlatform");
 			while (plat = FishyPlatform(it.Next()))
+			{
 				plat.SetPivot(pos, args[PIVOTARG_ATTACH]);
+				didSomething = true;
+				foundOne = true;
+			}
+			if (!foundOne)
+				Console.Printf("\ckPivot spot with tid " .. tid .. " at position " .. pos ..
+					"\n\ckcan't find any platform with tid " .. args[PIVOTARG_PLAT]);
 		}
 
-		if (!args[PIVOTARG_STAY])
+		if (!args[PIVOTARG_STAY] && didSomething)
 			Destroy();
 	}
 
@@ -342,9 +355,9 @@ class FishyDelayedAbort : Thinker
 
 	static void Create (int delay, string theProblem)
 	{
-		let fishyAbort = new("FishyDelayedAbort");
-		fishyAbort.abortTime = level.mapTime + delay;
-		fishyAbort.message = theProblem;
+		let delayedAbort = new("FishyDelayedAbort");
+		delayedAbort.abortTime = level.mapTime + delay;
+		delayedAbort.message = theProblem;
 	}
 
 	override void Tick ()
