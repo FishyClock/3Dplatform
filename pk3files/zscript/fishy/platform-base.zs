@@ -194,7 +194,7 @@ class FishyPlatformPivot : Actor
 
 		//$Arg0 Platform(s)
 		//$Arg0Type 14
-		//$Arg0Tooltip Platform(s) whose pivot to become.\nNOTE: Any platform that activates this thing will be affected as well.
+		//$Arg0Tooltip Platform(s) whose pivot to become.\nNOTE: Any platform that activates this thing will be affected as well.\nTip: one way a platform can activate a pivot thing is by using a Interpolation Special.
 
 		//$Arg1 Stay On The Map
 		//$Arg1Type 11
