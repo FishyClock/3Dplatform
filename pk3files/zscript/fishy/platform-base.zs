@@ -144,19 +144,21 @@ class FishyPlatformNode : InterpolationPoint
 	bool user_ignoreaxis_y; //If true, platform will ignore this point's position on the Y axis
 	bool user_ignoreaxis_z; //If true, platform will ignore this point's position on the Z axis
 	bool user_ignorepivot; //If true, platform will not rotate around its pivot when this point is the platform's destination
+	bool user_undopivotadjustment; //If true, the platform's offsetted travel position (if any) will be reset when this point is the platform's destination
 
 	// Path following and pivot behavior can coexist.
 	//
-	// "Pivot behavior" is the platform's position being changed just by changing its angle/pitch/roll.
-	// This position adjustment affects the travel path.
+	// "Pivot behavior" is the platform's position being changed by rotating around its pivor which is caused
+	// by the platform changing its angle/pitch/roll. This position adjustment affects the travel path.
+	// Even if the platform stops rotating for this point, that adjusted position is maintained!
 	//
 	// NOTE: The user variables that tell to ignore position changes
-	// ONLY have an effect on path following; they do NOT affect position changes caused by the platform rotating around its pivot!
+	// ONLY have an effect on path following; they do NOT affect position changes caused by pivot rotations!
 	//
-	// If you want the platform to always go to this point's exact position and ignore any pivot adjustment
-	// then set this user variable to true.
+	// If you want the platform to ignore any previous pivot adjustment and always go to this point's exact position
+	// (Assuming the angles don't change - or you set 'user_ignorepivot' to true so there's no rotation)
+	// then set 'user_undopivotadjustment' to true.
 	//
-	bool user_undopivotadjustment;
 
 	Default
 	{
