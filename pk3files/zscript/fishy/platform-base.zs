@@ -139,26 +139,39 @@ class FishyPlatform : Actor abstract
 class FishyPlatformNode : InterpolationPoint
 {
 	//===User variables===//
-	bool user_nopositionchange; //If true, this point will not become travel destination but only be used to change angle/pitch/roll
-	bool user_ignoreaxis_x; //If true, platform will ignore this point's position on the X axis
-	bool user_ignoreaxis_y; //If true, platform will ignore this point's position on the Y axis
-	bool user_ignoreaxis_z; //If true, platform will ignore this point's position on the Z axis
-	bool user_ignorepivot; //If true, platform will not rotate around its pivot when this point is the platform's destination
-	bool user_undopivotadjustment; //If true, the platform's offsetted travel position (if any) will be reset when this point is the platform's destination
+
+	// Only use point to adjust angle/pitch/roll,
+	// NOT as travel destination:
+	bool user_nopositionchange;
+	// Platform will ignore point's X pos:
+	bool user_ignoreaxis_x;
+	// Platform will ignore point's Y pos:
+	bool user_ignoreaxis_y;
+	// Platform will ignore point's Z pos:
+	bool user_ignoreaxis_z;
+	// If this point is the destination,
+	// platform will not rotate around its pivot:
+	bool user_ignorepivot; 
+	// When this point is the platform's destination,
+	// reset the platform's offseted travel pos
+	// (if any):
+	bool user_undopivotadjustment;
 
 	// Path following and pivot behavior can coexist.
 	//
-	// "Pivot behavior" is the platform's position being changed by rotating around its pivor which is caused
-	// by the platform changing its angle/pitch/roll. This position adjustment affects the travel path.
-	// Even if the platform stops rotating for this point, that adjusted position is maintained!
+	// Pivot behavior: Platform position changes by rotating
+	// around its pivot due to angle/pitch/roll adjustments.
+	// This affects the travel path, and the adjusted
+	// position persists even if rotation stops.
 	//
-	// NOTE: The user variables that tell to ignore position changes
-	// ONLY have an effect on path following; they do NOT affect position changes caused by pivot rotations!
+	// NOTE: Variables ignoring position changes (e.g. 
+	// user_ignoreaxis_x) only affect path following, NOT
+	// pivot-related position changes.
 	//
-	// If you want the platform to ignore any previous pivot adjustment and always go to this point's exact position
-	// (Assuming the angles don't change - or you set 'user_ignorepivot' to true so there's no rotation)
-	// then set 'user_undopivotadjustment' to true.
-	//
+	// To ensure the platform moves to this point's exact
+	// position ignoring prior pivot adjustments (assuming
+	// no angle changes, or 'user_ignorepivot' was true), set
+	// 'user_undopivotadjustment' to true.
 
 	Default
 	{
