@@ -21,7 +21,7 @@ class FishyPlatformGeneric : FishyPlatform
 	double user_set_height;
 
 	//$UserDefaultValue true
-	bool user_modelsetssize; //If "true" and a model is provided, this will override user_set_height and user_set_radius
+	bool user_modelsetssize; //If true and a model is provided, this will override user_set_height and user_set_radius
 
 	//===User variables that are parameters for A_ChangeModel()===//
 	string user_cm_modeldef;

@@ -139,23 +139,12 @@ class FishyPlatform : Actor abstract
 class FishyPlatformNode : InterpolationPoint
 {
 	//===User variables===//
-
-	// Only use point to adjust angle/pitch/roll,
-	// NOT as travel destination:
-	bool user_nopositionchange;
-	// Platform will ignore point's X pos:
-	bool user_ignoreaxis_x;
-	// Platform will ignore point's Y pos:
-	bool user_ignoreaxis_y;
-	// Platform will ignore point's Z pos:
-	bool user_ignoreaxis_z;
-	// If this point is the destination,
-	// platform will not rotate around its pivot:
-	bool user_ignorepivot; 
-	// When this point is the platform's destination,
-	// reset the platform's offseted travel pos
-	// (if any):
-	bool user_undopivotadjustment;
+	bool user_nopositionchange; //If true, only use point to adjust angle/pitch/roll, NOT as travel destination
+	bool user_ignoreaxis_x; //If true, platform will ignore point's X pos
+	bool user_ignoreaxis_y; //If true, platform will ignore point's Y pos
+	bool user_ignoreaxis_z; //If true, platform will ignore point's Z pos
+	bool user_ignorepivot; //If true and this point is the destination, platform will not rotate around its pivot
+	bool user_undopivotadjustment; //If true, when this point is the platform's destination, reset the platform's offseted travel pos (if any)
 
 	// Path following and pivot behavior can coexist.
 	//
