@@ -15,6 +15,7 @@ class FishyPlatformGeneric : FishyPlatform
 	}
 
 	//===User variables that are parameters for A_SetSize()===//
+	//Reference: https://zdoom.org/wiki/A_SetSize
 	//$UserDefaultValue -1
 	double user_set_radius;
 	//$UserDefaultValue -1
@@ -24,6 +25,17 @@ class FishyPlatformGeneric : FishyPlatform
 	bool user_modelsetssize; //If true and a model is provided, this will override user_set_height and user_set_radius
 
 	//===User variables that are parameters for A_ChangeModel()===//
+	//Reference: https://zdoom.org/wiki/A_ChangeModel
+
+	//The flag (bit) values for 'user_cm_flags':
+	//https://github.com/ZDoom/gzdoom/blob/f30fc8dd00a620227756ff0df25d3eb209ce5ebc/wadsrc/static/zscript/constants.zs#L385-L391
+
+	// While you can use this however you want, the usual intended practice is
+	// set 'user_cm_modelpath' to the path (if any) where your models are
+	// and set 'user_cm_model' to the model file, including its extension.
+	//
+	// Alternatively you can just set 'user_cm_model' to "modelpath/modelfile.extension"
+	// and it will work.
 	string user_cm_modeldef;
 	int user_cm_modelindex;
 	string user_cm_modelpath;
@@ -31,7 +43,7 @@ class FishyPlatformGeneric : FishyPlatform
 	int user_cm_skinindex;
 	string user_cm_skinpath;
 	string user_cm_skin;
-	int user_cm_flags;
+	int user_cm_flags; //Tip: if the flag (bit) value includes 2 (or just set it to 2) the model will be invisible
 	//$UserDefaultValue -1
 	int user_cm_generatorindex;
 	int user_cm_animationindex;
@@ -115,14 +127,12 @@ extend class FishyPlatformGeneric
 			return false;
 		}
 
-		double newRad = 0;
-		double newHi = 0;
-
 		// Notes about the ScriptScanner:
 		// bool GetString() advances the parser. It returns false when reaching the end of the file.
 		// string GetStringContents() does NOT advance the parser.
 		// void MustGetFloat() advances the parser.
-
+		double newRad = 0;
+		double newHi = 0;
 		let sc = new("ScriptScanner");
 		sc.OpenLumpNum(lump);
 		while (sc.GetString())
@@ -136,13 +146,11 @@ extend class FishyPlatformGeneric
 				// --Center model--
 				// --Normalize lowest vertex z to 0--
 				// --Ignore 3D floor control sectors--
+				// (They are checked by default.)
 				//
-				// Quick tests showed having either "Center model"
+				// Having either "Center model"
 				// or "Normalize lowest vertex z to 0" unchecked
 				// produces undesired results!
-				//
-				// Fortunately they're checked by default
-				// when exporting.
 
 				sc.MustGetFloat(); double x = sc.float;
 				sc.MustGetFloat(); double z = sc.float;
