@@ -4235,6 +4235,158 @@ extend class FishyPlatform
 	}
 
 	//============================
+	// HandlePathFollowing
+	//============================
+	private bool HandlePathFollowing ()
+	{
+		if (holdTime > 0)
+		{
+			if (!--holdTime) //Finished waiting?
+				MustGetNewPassengers(); //Ignore search tic rate; do a search now
+			return true;
+		}
+
+		bool interpolated = Interpolate();
+		if (bDestroyed)
+			return false; //Abort if we got Thing_Remove()'d
+
+		if (!interpolated)
+		{
+			if (stuckActors.Size() || (portTwin && !portTwin.bNoBlockmap && portTwin.stuckActors.Size()))
+				return true; //Don't bother
+
+			//Something's blocking us so try to move a little closer
+			if (reachedTime < time)
+			{
+				let oldTime = time;
+				time = reachedTime + timeFrac * 0.125;
+				interpolated = Interpolate();
+				if (bDestroyed)
+					return false; //Abort if we got Thing_Remove()'d
+				if (interpolated)
+					reachedTime = time;
+				time = oldTime;
+			}
+			return true;
+		}
+
+		reachedTime = time;
+		time += timeFrac;
+		if (time > 1.0) //Reached destination?
+		{
+			//Take into account certain functions that can get called on self through CallNodeSpecials().
+			bRanActivationRoutine = false; //SetInterpolationCoordinates() or Activate() was called.
+			bRanACSSetupRoutine = false; //CommonACSSetup() was called.
+			bTimeAlreadySet = false; //The 'time' variable has been changed.
+
+			bool goneToNode = bGoToNode;
+			if (bGoToNode)
+			{
+				bGoToNode = false; //Reached 'currNode'
+			}
+			else
+			{
+				prevNode = currNode;
+				if (currNode)
+					currNode = currNode.next;
+			}
+
+			if (currNode)
+			{
+				CallNodeSpecials();
+				if (bDestroyed)
+					return false; //Abort if we got Thing_Remove()'d
+
+				if (prevNode && prevNode.bDestroyed)
+				{
+					prevNode = null; //Prev node got Thing_Remove()'d
+				}
+				if (currNode && currNode.bDestroyed)
+				{
+					currNode = null; //Current node got Thing_Remove()'d
+				}
+				else if (currNode &&
+					currNode.next && currNode.next.bDestroyed)
+				{
+					currNode.next = null; //Next node got Thing_Remove()'d
+				}
+				else if (currNode && currNode.next &&
+					currNode.next.next && currNode.next.next.bDestroyed)
+				{
+					currNode.next.next = null; //Last node got Thing_Remove()'d
+				}
+			}
+
+			//ACS movement functions set 'time', 'timeFrac', 'holdTime' etc just like Activate() - so we might as well pretend Activate() was called
+			bRanActivationRoutine |= bRanACSSetupRoutine;
+
+			bool finishedPath = bRanACSSetupRoutine ? false : //The ACS side operates without interpolation nodes.
+				((acsFlags & INTERNALFLAG_ACSMOVE) || //Finished ACS induced movement?
+				!currNode || !currNode.next || //Reached our last node?
+				(!goneToNode && !(options & OPTFLAG_LINEAR) && (!currNode.next.next || !prevNode) ) ); //Finished spline path?
+
+			if (!bRanActivationRoutine && !finishedPath)
+				SetHoldTime();
+
+			if (finishedPath || holdTime > 0 || !bActive) //'bActive' being false can happen if CallNodeSpecials() ended up calling Deactivate() on self
+			{
+				//Stopped() must be called before PlatMove() in this case
+				for (int i = -1; i == -1 || (group && i < group.members.Size()); ++i)
+				{
+					let plat = (i == -1) ? self : group.GetMember(i);
+					if (i == -1 || (plat && plat != self)) //Already handled self
+						plat.Stopped(plat.oldPos, plat.pos);
+				}
+			}
+
+			if (reachedTime != 1.0 && (finishedPath || holdTime > 0) && (finishedPath || !bTimeAlreadySet) && !bRanActivationRoutine)
+			{
+				//Make sure we're exactly at our intended position.
+				//(It doesn't matter if we can't fit at this "intended position"
+				//because that's what the "stuck actors" logic is there for.)
+				let oldTime = time;
+				time = 1.0;
+				Interpolate(MOVE_QUICK);
+				time = oldTime;
+			}
+
+			if (finishedPath)
+			{
+				Deactivate(self);
+			}
+			else if (!bRanActivationRoutine)
+			{
+				let platNode = FishyPlatformNode(currNode.next);
+				if (platNode && platNode.user_undopivotadjustment)
+				{
+					pNext += interpolatedPivotOffset;
+					interpolatedPivotOffset = (0, 0, 0);
+				}
+				SetInterpolationCoordinates(pNext, pNextAngs);
+				SetTimeFraction();
+				if (!bTimeAlreadySet)
+					time -= 1.0;
+
+				//Don't go faster than the next point's travel time/speed would allow it.
+				//This can happen if the previous speed was very high.
+				if (time > timeFrac && !bTimeAlreadySet)
+					time = timeFrac;
+
+				reachedTime = time;
+				vel = (0, 0, 0);
+			}
+
+			if (bTimeAlreadySet && !finishedPath && holdTime > 0)
+			{
+				Interpolate(); //If we're pausing, try to be at whatever point 'time' is pointing to between two nodes
+				if (bDestroyed)
+					return false; //Abort if we got Thing_Remove()'d
+			}
+		}
+		return true;
+	}
+
+	//============================
 	// Tick (override)
 	//============================
 	override void Tick ()
@@ -4428,155 +4580,8 @@ extend class FishyPlatform
 				return; //Abort if we got Thing_Remove()'d
 		}
 
-		//Handle path following
-		while (bActive && (!group || group.origin == self))
-		{
-			if (holdTime > 0)
-			{
-				if (!--holdTime) //Finished waiting?
-					MustGetNewPassengers(); //Ignore search tic rate; do a search now
-				break;
-			}
-
-			bool interpolated = Interpolate();
-			if (bDestroyed)
-				return; //Abort if we got Thing_Remove()'d
-
-			if (!interpolated)
-			{
-				if (stuckActors.Size() || (portTwin && !portTwin.bNoBlockmap && portTwin.stuckActors.Size()))
-					break; //Don't bother
-
-				//Something's blocking us so try to move a little closer
-				if (reachedTime < time)
-				{
-					let oldTime = time;
-					time = reachedTime + timeFrac * 0.125;
-					interpolated = Interpolate();
-					if (bDestroyed)
-						return; //Abort if we got Thing_Remove()'d
-					if (interpolated)
-						reachedTime = time;
-					time = oldTime;
-				}
-				break;
-			}
-
-			reachedTime = time;
-			time += timeFrac;
-			if (time > 1.0) //Reached destination?
-			{
-				//Take into account certain functions that can get called on self through CallNodeSpecials().
-				bRanActivationRoutine = false; //SetInterpolationCoordinates() or Activate() was called.
-				bRanACSSetupRoutine = false; //CommonACSSetup() was called.
-				bTimeAlreadySet = false; //The 'time' variable has been changed.
-
-				bool goneToNode = bGoToNode;
-				if (bGoToNode)
-				{
-					bGoToNode = false; //Reached 'currNode'
-				}
-				else
-				{
-					prevNode = currNode;
-					if (currNode)
-						currNode = currNode.next;
-				}
-
-				if (currNode)
-				{
-					CallNodeSpecials();
-					if (bDestroyed)
-						return; //Abort if we got Thing_Remove()'d
-
-					if (prevNode && prevNode.bDestroyed)
-					{
-						prevNode = null; //Prev node got Thing_Remove()'d
-					}
-					if (currNode && currNode.bDestroyed)
-					{
-						currNode = null; //Current node got Thing_Remove()'d
-					}
-					else if (currNode &&
-						currNode.next && currNode.next.bDestroyed)
-					{
-						currNode.next = null; //Next node got Thing_Remove()'d
-					}
-					else if (currNode && currNode.next &&
-						currNode.next.next && currNode.next.next.bDestroyed)
-					{
-						currNode.next.next = null; //Last node got Thing_Remove()'d
-					}
-				}
-
-				//ACS movement functions set 'time', 'timeFrac', 'holdTime' etc just like Activate() - so we might as well pretend Activate() was called
-				bRanActivationRoutine |= bRanACSSetupRoutine;
-
-				bool finishedPath = bRanACSSetupRoutine ? false : //The ACS side operates without interpolation nodes.
-					((acsFlags & INTERNALFLAG_ACSMOVE) || //Finished ACS induced movement?
-					!currNode || !currNode.next || //Reached our last node?
-					(!goneToNode && !(options & OPTFLAG_LINEAR) && (!currNode.next.next || !prevNode) ) ); //Finished spline path?
-
-				if (!bRanActivationRoutine && !finishedPath)
-					SetHoldTime();
-
-				if (finishedPath || holdTime > 0 || !bActive) //'bActive' being false can happen if CallNodeSpecials() ended up calling Deactivate() on self
-				{
-					//Stopped() must be called before PlatMove() in this case
-					for (int i = -1; i == -1 || (group && i < group.members.Size()); ++i)
-					{
-						let plat = (i == -1) ? self : group.GetMember(i);
-						if (i == -1 || (plat && plat != self)) //Already handled self
-							plat.Stopped(plat.oldPos, plat.pos);
-					}
-				}
-
-				if (reachedTime != 1.0 && (finishedPath || holdTime > 0) && (finishedPath || !bTimeAlreadySet) && !bRanActivationRoutine)
-				{
-					//Make sure we're exactly at our intended position.
-					//(It doesn't matter if we can't fit at this "intended position"
-					//because that's what the "stuck actors" logic is there for.)
-					let oldTime = time;
-					time = 1.0;
-					Interpolate(MOVE_QUICK);
-					time = oldTime;
-				}
-
-				if (finishedPath)
-				{
-					Deactivate(self);
-				}
-				else if (!bRanActivationRoutine)
-				{
-					let platNode = FishyPlatformNode(currNode.next);
-					if (platNode && platNode.user_undopivotadjustment)
-					{
-						pNext += interpolatedPivotOffset;
-						interpolatedPivotOffset = (0, 0, 0);
-					}
-					SetInterpolationCoordinates(pNext, pNextAngs);
-					SetTimeFraction();
-					if (!bTimeAlreadySet)
-						time -= 1.0;
-
-					//Don't go faster than the next point's travel time/speed would allow it.
-					//This can happen if the previous speed was very high.
-					if (time > timeFrac && !bTimeAlreadySet)
-						time = timeFrac;
-
-					reachedTime = time;
-					vel = (0, 0, 0);
-				}
-
-				if (bTimeAlreadySet && !finishedPath && holdTime > 0)
-				{
-					Interpolate(); //If we're pausing, try to be at whatever point 'time' is pointing to between two nodes
-					if (bDestroyed)
-						return; //Abort if we got Thing_Remove()'d
-				}
-			}
-			break;
-		}
+		if (bActive && (!group || group.origin == self) && !HandlePathFollowing())
+			return; //We got destroyed
 
 		if (callActorTick)
 		{
