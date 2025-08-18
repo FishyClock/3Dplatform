@@ -3925,7 +3925,7 @@ extend class FishyPlatform
 	//============================
 	// CallNodeSpecials
 	//============================
-	private void CallNodeSpecials ()
+	private bool CallNodeSpecials ()
 	{
 		let it = level.CreateActorIterator(currNode.tid, "InterpolationSpecial");
 		Actor spec;
@@ -3948,6 +3948,8 @@ extend class FishyPlatform
 		//Platform will be the activator of each special
 		for (int i = specList.Size() - 1; i > -1; i -= 6)
 			level.ExecuteSpecial(specList[i-5], self, null, false, specList[i-4], specList[i-3], specList[i-2], specList[i-1], specList[i]);
+
+		return (!bDestroyed);
 	}
 
 	//============================
@@ -4012,8 +4014,7 @@ extend class FishyPlatform
 				bGoToNode = (options & OPTFLAG_GOTONODE);
 				if (!bGoToNode) //Don't call specials if going to 'currNode'
 				{
-					CallNodeSpecials();
-					if (bDestroyed || !currNode || currNode.bDestroyed)
+					if (!CallNodeSpecials() || !currNode || currNode.bDestroyed)
 						return; //Abort if we or the node got Thing_Remove()'d
 				}
 				bActive = true;
@@ -4089,8 +4090,10 @@ extend class FishyPlatform
 	//============================
 	// PlatVelMove
 	//============================
-	private void PlatVelMove ()
+	private bool PlatVelMove ()
 	{
+		//Returns "false" if we end up destroyed
+
 		//Handles velocity based movement (from being pushed around)
 		vector3 startVel = vel;
 
@@ -4107,7 +4110,7 @@ extend class FishyPlatform
 		{
 			if (startVel.z != 0)
 				bUserSoundsShouldMove = true; //Play "blocked" sound
-			return; //Nothing else to do here
+			return true; //Nothing else to do here
 		}
 
 		double startAngle = angle;
@@ -4144,6 +4147,8 @@ extend class FishyPlatform
 
 		if (vel == (0, 0, 0) && startVel != (0, 0, 0))
 			bUserSoundsShouldMove = true; //Play "blocked" sound
+
+		return (!bDestroyed);
 	}
 
 	//============================
@@ -4239,6 +4244,9 @@ extend class FishyPlatform
 	//============================
 	private bool HandlePathFollowing ()
 	{
+		//This returns "false" if any actions taken here result in us getting destroyed
+		//which can happen if we're affected by a Thing_Remove() call.
+
 		if (holdTime > 0)
 		{
 			if (!--holdTime) //Finished waiting?
@@ -4293,8 +4301,7 @@ extend class FishyPlatform
 
 			if (currNode)
 			{
-				CallNodeSpecials();
-				if (bDestroyed)
+				if (!CallNodeSpecials())
 					return false; //Abort if we got Thing_Remove()'d
 
 				if (prevNode && prevNode.bDestroyed)
@@ -4575,8 +4582,7 @@ extend class FishyPlatform
 		}
 		else if (!group || group.origin == self)
 		{
-			PlatVelMove();
-			if (bDestroyed)
+			if (!PlatVelMove())
 				return; //Abort if we got Thing_Remove()'d
 		}
 
