@@ -135,11 +135,17 @@ class FishyPlatform : Actor abstract
 	bool user_snd_movestopsstart;
 	int user_snd_delaytomove; //If 0, wait until 'snd_start' is done
 
+	//If following interpolation point path (and not waiting due to "hold time"), use *onpath speeds.
+	//Otherwise, if moving with velocity, use *withvel speeds.
+	//Otherwise, use *idle speeds.
 	double user_turnspeed_angle_onpath;
+	double user_turnspeed_angle_withvel;
 	double user_turnspeed_angle_idle;
 	double user_turnspeed_pitch_onpath;
+	double user_turnspeed_pitch_withvel;
 	double user_turnspeed_pitch_idle;
 	double user_turnspeed_roll_onpath;
+	double user_turnspeed_roll_withvel;
 	double user_turnspeed_roll_idle;
 }
 
@@ -473,7 +479,7 @@ extend class FishyPlatform
 	const BMAP_SEARCH_INTERVAL = 35; //See GetNewBmapResults() for comments about this
 	const BMAP_RADIUS_MULTIPLIER = 2; //Ditto
 	const CHAN_USERSND = 50; //Sound channel for user var sounds
-	const USERSND_LOWVEL = 0.1; //For user var sounds, we're "not moving" if velocity square length is below this
+	const MISCUSERVAR_LOWVEL = 0.1; //For user var sounds and turn speeds, we're "not moving" if velocity square length is below this
 
 	vector3 oldPos;
 	double oldAngle;
@@ -3946,9 +3952,9 @@ extend class FishyPlatform
 	}
 
 	//============================
-	// HandleIdleTurnSpeeds
+	// HandleNonPathTurnSpeeds
 	//============================
-	private bool HandleIdleTurnSpeeds ()
+	private bool HandleNonPathTurnSpeeds ()
 	{
 		//Returns "false" if we got destroyed
 
@@ -3961,14 +3967,19 @@ extend class FishyPlatform
 		double newPitch = pitch;
 		double newRoll = roll;
 
-		if (user_turnspeed_angle_idle)
-			newAngle = (angle + user_turnspeed_angle_idle) % 360;
+		bool gotVel = (vel != (0, 0, 0) && vel.LengthSquared() > MISCUSERVAR_LOWVEL);
+		double turnSpeedAngle = (gotVel) ? user_turnspeed_angle_withvel : user_turnspeed_angle_idle;
+		double turnSpeedPitch = (gotVel) ? user_turnspeed_pitch_withvel : user_turnspeed_pitch_idle;
+		double turnSpeedRoll  = (gotVel) ? user_turnspeed_roll_withvel  : user_turnspeed_pitch_idle;
 
-		if (user_turnspeed_pitch_idle)
-			newPitch = (pitch + user_turnspeed_pitch_idle) % 360;
+		if (turnSpeedAngle)
+			newAngle = (angle + turnSpeedAngle) % 360;
 
-		if (user_turnspeed_roll_idle)
-			newRoll = (roll + user_turnspeed_roll_idle) % 360;
+		if (turnSpeedPitch)
+			newPitch = (pitch + turnSpeedPitch) % 360;
+
+		if (turnSpeedRoll)
+			newRoll = (roll + turnSpeedRoll) % 360;
 
 		//Hypothetically, this is the current interpolated position
 		//that's unaffected by the pivot offset.
@@ -4251,7 +4262,7 @@ extend class FishyPlatform
 			user_turnspeed_pitch_idle ||
 			user_turnspeed_roll_idle ||
 			bUserSoundsShouldMove ||
-			(vel != (0, 0, 0) && vel.LengthSquared() > USERSND_LOWVEL)
+			(vel != (0, 0, 0) && vel.LengthSquared() > MISCUSERVAR_LOWVEL)
 		);
 
 		//'shouldMove' being false nullifies the rest because we don't
@@ -4327,7 +4338,7 @@ extend class FishyPlatform
 				user_turnspeed_pitch_idle ||
 				user_turnspeed_roll_idle)
 			{
-				return HandleIdleTurnSpeeds();
+				return HandleNonPathTurnSpeeds();
 			}
 			return true;
 		}
@@ -4608,7 +4619,7 @@ extend class FishyPlatform
 		if (callActorTick)
 		{
 			vector3 startVel = vel;
-			if (startVel != (0, 0, 0) && startVel.LengthSquared() <= USERSND_LOWVEL)
+			if (startVel != (0, 0, 0) && startVel.LengthSquared() <= MISCUSERVAR_LOWVEL)
 				startVel = (0, 0, 0);
 
 			if (lastGetBmapTime == level.mapTime)
@@ -4668,15 +4679,12 @@ extend class FishyPlatform
 		if (!group || !group.origin || group.origin == self)
 		{
 			if (bFollowingPath && !HandlePathFollowing())
-			{
 				return; //We got destroyed
-			}
 
 			if (!bFollowingPath &&
-				(user_turnspeed_angle_idle ||
-				user_turnspeed_pitch_idle ||
-				user_turnspeed_roll_idle) &&
-				!HandleIdleTurnSpeeds() )
+				(user_turnspeed_angle_idle || user_turnspeed_pitch_idle || user_turnspeed_roll_idle ||
+				user_turnspeed_angle_withvel || user_turnspeed_pitch_withvel || user_turnspeed_roll_withvel) &&
+				!HandleNonPathTurnSpeeds() )
 			{
 				return; //We got destroyed
 			}
