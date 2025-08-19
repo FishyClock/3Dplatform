@@ -135,11 +135,11 @@ class FishyPlatform : Actor abstract
 	bool user_snd_movestopsstart;
 	int user_snd_delaytomove; //If 0, wait until 'snd_start' is done
 
-	double user_turnspeed_angle_active;
+	double user_turnspeed_angle_onpath;
 	double user_turnspeed_angle_idle;
-	double user_turnspeed_pitch_active;
+	double user_turnspeed_pitch_onpath;
 	double user_turnspeed_pitch_idle;
-	double user_turnspeed_roll_active;
+	double user_turnspeed_roll_onpath;
 	double user_turnspeed_roll_idle;
 }
 
@@ -3836,14 +3836,14 @@ extend class FishyPlatform
 		double newPitch = pitch;
 		double newRoll = roll;
 
-		if (!changeAng && user_turnspeed_angle_active)
-			newAngle = (angle + user_turnspeed_angle_active) % 360;
+		if (!changeAng && user_turnspeed_angle_onpath)
+			newAngle = (angle + user_turnspeed_angle_onpath) % 360;
 
-		if (!changePi && user_turnspeed_pitch_active)
-			newPitch = (pitch + user_turnspeed_pitch_active) % 360;
+		if (!changePi && user_turnspeed_pitch_onpath)
+			newPitch = (pitch + user_turnspeed_pitch_onpath) % 360;
 
-		if (!changeRo && user_turnspeed_roll_active)
-			newRoll = (roll + user_turnspeed_roll_active) % 360;
+		if (!changeRo && user_turnspeed_roll_onpath)
+			newRoll = (roll + user_turnspeed_roll_onpath) % 360;
 
 		if (linear)
 		{
