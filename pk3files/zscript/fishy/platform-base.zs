@@ -912,7 +912,7 @@ extend class FishyPlatform
 	//============================
 	// SetGroupOrigin
 	//============================
-	private void SetGroupOrigin (FishyPlatform ori, bool setMirrorPos = true, bool setNonOriginInactive = false)
+	private void SetGroupOrigin (FishyPlatform ori, bool setMirrorPos = true, bool setNonOriginNoFollow = false)
 	{
 		group.origin = ori;
 		for (int i = 0; i < group.members.Size(); ++i)
@@ -927,7 +927,7 @@ extend class FishyPlatform
 				{
 					if (!(plat.options & OPTFLAG_MIRROR))
 						plat.SetGroupRotationInfo();
-					if (setNonOriginInactive)
+					if (setNonOriginNoFollow)
 						plat.bFollowingPath = false;
 				}
 			}
@@ -4066,7 +4066,7 @@ extend class FishyPlatform
 			{
 				bFollowingPath = true;
 				if (group && group.origin != self)
-					SetGroupOrigin(self, setNonOriginInactive: true);
+					SetGroupOrigin(self, setNonOriginNoFollow: true);
 				MustGetNewPassengers(); //Ignore search tic rate; do a search now
 				return;
 			}
@@ -4087,7 +4087,7 @@ extend class FishyPlatform
 				}
 				bFollowingPath = true;
 				if (group && group.origin != self)
-					SetGroupOrigin(self, setNonOriginInactive: true);
+					SetGroupOrigin(self, setNonOriginNoFollow: true);
 
 				if (!bGoToNode)
 				{
@@ -4966,7 +4966,7 @@ extend class FishyPlatform
 		bTimeAlreadySet = true;
 		bFollowingPath = true;
 		if (group && group.origin != self)
-			SetGroupOrigin(self, setNonOriginInactive: true);
+			SetGroupOrigin(self, setNonOriginNoFollow: true);
 		portDelta = 0;
 		acsFlags = (INTERNALFLAG_ACSMOVE | OPTFLAG_ANGLE | OPTFLAG_PITCH | OPTFLAG_ROLL);
 		pPrev = pos;
