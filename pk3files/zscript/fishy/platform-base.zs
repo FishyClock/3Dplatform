@@ -134,6 +134,13 @@ class FishyPlatform : Actor abstract
 	string user_snd_move;
 	bool user_snd_movestopsstart;
 	int user_snd_delaytomove; //If 0, wait until 'snd_start' is done
+
+	double user_turnspeed_angle_active;
+	double user_turnspeed_angle_idle;
+	double user_turnspeed_pitch_active;
+	double user_turnspeed_pitch_idle;
+	double user_turnspeed_roll_active;
+	double user_turnspeed_roll_idle;
 }
 
 class FishyPlatformNode : InterpolationPoint
@@ -484,7 +491,7 @@ extend class FishyPlatform
 	double reachedTime;
 	double timeFrac;
 	int holdTime;
-	bool bActive;
+	bool bFollowingPath;
 	int startSoundTime;
 	bool bUserSoundsWasMoving;
 	transient bool bUserSoundsShouldMove;
@@ -646,7 +653,7 @@ extend class FishyPlatform
 			for (int i = 0; i < group.members.Size(); ++i)
 			{
 				let plat = group.GetMember(i);
-				if (plat && (plat.bActive || plat.vel != (0, 0, 0)))
+				if (plat && (plat.bFollowingPath || plat.vel != (0, 0, 0)))
 				{
 					SetGroupOrigin(plat, false);
 					plat.PlatMove(plat.pos, plat.angle, plat.pitch, plat.roll, MOVE_TELEPORT);
@@ -775,7 +782,7 @@ extend class FishyPlatform
 			firstPrevNode = null;
 		}
 
-		if (!bActive)
+		if (!bFollowingPath)
 		{
 			//For ACSFuncNextNode() and ACSFuncPrevNode()
 			currNode = firstNode;
@@ -921,7 +928,7 @@ extend class FishyPlatform
 					if (!(plat.options & OPTFLAG_MIRROR))
 						plat.SetGroupRotationInfo();
 					if (setNonOriginInactive)
-						plat.bActive = false;
+						plat.bFollowingPath = false;
 				}
 			}
 		}
@@ -2218,7 +2225,7 @@ extend class FishyPlatform
 
 			let moPreMovePos = mo.pos;
 			let moPreMoveAngle = mo.angle;
-			let moNewAngle = (delta) ? Normalize180(mo.angle + delta) : mo.angle;
+			let moNewAngle = (delta) ? (mo.angle + delta) % 360 : mo.angle;
 			let moOldNoDropoff = mo.bNoDropoff;
 			let moOldNoGrav = mo.bNoGravity;
 			let moOldScrollMove = mo.bScrollMove;
@@ -2274,7 +2281,7 @@ extend class FishyPlatform
 
 				int result = plat.PlatMove(moNewPos, moNewAngle, plat.pitch, plat.roll, moveType);
 				moved = (result == 2); //2 == this plat and its groupmates moved. 1 == plat moved but not all groupmates moved.
-				if (plat.bActive)
+				if (plat.bFollowingPath)
 				{
 					//Tried to move an active platform.
 					//If we moved it, adjust its
@@ -3528,6 +3535,97 @@ extend class FishyPlatform
 	}
 
 	//============================
+	// MoveGroup
+	//============================
+	private bool MoveGroup (PMoveTypes moveType)
+	{
+		if (bPlatPorted)
+			moveType = MOVE_TRUETELE;
+
+		double delta = double.nan;
+		double piDelta = double.nan;
+		double roDelta = double.nan;
+		vector3 mirOfs = (double.nan, 0, 0);
+		quat qRot = quat(double.nan, 0, 0, 0);
+
+		for (int iPlat = 0; iPlat < group.members.Size(); ++iPlat)
+		{
+			let plat = group.GetMember(iPlat);
+			if (!plat || plat == self)
+				continue;
+
+			bool changeAng = (plat.options & OPTFLAG_ANGLE);
+			bool changePi = (plat.options & OPTFLAG_PITCH);
+			bool changeRo = (plat.options & OPTFLAG_ROLL);
+
+			vector3 newPos;
+			double newAngle = plat.angle;
+			double newPitch = plat.pitch;
+			double newRoll = plat.roll;
+
+			if (plat.options & OPTFLAG_MIRROR)
+			{
+				//The way we mirror movement is by getting the offset going
+				//from the origin's current position to its 'groupMirrorPos'
+				//and using that to get a offsetted position from
+				//the attached platform's 'groupMirrorPos'.
+				//So we pretty much always go in the opposite direction
+				//using 'groupMirrorPos' as a reference point.
+				if (mirOfs != mirOfs) //NaN check
+					mirOfs = level.Vec3Diff(pos, groupMirrorPos);
+				newPos = level.Vec3Offset(plat.groupMirrorPos, mirOfs);
+
+				if (changeAng)
+				{
+					if (delta != delta) //NaN check
+						delta = DeltaAngle(angle, groupAngle);
+					newAngle = plat.groupAngle + delta;
+				}
+				if (changePi)
+				{
+					if (piDelta != piDelta) //NaN check
+						piDelta = DeltaAngle(pitch, groupPitch);
+					newPitch = plat.groupPitch + piDelta;
+				}
+				if (changeRo)
+				{
+					if (roDelta != roDelta) //NaN check
+						roDelta = DeltaAngle(roll, groupRoll);
+					newRoll = plat.groupRoll + roDelta;
+				}
+			}
+			else //Non-mirror movement. Rotation happens here.
+			{
+				if (qRot != qRot) //NaN check
+					qRot = quat.FromAngles(angle, pitch, roll);
+				newPos = level.Vec3Offset(pos, qRot * plat.groupRotOffset);
+
+				if (changeAng || changePi || changeRo)
+				{
+					let [qYaw, qPitch, qRoll] = AnglesFromQuat(qRot * plat.groupRotAngDiff);
+
+					if (changeAng)
+						newAngle = qYaw;
+					if (changePi)
+						newPitch = qPitch;
+					if (changeRo)
+						newRoll = qRoll;
+				}
+			}
+
+			if (bPlatPorted)
+			{
+				plat.bPlatPorted = true;
+				plat.platTeleFlags = platTeleFlags;
+			}
+
+			if (!plat.DoMove(newPos, newAngle, newPitch, newRoll, moveType) && moveType > MOVE_QUICK)
+				return false;
+		}
+		return true;
+	}
+
+	//============================
 	// DoPlatZFix
 	//============================
 	private bool DoPlatZFix (double newZ, FishyPlatform mover)
@@ -3577,7 +3675,7 @@ extend class FishyPlatform
 					let savedPos = plat.pos.xy;
 					plat.SetZ(newZ);
 					plat.CheckPortalTransition(); //Handle sector portals properly
-					if (plat.bActive)
+					if (plat.bFollowingPath)
 					{
 						plat.pCurr.z += zOff;
 						if (savedPos != plat.pos.xy) //Crossed a sector portal?
@@ -3690,6 +3788,27 @@ extend class FishyPlatform
 	}
 
 	//============================
+	// GetPivotedPosition
+	//============================
+	private vector3 GetPivotedPosition (vector3 givenPos, vector3 fromAngs, vector3 toAngs)
+	{
+		if (bPivotVectorIsPosition)
+		{
+			quat qRot = quat.FromAngles(fromAngs.x, fromAngs.y, fromAngs.z); //Where X is yaw, Y is pitch, and Z is roll
+			vector3 offset = qRot.Inverse() * (givenPos - pivotVector); //Deliberate portal-ignorance here; portal-awareness is handled elsewhere
+			qRot = quat.FromAngles(toAngs.x, toAngs.y, toAngs.z);
+			offset = qRot * offset;
+			givenPos = pivotVector + offset;
+		}
+		else if (pivotVector != (0, 0, 0)) //Is non-zero offset?
+		{
+			givenPos -= quat.FromAngles(fromAngs.x, fromAngs.y, fromAngs.z) * pivotVector;
+			givenPos += quat.FromAngles(toAngs.x, toAngs.y, toAngs.z) * pivotVector;
+		}
+		return givenPos;
+	}
+
+	//============================
 	// Interpolate
 	//============================
 	private bool Interpolate (PMoveTypes moveType = MOVE_NORMAL)
@@ -3716,6 +3835,15 @@ extend class FishyPlatform
 		double newAngle = angle;
 		double newPitch = pitch;
 		double newRoll = roll;
+
+		if (!changeAng && user_turnspeed_angle_active)
+			newAngle = (angle + user_turnspeed_angle_active) % 360;
+
+		if (!changePi && user_turnspeed_pitch_active)
+			newPitch = (pitch + user_turnspeed_pitch_active) % 360;
+
+		if (!changeRo && user_turnspeed_roll_active)
+			newRoll = (roll + user_turnspeed_roll_active) % 360;
 
 		if (linear)
 		{
@@ -3801,21 +3929,7 @@ extend class FishyPlatform
 
 		vector3 pivotAdjustedPos = newPos + interpolatedPivotOffset;
 		if (!bIgnorePivot && (angle != newAngle || pitch != newPitch || roll != newRoll))
-		{
-			if (bPivotVectorIsPosition)
-			{
-				quat qRot = quat.FromAngles(angle, pitch, roll);
-				vector3 offset = qRot.Inverse() * (pivotAdjustedPos - pivotVector);
-				qRot = quat.FromAngles(newAngle, newPitch, newRoll);
-				offset = qRot * offset;
-				pivotAdjustedPos = pivotVector + offset;
-			}
-			else if (pivotVector != (0, 0, 0)) //Is non-zero offset?
-			{
-				pivotAdjustedPos -= quat.FromAngles(angle, pitch, roll) * pivotVector;
-				pivotAdjustedPos += quat.FromAngles(newAngle, newPitch, newRoll) * pivotVector;
-			}
-		}
+			pivotAdjustedPos = GetPivotedPosition(pivotAdjustedPos, (angle, pitch, roll), (newAngle, newPitch, newRoll));
 
 		//Result == 2 means everyone moved. 1 == this platform moved but not all its groupmates moved.
 		//(If this platform isn't in a group then the result is likewise 2 if it moved.)
@@ -3832,94 +3946,48 @@ extend class FishyPlatform
 	}
 
 	//============================
-	// MoveGroup
+	// HandleIdleTurnSpeeds
 	//============================
-	private bool MoveGroup (PMoveTypes moveType)
+	private bool HandleIdleTurnSpeeds ()
 	{
-		if (bPlatPorted)
-			moveType = MOVE_TRUETELE;
+		//Returns "false" if we got destroyed
 
-		double delta = double.nan;
-		double piDelta = double.nan;
-		double roDelta = double.nan;
-		vector3 mirOfs = (double.nan, 0, 0);
-		quat qRot = quat(double.nan, 0, 0, 0);
+		vector3 startPos = pos;
+		double startAngle = angle;
+		double startPitch = pitch;
+		double startRoll = roll;
 
-		for (int iPlat = 0; iPlat < group.members.Size(); ++iPlat)
-		{
-			let plat = group.GetMember(iPlat);
-			if (!plat || plat == self)
-				continue;
+		double newAngle = angle;
+		double newPitch = pitch;
+		double newRoll = roll;
 
-			bool changeAng = (plat.options & OPTFLAG_ANGLE);
-			bool changePi = (plat.options & OPTFLAG_PITCH);
-			bool changeRo = (plat.options & OPTFLAG_ROLL);
+		if (user_turnspeed_angle_idle)
+			newAngle = (angle + user_turnspeed_angle_idle) % 360;
 
-			vector3 newPos;
-			double newAngle = plat.angle;
-			double newPitch = plat.pitch;
-			double newRoll = plat.roll;
+		if (user_turnspeed_pitch_idle)
+			newPitch = (pitch + user_turnspeed_pitch_idle) % 360;
 
-			if (plat.options & OPTFLAG_MIRROR)
-			{
-				//The way we mirror movement is by getting the offset going
-				//from the origin's current position to its 'groupMirrorPos'
-				//and using that to get a offsetted position from
-				//the attached platform's 'groupMirrorPos'.
-				//So we pretty much always go in the opposite direction
-				//using 'groupMirrorPos' as a reference point.
-				if (mirOfs != mirOfs) //NaN check
-					mirOfs = level.Vec3Diff(pos, groupMirrorPos);
-				newPos = level.Vec3Offset(plat.groupMirrorPos, mirOfs);
+		if (user_turnspeed_roll_idle)
+			newRoll = (roll + user_turnspeed_roll_idle) % 360;
 
-				if (changeAng)
-				{
-					if (delta != delta) //NaN check
-						delta = DeltaAngle(angle, groupAngle);
-					newAngle = plat.groupAngle + delta;
-				}
-				if (changePi)
-				{
-					if (piDelta != piDelta) //NaN check
-						piDelta = DeltaAngle(pitch, groupPitch);
-					newPitch = plat.groupPitch + piDelta;
-				}
-				if (changeRo)
-				{
-					if (roDelta != roDelta) //NaN check
-						roDelta = DeltaAngle(roll, groupRoll);
-					newRoll = plat.groupRoll + roDelta;
-				}
-			}
-			else //Non-mirror movement. Rotation happens here.
-			{
-				if (qRot != qRot) //NaN check
-					qRot = quat.FromAngles(angle, pitch, roll);
-				newPos = level.Vec3Offset(pos, qRot * plat.groupRotOffset);
+		//Hypothetically, this is the current interpolated position
+		//that's unaffected by the pivot offset.
+		vector3 pathPos = pos - interpolatedPivotOffset; //Don't call Lerp() or Splerp() for this
 
-				if (changeAng || changePi || changeRo)
-				{
-					let [qYaw, qPitch, qRoll] = AnglesFromQuat(qRot * plat.groupRotAngDiff);
+		vector3 pivotAdjustedPos = pos;
+		if (!bIgnorePivot && (angle != newAngle || pitch != newPitch || roll != newRoll))
+			pivotAdjustedPos = GetPivotedPosition(pivotAdjustedPos, (angle, pitch, roll), (newAngle, newPitch, newRoll));
 
-					if (changeAng)
-						newAngle = qYaw;
-					if (changePi)
-						newPitch = qPitch;
-					if (changeRo)
-						newRoll = qRoll;
-				}
-			}
+		int result = PlatMove(pivotAdjustedPos, newAngle, newPitch, newRoll, MOVE_NORMAL);
+		if (result == 2)
+			interpolatedPivotOffset = pivotAdjustedPos - pathPos;
 
-			if (bPlatPorted)
-			{
-				plat.bPlatPorted = true;
-				plat.platTeleFlags = platTeleFlags;
-			}
+		if (result == 2 && pos != pivotAdjustedPos) //Crossed a portal?
+			AdjustInterpolationCoordinates(pivotAdjustedPos, pos, DeltaAngle(newAngle, angle));
+		else if (result == 1)
+			PlatMove(startPos, startAngle, startPitch, startRoll, MOVE_QUICKTELE); //Move the group back
 
-			if (!plat.DoMove(newPos, newAngle, newPitch, newRoll, moveType) && moveType > MOVE_QUICK)
-				return false;
-		}
-		return true;
+		return (!bDestroyed);
 	}
 
 	//============================
@@ -3957,7 +4025,7 @@ extend class FishyPlatform
 	//============================
 	override void Deactivate (Actor activator)
 	{
-		if (!bActive || bPortCopy)
+		if (!bFollowingPath || bPortCopy)
 			return;
 
 		vel = (0, 0, 0);
@@ -3975,7 +4043,7 @@ extend class FishyPlatform
 			if (plat.portTwin && plat.portTwin.bNoBlockmap && plat.portTwin.bPortCopy)
 				plat.portTwin.Destroy();
 		}
-		bActive = false;
+		bFollowingPath = false;
 	}
 
 	//============================
@@ -3983,7 +4051,7 @@ extend class FishyPlatform
 	//============================
 	override void Activate (Actor activator)
 	{
-		if (!bActive || (group && group.origin != self))
+		if (!bFollowingPath || (group && group.origin != self))
 		{
 			if (bPortCopy)
 				return;
@@ -3991,12 +4059,12 @@ extend class FishyPlatform
 			vel = (0, 0, 0);
 
 			if (portTwin)
-				portTwin.bActive = false;
+				portTwin.bFollowingPath = false;
 
 			bRanActivationRoutine = true;
 			if ((options & OPTFLAG_RESUMEPATH) && time <= 1.0)
 			{
-				bActive = true;
+				bFollowingPath = true;
 				if (group && group.origin != self)
 					SetGroupOrigin(self, setNonOriginInactive: true);
 				MustGetNewPassengers(); //Ignore search tic rate; do a search now
@@ -4017,7 +4085,7 @@ extend class FishyPlatform
 					if (!CallNodeSpecials() || !currNode || currNode.bDestroyed)
 						return; //Abort if we or the node got Thing_Remove()'d
 				}
-				bActive = true;
+				bFollowingPath = true;
 				if (group && group.origin != self)
 					SetGroupOrigin(self, setNonOriginInactive: true);
 
@@ -4134,7 +4202,7 @@ extend class FishyPlatform
 			}
 		}
 
-		if (result == 2 && bActive)
+		if (result == 2 && bFollowingPath)
 		{
 			pCurr += vel;
 			if (pos != newPos) //Crossed a portal?
@@ -4178,7 +4246,10 @@ extend class FishyPlatform
 	private bool, bool CheckUserSoundsMovement ()
 	{
 		bool shouldMove = (
-			(!holdTime && bActive) ||
+			(!holdTime && bFollowingPath) ||
+			user_turnspeed_angle_idle ||
+			user_turnspeed_pitch_idle ||
+			user_turnspeed_roll_idle ||
 			bUserSoundsShouldMove ||
 			(vel != (0, 0, 0) && vel.LengthSquared() > USERSND_LOWVEL)
 		);
@@ -4251,6 +4322,13 @@ extend class FishyPlatform
 		{
 			if (!--holdTime) //Finished waiting?
 				MustGetNewPassengers(); //Ignore search tic rate; do a search now
+
+			if (user_turnspeed_angle_idle ||
+				user_turnspeed_pitch_idle ||
+				user_turnspeed_roll_idle)
+			{
+				return HandleIdleTurnSpeeds();
+			}
 			return true;
 		}
 
@@ -4335,7 +4413,7 @@ extend class FishyPlatform
 			if (!bRanActivationRoutine && !finishedPath)
 				SetHoldTime();
 
-			if (finishedPath || holdTime > 0 || !bActive) //'bActive' being false can happen if CallNodeSpecials() ended up calling Deactivate() on self
+			if (finishedPath || holdTime > 0 || !bFollowingPath) //'bFollowingPath' being false can happen if CallNodeSpecials() ended up calling Deactivate() on self
 			{
 				//Stopped() must be called before PlatMove() in this case
 				for (int i = -1; i == -1 || (group && i < group.members.Size()); ++i)
@@ -4433,7 +4511,7 @@ extend class FishyPlatform
 			if (group.members.Find(self) >= group.members.Size())
 				group.members.Push(self); //Ensure we're in the group array
 
-			if ((!group.origin || (!group.origin.bActive && group.origin.vel == (0, 0, 0))) && (bActive || vel != (0, 0, 0)))
+			if ((!group.origin || (!group.origin.bFollowingPath && group.origin.vel == (0, 0, 0))) && (bFollowingPath || vel != (0, 0, 0)))
 			{
 				SetGroupOrigin(self);
 			}
@@ -4441,7 +4519,7 @@ extend class FishyPlatform
 			{
 				group.origin.vel += vel; //Any member's received velocity is passed on to the origin
 				vel = (0, 0, 0);
-				bActive = false; //Non-origin members aren't supposed to be "active"
+				bFollowingPath = false; //Non-origin members aren't supposed to be "active"
 			}
 
 			//We need to check if the 'carrier' is actually carrying anyone in this group
@@ -4546,7 +4624,7 @@ extend class FishyPlatform
 			//If our position/angles have actually changed then go back and try to get here via PlatMove()
 			if (pos != oldPos || angle != oldAngle || pitch != oldPitch || roll != oldRoll)
 			{
-				if (bActive && (pos != oldPos || angle != oldAngle))
+				if (bFollowingPath && (pos != oldPos || angle != oldAngle))
 				{
 					if (bPlatPorted || curSector.portalGroup != oldPGroup)
 						AdjustInterpolationCoordinates(oldPos, pos, DeltaAngle(oldAngle, angle));
@@ -4586,8 +4664,23 @@ extend class FishyPlatform
 				return; //Abort if we got Thing_Remove()'d
 		}
 
-		if (bActive && (!group || group.origin == self) && !HandlePathFollowing())
-			return; //We got destroyed
+		//Path following and idle turning (both influenced by pivot behavior)
+		if (!group || !group.origin || group.origin == self)
+		{
+			if (bFollowingPath && !HandlePathFollowing())
+			{
+				return; //We got destroyed
+			}
+
+			if (!bFollowingPath &&
+				(user_turnspeed_angle_idle ||
+				user_turnspeed_pitch_idle ||
+				user_turnspeed_roll_idle) &&
+				!HandleIdleTurnSpeeds() )
+			{
+				return; //We got destroyed
+			}
+		}
 
 		if (callActorTick)
 		{
@@ -4602,7 +4695,7 @@ extend class FishyPlatform
 			bool onGround = false;
 			bool yesGravity = false;
 			bool yesFriction = false;
-			inactive = !bActive;
+			inactive = !bFollowingPath;
 
 			for (int i = -1; i == -1 || (group && group.origin == self && i < group.members.Size()); ++i)
 			{
@@ -4830,7 +4923,11 @@ extend class FishyPlatform
 		if (plat.group && plat.group.origin)
 			plat = plat.group.origin;
 
-		return (plat.bActive || plat.vel != (0, 0, 0));
+		return (plat.bFollowingPath ||
+			plat.vel != (0, 0, 0) ||
+			plat.user_turnspeed_angle_idle ||
+			plat.user_turnspeed_pitch_idle ||
+			plat.user_turnspeed_roll_idle);
 	}
 
 	//============================
@@ -4846,8 +4943,13 @@ extend class FishyPlatform
 		if (plat.group && plat.group.origin)
 			plat = plat.group.origin;
 
-		return ((plat.bActive || plat.vel != (0, 0, 0)) && (
-				plat.pos != plat.oldPos ||
+		bool activity = (plat.bFollowingPath ||
+			plat.vel != (0, 0, 0) ||
+			plat.user_turnspeed_angle_idle ||
+			plat.user_turnspeed_pitch_idle ||
+			plat.user_turnspeed_roll_idle);
+
+		return (activity && (plat.pos != plat.oldPos ||
 				(!posOnly && plat.angle != plat.oldAngle) ||
 				(!posOnly && plat.pitch != plat.oldPitch) ||
 				(!posOnly && plat.roll != plat.oldRoll) ) );
@@ -4862,7 +4964,7 @@ extend class FishyPlatform
 		reachedTime = 0;
 		holdTime = 0;
 		bTimeAlreadySet = true;
-		bActive = true;
+		bFollowingPath = true;
 		if (group && group.origin != self)
 			SetGroupOrigin(self, setNonOriginInactive: true);
 		portDelta = 0;
@@ -4983,7 +5085,7 @@ extend class FishyPlatform
 		ActorIterator it = platTid ? level.CreateActorIterator(platTid, "FishyPlatform") : null;
 		for (let plat = FishyPlatform(it ? it.Next() : act); plat; plat = it ? FishyPlatform(it.Next()) : null)
 		{
-			if (plat.SetUpPath(nodeTid, false) && !plat.bActive)
+			if (plat.SetUpPath(nodeTid, false) && !plat.bFollowingPath)
 				plat.pCurr.x = double.nan; //Tell ACSFuncInterpolate() to call SetInterpolationCoordinates()
 		}
 	}
