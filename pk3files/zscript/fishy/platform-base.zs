@@ -135,9 +135,18 @@ class FishyPlatform : Actor abstract
 	bool user_snd_movestopsstart;
 	int user_snd_delaytomove; //If 0, wait until 'snd_start' is done
 
-	//If following interpolation point path (and not waiting due to "hold time"), use *onpath speeds.
-	//Otherwise, if moving with velocity, use *withvel speeds.
-	//Otherwise, use *idle speeds.
+	// If following interpolation point path (and not waiting due to "hold time"), use "onpath" speeds.
+	// NOTE: If using interpolation point to set angle/pitch/roll, then the related "onpath" speed is nullified! (No turning)
+	// NOTE: If using ACS to give explicit rotations on angle/pitch/roll, then the related "onpath" speed is nullified! (No turning)
+	//
+	// Otherwise, if moving with velocity, use "withvel" speeds.
+	// Otherwise, use "idle" speeds.
+	// So in short the priority is: "onpath" > "withvel" > "idle"
+	//
+	// NOTE: turn speeds have no effect on group members who aren't the origin.
+	// If a group starts with no origin then the first platform with any "idle" speeds
+	// becomes the origin (just because it starts turning/moving)
+	//
 	double user_turnspeed_angle_onpath;
 	double user_turnspeed_angle_withvel;
 	double user_turnspeed_angle_idle;
@@ -3838,18 +3847,9 @@ extend class FishyPlatform
 		double startRoll = roll;
 
 		vector3 newPos;
-		double newAngle = angle;
-		double newPitch = pitch;
-		double newRoll = roll;
-
-		if (!changeAng && user_turnspeed_angle_onpath)
-			newAngle = (angle + user_turnspeed_angle_onpath) % 360;
-
-		if (!changePi && user_turnspeed_pitch_onpath)
-			newPitch = (pitch + user_turnspeed_pitch_onpath) % 360;
-
-		if (!changeRo && user_turnspeed_roll_onpath)
-			newRoll = (roll + user_turnspeed_roll_onpath) % 360;
+		double newAngle = (!changeAng && user_turnspeed_angle_onpath) ? (angle + user_turnspeed_angle_onpath) % 360 : angle;
+		double newPitch = (!changePi && user_turnspeed_pitch_onpath)  ? (pitch + user_turnspeed_pitch_onpath) % 360 : pitch;
+		double newRoll  = (!changeRo && user_turnspeed_roll_onpath)   ? (roll + user_turnspeed_roll_onpath) % 360   : roll;
 
 		if (linear)
 		{
@@ -3963,23 +3963,14 @@ extend class FishyPlatform
 		double startPitch = pitch;
 		double startRoll = roll;
 
-		double newAngle = angle;
-		double newPitch = pitch;
-		double newRoll = roll;
-
 		bool gotVel = (vel != (0, 0, 0) && vel.LengthSquared() > MISCUSERVAR_LOWVEL);
 		double turnSpeedAngle = (gotVel) ? user_turnspeed_angle_withvel : user_turnspeed_angle_idle;
 		double turnSpeedPitch = (gotVel) ? user_turnspeed_pitch_withvel : user_turnspeed_pitch_idle;
 		double turnSpeedRoll  = (gotVel) ? user_turnspeed_roll_withvel  : user_turnspeed_pitch_idle;
 
-		if (turnSpeedAngle)
-			newAngle = (angle + turnSpeedAngle) % 360;
-
-		if (turnSpeedPitch)
-			newPitch = (pitch + turnSpeedPitch) % 360;
-
-		if (turnSpeedRoll)
-			newRoll = (roll + turnSpeedRoll) % 360;
+		double newAngle = (turnSpeedAngle) ? (angle + turnSpeedAngle) % 360 : angle;
+		double newPitch = (turnSpeedPitch) ? (pitch + turnSpeedPitch) % 360 : pitch;
+		double newRoll  = (turnSpeedRoll)  ? (roll + turnSpeedRoll) % 360   : roll;
 
 		//Hypothetically, this is the current interpolated position
 		//that's unaffected by the pivot offset.
@@ -4334,9 +4325,8 @@ extend class FishyPlatform
 			if (!--holdTime) //Finished waiting?
 				MustGetNewPassengers(); //Ignore search tic rate; do a search now
 
-			if (user_turnspeed_angle_idle ||
-				user_turnspeed_pitch_idle ||
-				user_turnspeed_roll_idle)
+			if (user_turnspeed_angle_idle || user_turnspeed_pitch_idle || user_turnspeed_roll_idle ||
+				user_turnspeed_angle_withvel || user_turnspeed_pitch_withvel || user_turnspeed_roll_withvel)
 			{
 				return HandleNonPathTurnSpeeds();
 			}
@@ -4964,9 +4954,9 @@ extend class FishyPlatform
 	}
 
 	//============================
-	// CommonACSSetup
+	// FirstCommonACSSetup
 	//============================
-	private void CommonACSSetup ()
+	private void FirstCommonACSSetup ()
 	{
 		time = 0;
 		reachedTime = 0;
@@ -4990,6 +4980,25 @@ extend class FishyPlatform
 		bRanACSSetupRoutine = true;
 	}
 
+	//============================
+	// LastCommonACSSetup
+	//============================
+	private void LastCommonACSSetup (int travelTime)
+	{
+		//Make "onpath" turnspeeds work if there's no ACS given rotation
+		if (pNextAngs.x == pCurrAngs.x && user_turnspeed_angle_onpath)
+			acsFlags &= ~OPTFLAG_ANGLE;
+		if (pNextAngs.y == pCurrAngs.y && user_turnspeed_pitch_onpath)
+			acsFlags &= ~OPTFLAG_PITCH;
+		if (pNextAngs.z == pCurrAngs.z && user_turnspeed_roll_onpath)
+			acsFlags &= ~OPTFLAG_ROLL;
+
+		if (travelTime <= 0) //Negative values are interpreted as speed in map units per tic
+			SetTravelSpeed(-travelTime);
+		else
+			timeFrac = 1.0 / travelTime; //Time unit is always in tics from the ACS side
+	}
+
 	//
 	//
 	// Everything below this point are
@@ -5005,7 +5014,7 @@ extend class FishyPlatform
 		ActorIterator it = platTid ? level.CreateActorIterator(platTid, "FishyPlatform") : null;
 		for (let plat = FishyPlatform(it ? it.Next() : act); plat; plat = it ? FishyPlatform(it.Next()) : null)
 		{
-			plat.CommonACSSetup();
+			plat.FirstCommonACSSetup();
 
 			plat.pNext = plat.pos + (exactPos ?
 				level.Vec3Diff(plat.pos, (x, y, z)) : //Make it portal aware in a way so TryMove() can handle it
@@ -5018,10 +5027,7 @@ extend class FishyPlatform
 				exactAngs ? DeltaAngle(plat.pCurrAngs.z, ro) : ro);
 			plat.pLastAngs = plat.pNextAngs;
 
-			if (travelTime <= 0) //Negative values are interpreted as speed in map units per tic
-				plat.SetTravelSpeed(-travelTime);
-			else
-				plat.timeFrac = 1.0 / travelTime; //Time unit is always in tics from the ACS side
+			plat.LastCommonACSSetup(travelTime);
 		}
 	}
 
@@ -5039,7 +5045,7 @@ extend class FishyPlatform
 		it = platTid ? level.CreateActorIterator(platTid, "FishyPlatform") : null;
 		for (let plat = FishyPlatform(it ? it.Next() : act); plat; plat = it ? FishyPlatform(it.Next()) : null)
 		{
-			plat.CommonACSSetup();
+			plat.FirstCommonACSSetup();
 
 			plat.pNext = plat.pos + plat.Vec3To(spot); //Make it portal aware in a way so TryMove() can handle it
 			plat.pLast = plat.pNext;
@@ -5050,10 +5056,7 @@ extend class FishyPlatform
 				!dontRotate ? DeltaAngle(plat.pCurrAngs.z, spot.roll) : 0);
 			plat.pLastAngs = plat.pNextAngs;
 
-			if (travelTime <= 0) //Negative values are interpreted as speed in map units per tic
-				plat.SetTravelSpeed(-travelTime);
-			else
-				plat.timeFrac = 1.0 / travelTime; //Time unit is always in tics from the ACS side
+			plat.LastCommonACSSetup(travelTime);
 		}
 	}
 
