@@ -3827,11 +3827,13 @@ extend class FishyPlatform
 	//============================
 	// Interpolate
 	//============================
-	private bool Interpolate (PMoveTypes moveType = MOVE_NORMAL)
+	private bool, bool Interpolate (PMoveTypes moveType = MOVE_NORMAL)
 	{
 		//A heavily modified version of the
 		//original function from PathFollower.
-		//Returns "false" if we ended up destroyed.
+
+		//First boolean returns "false" if we ended up destroyed.
+		//Second boolean returns "true" if this particular call moved us.
 
 		bool linear = (options & OPTFLAG_LINEAR);
 		bool changeAng = ((options | acsFlags) & OPTFLAG_ANGLE);
@@ -3942,21 +3944,25 @@ extend class FishyPlatform
 		//Result == 2 means everyone moved. 1 == this platform moved but not all its groupmates moved.
 		//(If this platform isn't in a group then the result is likewise 2 if it moved.)
 		int result = PlatMove(pivotAdjustedPos, newAngle, newPitch, newRoll, moveType);
-		if (result == 2) //This here must be checked before 'bDestroyed'
+		if (bDestroyed)
+			return false, (result == 2); //Abort if we ended up being Thing_Remove()'d
+
+		if (result == 2)
 		{
 			interpolatedPivotOffset = pivotAdjustedPos - newPos;
+
+			//This must be "true" for any amount of Interpolate() calls that have moved us
+			//before the next HandleNonPathTurnSpeeds() call.
+			//Multiple Interpolate() calls are possible through ACS.
 			bInterpolateSuccess = true;
 		}
-
-		if (bDestroyed)
-			return false; //Abort if we ended up being Thing_Remove()'d
 
 		if (result == 2 && pos != pivotAdjustedPos) //Crossed a portal?
 			AdjustInterpolationCoordinates(pivotAdjustedPos, pos, DeltaAngle(newAngle, angle));
 		else if (result == 1)
 			PlatMove(startPos, startAngle, startPitch, startRoll, MOVE_QUICKTELE); //Move the group back
 
-		return (!bDestroyed);
+		return (!bDestroyed), (result == 2);
 	}
 
 	//============================
@@ -4338,10 +4344,11 @@ extend class FishyPlatform
 			return true;
 		}
 
-		if (!Interpolate())
+		let [stillHere, success] = Interpolate();
+		if (!stillHere)
 			return false; //Abort if we got Thing_Remove()'d
 
-		if (!bInterpolateSuccess)
+		if (!success)
 		{
 			if (stuckActors.Size() || (portTwin && !portTwin.bNoBlockmap && portTwin.stuckActors.Size()))
 				return true; //Don't bother
@@ -4351,9 +4358,10 @@ extend class FishyPlatform
 			{
 				let oldTime = time;
 				time = reachedTime + timeFrac * 0.125;
-				if (!Interpolate())
+				[stillHere, success] = Interpolate();
+				if (!stillHere)
 					return false; //Abort if we got Thing_Remove()'d
-				if (bInterpolateSuccess)
+				if (success)
 					reachedTime = time;
 				time = oldTime;
 			}
@@ -5353,27 +5361,24 @@ extend class FishyPlatform
 		{
 			let oldTime = platList[i].time;
 			platList[i].time = newTime;
-			let oldSuccess = platList[i].bInterpolateSuccess;
-			platList[i].bInterpolateSuccess = false;
-
 			platList[i].bUserSoundsShouldMove = true;
-			if (!platList[i].Interpolate(teleMove ? MOVE_TELEPORT : MOVE_NORMAL))
+
+			let [stillHere, success] = platList[i].Interpolate(teleMove ? MOVE_TELEPORT : MOVE_NORMAL);
+			if (success)
+				++count;
+			if (!stillHere)
 				continue; //This platform got destroyed
 
-			if (platList[i].bInterpolateSuccess)
+			if (success)
 			{
 				platList[i].reachedTime = newTime;
 				platList[i].bTimeAlreadySet = true;
 				platList[i].bUserSoundsHasMoved = true;
-				++count;
 			}
 			else
 			{
 				platList[i].time = oldTime;
 			}
-
-			if (oldSuccess)
-				platList[i].bInterpolateSuccess = true;
 		}
 		return count;
 	}
