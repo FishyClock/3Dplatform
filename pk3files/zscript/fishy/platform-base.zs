@@ -516,6 +516,7 @@ extend class FishyPlatform
 	transient bool bTimeAlreadySet; //Used to check if 'time' was set on self through CallNodeSpecials().
 	transient bool bInMove; //No collision between a platform and its passengers during said platform's move.
 	transient bool bMoved; //Used for PassengerPostMove() when everyone has finished (or tried) moving in this tic.
+	bool bInterpolateSuccess; //Don't run HandleNonPathTurnSpeeds() if any Interpolate() call was successful in the last tic.
 	InterpolationPoint currNode, firstNode;
 	InterpolationPoint prevNode, firstPrevNode;
 	bool bGoToNode;
@@ -3830,6 +3831,7 @@ extend class FishyPlatform
 	{
 		//A heavily modified version of the
 		//original function from PathFollower.
+		//Returns "false" if we ended up destroyed.
 
 		bool linear = (options & OPTFLAG_LINEAR);
 		bool changeAng = ((options | acsFlags) & OPTFLAG_ANGLE);
@@ -3940,15 +3942,21 @@ extend class FishyPlatform
 		//Result == 2 means everyone moved. 1 == this platform moved but not all its groupmates moved.
 		//(If this platform isn't in a group then the result is likewise 2 if it moved.)
 		int result = PlatMove(pivotAdjustedPos, newAngle, newPitch, newRoll, moveType);
-		if (result == 2)
+		if (result == 2) //This here must be checked before 'bDestroyed'
+		{
 			interpolatedPivotOffset = pivotAdjustedPos - newPos;
+			bInterpolateSuccess = true;
+		}
+
+		if (bDestroyed)
+			return false; //Abort if we ended up being Thing_Remove()'d
 
 		if (result == 2 && pos != pivotAdjustedPos) //Crossed a portal?
 			AdjustInterpolationCoordinates(pivotAdjustedPos, pos, DeltaAngle(newAngle, angle));
 		else if (result == 1)
 			PlatMove(startPos, startAngle, startPitch, startRoll, MOVE_QUICKTELE); //Move the group back
 
-		return (result == 2);
+		return (!bDestroyed);
 	}
 
 	//============================
@@ -3966,7 +3974,7 @@ extend class FishyPlatform
 		bool gotVel = (vel != (0, 0, 0) && vel.LengthSquared() > MISCUSERVAR_LOWVEL);
 		double turnSpeedAngle = (gotVel) ? user_turnspeed_angle_withvel : user_turnspeed_angle_idle;
 		double turnSpeedPitch = (gotVel) ? user_turnspeed_pitch_withvel : user_turnspeed_pitch_idle;
-		double turnSpeedRoll  = (gotVel) ? user_turnspeed_roll_withvel  : user_turnspeed_pitch_idle;
+		double turnSpeedRoll  = (gotVel) ? user_turnspeed_roll_withvel  : user_turnspeed_roll_idle;
 
 		double newAngle = (turnSpeedAngle) ? (angle + turnSpeedAngle) % 360 : angle;
 		double newPitch = (turnSpeedPitch) ? (pitch + turnSpeedPitch) % 360 : pitch;
@@ -3981,6 +3989,9 @@ extend class FishyPlatform
 			pivotAdjustedPos = GetPivotedPosition(pivotAdjustedPos, (angle, pitch, roll), (newAngle, newPitch, newRoll));
 
 		int result = PlatMove(pivotAdjustedPos, newAngle, newPitch, newRoll, MOVE_NORMAL);
+		if (bDestroyed)
+			return false; //Abort if we ended up being Thing_Remove()'d
+
 		if (result == 2)
 			interpolatedPivotOffset = pivotAdjustedPos - pathPos;
 
@@ -4324,20 +4335,13 @@ extend class FishyPlatform
 		{
 			if (!--holdTime) //Finished waiting?
 				MustGetNewPassengers(); //Ignore search tic rate; do a search now
-
-			if (user_turnspeed_angle_idle || user_turnspeed_pitch_idle || user_turnspeed_roll_idle ||
-				user_turnspeed_angle_withvel || user_turnspeed_pitch_withvel || user_turnspeed_roll_withvel)
-			{
-				return HandleNonPathTurnSpeeds();
-			}
 			return true;
 		}
 
-		bool interpolated = Interpolate();
-		if (bDestroyed)
+		if (!Interpolate())
 			return false; //Abort if we got Thing_Remove()'d
 
-		if (!interpolated)
+		if (!bInterpolateSuccess)
 		{
 			if (stuckActors.Size() || (portTwin && !portTwin.bNoBlockmap && portTwin.stuckActors.Size()))
 				return true; //Don't bother
@@ -4347,10 +4351,9 @@ extend class FishyPlatform
 			{
 				let oldTime = time;
 				time = reachedTime + timeFrac * 0.125;
-				interpolated = Interpolate();
-				if (bDestroyed)
+				if (!Interpolate())
 					return false; //Abort if we got Thing_Remove()'d
-				if (interpolated)
+				if (bInterpolateSuccess)
 					reachedTime = time;
 				time = oldTime;
 			}
@@ -4463,13 +4466,9 @@ extend class FishyPlatform
 			}
 
 			if (bTimeAlreadySet && !finishedPath && holdTime > 0)
-			{
 				Interpolate(); //If we're pausing, try to be at whatever point 'time' is pointing to between two nodes
-				if (bDestroyed)
-					return false; //Abort if we got Thing_Remove()'d
-			}
 		}
-		return true;
+		return (!bDestroyed);
 	}
 
 	//============================
@@ -4671,7 +4670,7 @@ extend class FishyPlatform
 			if (bFollowingPath && !HandlePathFollowing())
 				return; //We got destroyed
 
-			if (!bFollowingPath &&
+			if (!bInterpolateSuccess && //The last Interpolate() call (including from ACS) must not have moved us
 				(user_turnspeed_angle_idle || user_turnspeed_pitch_idle || user_turnspeed_roll_idle ||
 				user_turnspeed_angle_withvel || user_turnspeed_pitch_withvel || user_turnspeed_roll_withvel) &&
 				!HandleNonPathTurnSpeeds() )
@@ -4679,6 +4678,7 @@ extend class FishyPlatform
 				return; //We got destroyed
 			}
 		}
+		bInterpolateSuccess = false;
 
 		if (callActorTick)
 		{
@@ -5353,21 +5353,27 @@ extend class FishyPlatform
 		{
 			let oldTime = platList[i].time;
 			platList[i].time = newTime;
+			let oldSuccess = platList[i].bInterpolateSuccess;
+			platList[i].bInterpolateSuccess = false;
+
 			platList[i].bUserSoundsShouldMove = true;
-			if (platList[i].Interpolate(teleMove ? MOVE_TELEPORT : MOVE_NORMAL))
+			if (!platList[i].Interpolate(teleMove ? MOVE_TELEPORT : MOVE_NORMAL))
+				continue; //This platform got destroyed
+
+			if (platList[i].bInterpolateSuccess)
 			{
-				if (platList[i] && !platList[i].bDestroyed) //Make sure it wasn't Thing_Remove()'d
-				{
-					platList[i].reachedTime = newTime;
-					platList[i].bTimeAlreadySet = true;
-					platList[i].bUserSoundsHasMoved = true;
-				}
+				platList[i].reachedTime = newTime;
+				platList[i].bTimeAlreadySet = true;
+				platList[i].bUserSoundsHasMoved = true;
 				++count;
 			}
-			else if (platList[i] && !platList[i].bDestroyed) //Ditto
+			else
 			{
 				platList[i].time = oldTime;
 			}
+
+			if (oldSuccess)
+				platList[i].bInterpolateSuccess = true;
 		}
 		return count;
 	}
