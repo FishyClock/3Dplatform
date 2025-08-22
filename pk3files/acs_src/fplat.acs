@@ -71,7 +71,7 @@ function void FishyPlat_Rotate (int platTid, int/*fixed*/ ang, int/*fixed*/ pi, 
 	- exactAngs = if "false" ang/pi/ro are offsets.
 	  If "true" ang/pi/ro are exact values.
 
-	  Note: if "true" the platform will take the shortest rotation direction until its
+	  NOTE: if "true" the platform will take the shortest rotation direction until its
 	  angle/pitch/roll matches the given values. If "false" the rotation direction is maintained.
 
 	  Eg. if "false" and "ang" is 360.0, platform will rotate 360 degrees counterclockwise,
@@ -80,6 +80,16 @@ function void FishyPlat_Rotate (int platTid, int/*fixed*/ ang, int/*fixed*/ pi, 
 	  In addition, the FPLAT_OPTFLAG_FACEMOVE (face movement direction) option in combination
 	  with the FPLAT_OPTFLAG_ANGLE/PITCH/ROLL options takes precedence over any rotations
 	  on the affected axes.
+
+	  NOTE: If the platform uses "turn speeds" (which are user variables)
+	  to give itself perpetual rotation and calling this function causes a rotation
+	  to occur on angle/pitch/roll then the associated turn speed will NOT be used.
+	  Otherwise, the "onpath" turn speed will be used.
+	  (The "onpath" category is used for when actively following a path,
+	  this includes all ACS Move/Rotate commands.)
+	  For example. If you want the platform to use its "onpath" angle turn speed then
+	  if "exactAngs" is "false", "ang" must be 0.
+	  If "exactAngs" is "true", "ang" must be the platform's current angle.
 
 	- travelTime = How many tics until platform completes the rotation.
 	  if this is a negative number then this is speed in map units per tic instead.
@@ -104,7 +114,7 @@ function void FishyPlat_MoveAndRotate (int platTid, int/*fixed*/ x, int/*fixed*/
 	- exactAngs = if "false" ang/pi/ro are offsets.
 	  If "true" ang/pi/ro are exact values.
 
-	  Note: if "true" the platform will take the shortest rotation direction until its
+	  NOTE: if "true" the platform will take the shortest rotation direction until its
 	  angle/pitch/roll matches the given values. If "false" the rotation direction is maintained.
 
 	  Eg. if "false" and "ang" is 360.0, platform will rotate 360 degrees counterclockwise,
@@ -113,6 +123,16 @@ function void FishyPlat_MoveAndRotate (int platTid, int/*fixed*/ x, int/*fixed*/
 	  In addition, the FPLAT_OPTFLAG_FACEMOVE (face movement direction) option in combination
 	  with the FPLAT_OPTFLAG_ANGLE/PITCH/ROLL options takes precedence over any rotations
 	  on the affected axes.
+
+	  NOTE: If the platform uses "turn speeds" (which are user variables)
+	  to give itself perpetual rotation and calling this function causes a rotation
+	  to occur on angle/pitch/roll then the associated turn speed will NOT be used.
+	  Otherwise, the "onpath" turn speed will be used.
+	  (The "onpath" category is used for when actively following a path,
+	  this includes all ACS Move/Rotate commands.)
+	  For example. If you want the platform to use its "onpath" angle turn speed then
+	  if "exactAngs" is "false", "ang" must be 0.
+	  If "exactAngs" is "true", "ang" must be the platform's current angle.
 
 	- travelTime = How many tics until platform completes the move and/or rotation.
 	  if this is a negative number then this is speed in map units per tic instead.
@@ -149,6 +169,15 @@ function void FishyPlat_MoveToSpotAndRotate (int platTid, int spotTid, int trave
 	  with the FPLAT_OPTFLAG_ANGLE/PITCH/ROLL options takes precedence over any rotations
 	  on the affected axes.
 
+	  NOTE: If the platform uses "turn speeds" (which are user variables)
+	  to give itself perpetual rotation and calling this function causes a rotation
+	  to occur on angle/pitch/roll then the associated turn speed will NOT be used.
+	  Otherwise, the "onpath" turn speed will be used.
+	  (The "onpath" category is used for when actively following a path,
+	  this includes all ACS Move/Rotate commands.)
+	  For example. If you want the platform to use its "onpath" angle turn speed then
+	  the spot's angle must match the platform's current angle.
+
 	- travelTime = How many tics until platform completes the move and/or rotation.
 	  if this is a negative number then this is speed in map units per tic instead.
 	*********************************************************************************/
@@ -159,7 +188,8 @@ function bool FishyPlat_IsActive (int platTid)
 {
 	/*********************************************************************************
 	**Returns "true" when it finds the first active platform with tid "platTid",
-	otherwise returns "false". Being "active" also implies velocity based movement. (eg. being pushed)
+	otherwise returns "false". Being "active" also implies velocity based movement (eg. being pushed)
+	or using one of the "idle" turn speeds.
 	(Please note if the platform is in a group then what's actually checked is the group origin.)**
 
 	- platTid = TID of the platform to check. if 0 then this is the script activator.
@@ -171,7 +201,8 @@ function bool FishyPlat_HasMoved (int platTid, bool posOnly)
 {
 	/*********************************************************************************
 	**Returns "true" when it finds the first active platform with tid "platTid" that has moved since last tic,
-	otherwise returns "false". Being "active" also implies velocity based movement. (eg. being pushed)
+	otherwise returns "false". Being "active" also implies velocity based movement (eg. being pushed)
+	or using one of the "idle" turn speeds.
 	(Please note if the platform is in a group then what's actually checked is the group origin.)**
 
 	- platTid = TID of the platform to check. if 0 then this is the script activator.
@@ -387,8 +418,7 @@ function void FishyPlat_SetPivot (int platTid, int/*fixed*/ x, int/*fixed*/ y, i
 {
 	/*********************************************************************************
 	**Sets a pivot for the platform(s). Meaning whenever the platform's angle/pitch/roll changes it will
-	rotate/orbit around this pivot. The pivot can be attached to the platform or it can be
-	a constant point on the map.
+	rotate around this pivot. The pivot can be attached to the platform or it can be a constant point on the map.
 
 	- platTid = TID of the platform(s) whose pivot data to set. If 0 then this is the script activator.
 
