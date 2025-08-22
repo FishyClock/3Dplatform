@@ -1692,7 +1692,7 @@ extend class FishyPlatform
 	private void ForgetPassenger (int index)
 	{
 		let plat = FishyPlatform(passengers[index]);
-		if (plat && plat.group && plat.group.carrier == self)
+		if (plat && !plat.bDestroyed && plat.group && plat.group.carrier == self)
 			plat.group.carrier = null;
 		passengers.Delete(index);
 	}
@@ -2296,6 +2296,12 @@ extend class FishyPlatform
 					MOVE_NORMAL;
 
 				int result = plat.PlatMove(moNewPos, moNewAngle, plat.pitch, plat.roll, moveType);
+				if (!mo || mo.bDestroyed)
+				{
+					ForgetPassenger(i);
+					continue;
+				}
+
 				moved = (result == 2); //2 == this plat and its groupmates moved. 1 == plat moved but not all groupmates moved.
 				if (plat.bFollowingPath)
 				{
@@ -2328,12 +2334,6 @@ extend class FishyPlatform
 						PassengerPostMove(mo, result);
 					}
 					ForgetPassenger(i); //Forget this active platform (we won't move it back in case something gets blocked)
-					continue;
-				}
-
-				if (!mo || mo.bDestroyed)
-				{
-					ForgetPassenger(i);
 					continue;
 				}
 
@@ -2885,6 +2885,8 @@ extend class FishyPlatform
 		//Don't call TryMove() nor Vec3Offset() for it.
 		SetZ(newPos.z);
 		bool moved = bPortCopy ? FitsAtPosition(self, newPos) : TryMove(newPos.xy, 1);
+		if (bDestroyed)
+			return false;
 		let mo = blockingMobj;
 
 		//Remember 'blockingMobj' as a "nearby actor" if it isn't one already
@@ -2906,7 +2908,11 @@ extend class FishyPlatform
 					//Try one more time - unlike in the lower case,
 					//we won't move back 'plat' if the move failed again.
 					if (plat.DoPlatZFix(moNewZ, self))
+					{
 						moved = bPortCopy ? FitsAtPosition(self, newPos) : TryMove(newPos.xy, 1);
+						if (bDestroyed)
+							return false;
+					}
 				}
 				else
 				{
@@ -2918,6 +2924,8 @@ extend class FishyPlatform
 
 						//Try one more time
 						moved = bPortCopy ? FitsAtPosition(self, newPos) : TryMove(newPos.xy, 1);
+						if (bDestroyed)
+							return false;
 						if (!moved)
 						{
 							mo.SetZ(moOldZ);
@@ -3267,6 +3275,8 @@ extend class FishyPlatform
 		}
 
 		int result = DoMove(newPos, newAngle, newPitch, newRoll, moveType) ? 1 : 0;
+		if (bDestroyed)
+			return 0;
 		if (result)
 			result = (!group || MoveGroup(moveType)) ? 2 : 1;
 
@@ -3303,11 +3313,8 @@ extend class FishyPlatform
 			if (moveType == MOVE_TRUETELE)
 			{
 				//Handle this early in case something goes wrong
-				if (!Teleport(newPos, newAngle, platTeleFlags))
+				if (!Teleport(newPos, newAngle, platTeleFlags) || bDestroyed)
 					return false;
-
-				if (bDestroyed)
-					return true; //"True" because technically we made a move before getting Thing_Remove()'d
 
 				CheckPortalTransition(); //Handle sector portals properly
 				newPos = pos; //Don't let CheckPortalTransition() confuse the (pos != newPos) if condition below
@@ -4204,6 +4211,9 @@ extend class FishyPlatform
 		vector3 startPos = pos;
 		vector3 newPos = pos + vel;
 		int result = PlatMove(newPos, angle, pitch, roll, MOVE_NORMAL);
+		if (bDestroyed)
+			return false; //Abort if we got Thing_Remove()'d
+
 		if (result != 2)
 		{
 			//Check if it's a culprit that blocks XY movement
@@ -4217,7 +4227,11 @@ extend class FishyPlatform
 				vel.z = 0;
 				newPos.z = startPos.z;
 				if (vel.xy == (0, 0) || (result = PlatMove(newPos, angle, pitch, roll, MOVE_NORMAL)) != 2)
+				{
+					if (bDestroyed)
+						return false; //Abort if we got Thing_Remove()'d
 					vel = (0, 0, 0);
+				}
 			}
 		}
 
