@@ -64,6 +64,10 @@
  SpecialBTIActor() is useful for actors detected during a BlockThingsIterator
  search. For cases where PassengerPre/PostMove() aren't good enough.
 
+ There's another virtual function called GetCrushDamageSource(Actor dmgSrc)
+ which can be used to determine crush damage damagetype as well as who
+ gets blamed for causing the damage.
+
 ******************************************************************************/
 
 class FishyPlatform : Actor abstract
