@@ -222,7 +222,7 @@ class FishyPlatformPivot : Actor
 
 		//$Arg0 Platform(s)
 		//$Arg0Type 14
-		//$Arg0Tooltip Platform(s) whose pivot to become.\nNOTE: Any platform that activates this thing will be affected as well.\nTip: one way a platform can activate a pivot thing is by using a Interpolation Special.
+		//$Arg0Tooltip Platform(s) whose pivot to become.\n\nNOTE: Any platform that activates this thing will be affected as well.\n\nTip: one way a platform can activate a pivot thing is by using a Interpolation Special.
 
 		//$Arg1 Needs Activation
 		//$Arg1Type 11
@@ -2889,8 +2889,6 @@ extend class FishyPlatform
 		//Don't call TryMove() nor Vec3Offset() for it.
 		SetZ(newPos.z);
 		bool moved = bPortCopy ? FitsAtPosition(self, newPos) : TryMove(newPos.xy, 1);
-		if (bDestroyed)
-			return false;
 		let mo = blockingMobj;
 
 		//Remember 'blockingMobj' as a "nearby actor" if it isn't one already
@@ -2912,11 +2910,7 @@ extend class FishyPlatform
 					//Try one more time - unlike in the lower case,
 					//we won't move back 'plat' if the move failed again.
 					if (plat.DoPlatZFix(moNewZ, self))
-					{
 						moved = bPortCopy ? FitsAtPosition(self, newPos) : TryMove(newPos.xy, 1);
-						if (bDestroyed)
-							return false;
-					}
 				}
 				else
 				{
@@ -2928,8 +2922,6 @@ extend class FishyPlatform
 
 						//Try one more time
 						moved = bPortCopy ? FitsAtPosition(self, newPos) : TryMove(newPos.xy, 1);
-						if (bDestroyed)
-							return false;
 						if (!moved)
 						{
 							mo.SetZ(moOldZ);
@@ -3279,8 +3271,6 @@ extend class FishyPlatform
 		}
 
 		int result = DoMove(newPos, newAngle, newPitch, newRoll, moveType) ? 1 : 0;
-		if (bDestroyed)
-			return 0;
 		if (result)
 			result = (!group || MoveGroup(moveType)) ? 2 : 1;
 
@@ -3317,8 +3307,11 @@ extend class FishyPlatform
 			if (moveType == MOVE_TRUETELE)
 			{
 				//Handle this early in case something goes wrong
-				if (!Teleport(newPos, newAngle, platTeleFlags) || bDestroyed)
+				if (!Teleport(newPos, newAngle, platTeleFlags))
 					return false;
+
+				if (bDestroyed)
+					return true; //Because we technically made a move before being destroyed
 
 				CheckPortalTransition(); //Handle sector portals properly
 				newPos = pos; //Don't let CheckPortalTransition() confuse the (pos != newPos) if condition below
