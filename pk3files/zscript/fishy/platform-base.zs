@@ -19,7 +19,7 @@
 *******************************************************************************
 
  This is a script library containing a full-fledged, reasonably stable
- 3D platform actor, a temporary answer to GZDoom's lack of "3D polyobjects".
+ 3D platform actor, a temporary answer to GZDoom/UZDoom's lack of "3D polyobjects".
  The platform can either be a sprite or a model.
  Though using models is the main point so it can masquerade as
  horizontally moving geometry that you can stand on and be carried by.
@@ -28,7 +28,7 @@
  FishyPlatform - The main platform actor class;
 
  FishyPlatformNode - a platform-centric interpolation point actor class
- (though GZDoom's "InterpolationPoint" is still perfectly usable);
+ (though GZDoom/UZDoom's "InterpolationPoint" is still perfectly usable);
 
  FishyPlatformPivot - a special map spot (actor class) for any platform
  to rotate around just by changing its own yaw/pitch/roll.
@@ -83,7 +83,7 @@ class FishyPlatform : Actor abstract
 
 		//$Arg0 Interpolation Point
 		//$Arg0Type 14
-		//$Arg0Tooltip Must be 'Platform Interpolation Point' or GZDoom's 'Interpolation Point' class.\nWhichever is more convenient.\n'Interpolation Special' works with both.\n\nNOTE: A negative 'Travel Time' is interpreted as speed in map units per tic.\n(This works on both interpolation point classes.)\n\nNOTE: If using interpolation point to determine angle/pitch/roll, (See "Options")\nthe related turn speed will be nullified while the platform is traveling (and not waiting)
+		//$Arg0Tooltip Must be 'Platform Interpolation Point' or the old 'Interpolation Point' class.\nWhichever is more convenient.\n'Interpolation Special' works with both.\n\nNOTE: A negative 'Travel Time' is interpreted as speed in map units per tic.\n(This works on both interpolation point classes.)\n\nNOTE: If using interpolation point to determine angle/pitch/roll, (See "Options")\nthe related turn speed will be nullified while the platform is traveling (and not waiting)
 
 		//$Arg1 Options
 		//$Arg1Type 12
@@ -1091,10 +1091,16 @@ extend class FishyPlatform
 		if (!a.bSolid || !b.bSolid)
 			return false;
 
+		if (a.bNoClip || b.bNoClip)
+			return false;
+
 		if ((a.bAllowThruBits || b.bAllowThruBits) && (a.thruBits & b.thruBits))
 			return false;
 
 		if ((a.bThruSpecies || b.bThruSpecies) && a.GetSpecies() == b.GetSpecies())
+			return false;
+
+		if ((a.player && (a.player.cheats & (CF_NOCLIP|CF_NOCLIP2))) || (b.player && (b.player.cheats & (CF_NOCLIP|CF_NOCLIP2))))
 			return false;
 
 		return true;
@@ -2262,7 +2268,7 @@ extend class FishyPlatform
 				//If this passenger is currently within XY range then clamp the rotated offset
 				//so that the passenger doesn't end up outside the XY range at its new position
 				//and potentially fall off the platform.
-				//This is a workaround to the fact that GZDoom (at this moment in time)
+				//This is a workaround to the fact that GZDoom/UZDoom (at this moment in time)
 				//uses AABB for actor collision. Meaning the collision box never rotates.
 				if (abs(oldOffX) < maxDist && abs(oldOffY) < maxDist)
 				{
@@ -2721,7 +2727,7 @@ extend class FishyPlatform
 			}
 
 			//Line bounding box.
-			//Reference for order: https://github.com/coelckers/gzdoom/blob/master/src/common/utility/m_bbox.h
+			//Reference for order: https://github.com/uzdoom/uzdoom/blob/trunk/src/common/utility/m_bbox.h
 			double minX2 = port.bbox[2]; //left
 			double maxX2 = port.bbox[3]; //right
 			double minY2 = port.bbox[1]; //bottom
@@ -3078,6 +3084,25 @@ extend class FishyPlatform
 				{
 					stuckActors.Delete(i);
 					fixedSome = true;
+					continue;
+				}
+			}
+			else if (!doStandOn && mo.player && mo.bFly && mo.pos.z < self.pos.z)
+			{
+				//I don't know why, but a flying player that moves with enough
+				//horizontal velocity while also moving upwards can clip into us.
+				//It's what caused an old bug where idle, nogravity platforms would get "pushed" upward.
+				//Fixing *that* revealed this little quirk...
+				//So take care of it by keeping flying players below us, if possible.
+				double fixPlayerZ = self.pos.z - mo.height;
+				if (FitsAtPosition(mo, (mo.pos.xy, fixPlayerZ)))
+				{
+					mo.SetZ(fixPlayerZ);
+					mo.CheckPortalTransition(); //Handle sector portals properly
+					//NOTE: it seems right to delete the array entry for "stuckActors" here, but, but, but!!!
+					//For some stupid reason doing so makes the player viewbob behavior very jittery *if*
+					//the player continues to fly upward!
+					//That's why we're not deleting the array entry.
 					continue;
 				}
 			}
@@ -4712,7 +4737,21 @@ extend class FishyPlatform
 			bool onGround = false;
 			bool yesGravity = false;
 			bool yesFriction = false;
-			inactive = !bFollowingPath;
+
+			for (int i = -1; i == -1 || (group && group.origin == self && i < group.members.Size()); ++i)
+			{
+				let plat = (i == -1) ? self : group.GetMember(i);
+				if (i > -1 && (!plat || plat == self)) //Already handled self
+					continue;
+
+				//If anyone in the group is gravity bound then everyone else is, too
+				if (!plat.bNoGravity)
+				{
+					yesGravity = true;
+					break;
+				}
+			}
+			bool doStandOn = (!bFollowingPath && yesGravity);
 
 			for (int i = -1; i == -1 || (group && group.origin == self && i < group.members.Size()); ++i)
 			{
@@ -4733,7 +4772,7 @@ extend class FishyPlatform
 
 					if (plat.lastGetNPTime != level.mapTime) //Call it only if GetNewPassengers() wasn't called
 						plat.GetStuckActors();
-					plat.HandleStuckActors(inactive);
+					plat.HandleStuckActors(doStandOn);
 
 					if (!plat.bOnMobj && plat.pos.z > plat.floorZ)
 					{
@@ -4744,9 +4783,8 @@ extend class FishyPlatform
 							!plat.TestMobjZ(true) );
 					}
 
-					//Find a member who is gravity bound and/or is "on the ground" and/or doesn't ignore friction
+					//Find a member who is "on the ground" and/or doesn't ignore friction
 					onGround |= (plat.bOnMobj || plat.pos.z <= plat.floorZ);
-					yesGravity |= !plat.bNoGravity;
 					yesFriction |= !plat.bNoFriction;
 				}
 			}
