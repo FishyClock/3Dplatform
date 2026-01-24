@@ -1,7 +1,7 @@
 /******************************************************************************
 
  3D platform actor class
- Copyright (C) 2022-2025 Fishytza A.K.A. FishyClockwork
+ Copyright (C) 2022-2026 Fishytza A.K.A. FishyClockwork
 
  This program is free software: you can redistribute it and/or modify
  it under the terms of the GNU General Public License as published by
@@ -983,17 +983,13 @@ extend class FishyPlatform
 			quat qOriGrpAngs = quat.FromAngles(ori.groupAngle, ori.groupPitch, ori.groupRoll);
 
 			//Compute the position offsets and save into 'groupRotPos' so SetGroupRotationInfo() works consistently.
-			vector3 offset = qOriAngsInv * level.Vec3Diff(ori.pos, pos);
-			offset = qOriGrpAngs * offset;
-			groupRotPos = level.Vec3Offset(ori.groupRotPos, offset);
+			groupRotOffset = qOriAngsInv * level.Vec3Diff(ori.pos, pos);
+			groupRotPos = level.Vec3Offset(ori.groupRotPos, qOriGrpAngs * groupRotOffset);
 
 			//Compute the angle deltas and save into all "group angles" so SetGroupRotationInfo() works consistently.
 			//Note: this cannot be done by relying on DeltaAngle() results and feeding those results into a quat! (I've tried.)
-			quat qSelfAngs = quat.FromAngles(angle, pitch, roll);
-			quat qDeltas = qOriAngsInv * qSelfAngs;
-			[groupAngle, groupPitch, groupRoll] = AnglesFromQuat(qOriGrpAngs * qDeltas);
-
-			SetGroupRotationInfo();
+			groupRotAngDiff = qOriAngsInv * quat.FromAngles(angle, pitch, roll);
+			[groupAngle, groupPitch, groupRoll] = AnglesFromQuat(qOriGrpAngs * groupRotAngDiff);
 		}
 	}
 
@@ -1002,19 +998,40 @@ extend class FishyPlatform
 	//============================
 	static double, double, double AnglesFromQuat (quat q)
 	{
-		//Credits to Boondorl and Lewisk3
-		double ySquared = q.y * q.y;
+		//Credits and thanks to Boondorl and Lewisk3 for showing me
+		//the general patterns behind this algorithm.
+		//
+		//The singularity test conditions, however, were lifted and adapted from here:
+		//https://www.euclideanspace.com/maths/geometry/rotations/conversions/quaternionToEuler/
 
-		double qYawS = 2.0 * (q.w * q.z + q.x * q.y);
-		double qYawC = 1.0 - 2.0 * (ySquared + q.z * q.z);
-		double qYaw = atan2(qYawS, qYawC);
+		double qYaw, qPitch, qRoll;
+		double singularity = q.w * q.y - q.x * q.z;
+		if (singularity > 0.4999)
+		{
+			qYaw = -2 * atan2(q.x, q.w);
+			qPitch = 90;
+			qRoll = 0;
+		}
+		else if (singularity < -0.4999)
+		{
+			qYaw = 2 * atan2(q.x, q.w);
+			qPitch = -90;
+			qRoll = 0;
+		}
+		else
+		{
+			double ySquared = q.y * q.y;
 
-		double qPitch = asin(2.0 * (q.w * q.y - q.x * q.z));
+			double angY = 2 * (q.w * q.z + q.x * q.y);
+			double angX = 1.0 - 2 * (ySquared + q.z * q.z);
+			qYaw = atan2(angY, angX);
 
-		double qRollS = 2.0 * (q.w * q.x + q.y * q.z);
-		double qRollC = 1.0 - 2.0 * (q.x * q.x + ySquared);
-		double qRoll = atan2(qRollS, qRollC);
+			qPitch = asin(2 * singularity);
 
+			angY = 2 * (q.w * q.x + q.y * q.z);
+			angX = 1.0 - 2 * (q.x * q.x + ySquared);
+			qRoll = atan2(angY, angX);
+		}
 		return qYaw, qPitch, qRoll;
 	}
 
