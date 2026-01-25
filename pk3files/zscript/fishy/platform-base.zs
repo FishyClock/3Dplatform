@@ -3666,11 +3666,16 @@ extend class FishyPlatform
 				{
 					let [qYaw, qPitch, qRoll] = AnglesFromQuat(qRot * plat.groupRotAngDiff);
 
-					//When the quat-to-euler angles cross the north/south pole, the yaw/roll difference is suddenly 180.
+					//When the quat-to-euler angles cross the north/south pole,
+					//the yaw/roll difference is suddenly 180 degrees.
 					//This causes the render interpolation to visibly "glitch"
 					//and passengers get flung around in unexpected ways.
 					//To handle that, we set the angles right here then clear interpolations.
-					bool extremeQuatAngDiff = (AbsAngle(plat.angle, qYaw) ~== 180 || AbsAngle(plat.roll, qRoll) ~== 180);
+					//
+					//The 180 degrees difference sometimes doesn't happen in one tic,
+					//so check if both angles have a close to 45 degrees difference.
+					//(Should be good enough for most cases.)
+					bool extremeQuatAngDiff = (AbsAngle(plat.angle, qYaw) > 44.5 && AbsAngle(plat.roll, qRoll) > 44.5);
 
 					if (changeAng)
 					{
