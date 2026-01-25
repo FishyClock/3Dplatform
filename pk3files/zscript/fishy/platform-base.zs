@@ -506,6 +506,7 @@ extend class FishyPlatform
 	double groupRoll;  //The roll when this platform joins a group - doesn't change when origin changes.
 	vector3 groupRotOffset;  //Precalculated offset from origin's groupRotPos to rotator's groupRotPos - changes when origin changes.
 	quat groupRotAngDiff; //Precalculated deltas from origin's groupAngle/Pitch/Roll to rotator's groupAngle/Pitch/Roll as a quaternion - changes when origin changes.
+	bool bQuatAngsAtPole; //Only relevant when our yaw, pitch and roll were converted from a quat.
 	double time;
 	double reachedTime;
 	double timeFrac;
@@ -940,6 +941,8 @@ extend class FishyPlatform
 			let plat = group.GetMember(i);
 			if (plat)
 			{
+				plat.bQuatAngsAtPole = false;
+
 				if (setMirrorPos)
 					plat.groupMirrorPos = plat.pos;
 
@@ -996,7 +999,7 @@ extend class FishyPlatform
 	//============================
 	// AnglesFromQuat
 	//============================
-	static double, double, double AnglesFromQuat (quat q)
+	static double, double, double, bool AnglesFromQuat (quat q)
 	{
 		//Credits and thanks to Boondorl and Lewisk3 for showing me
 		//the general patterns behind this algorithm.
@@ -1005,6 +1008,7 @@ extend class FishyPlatform
 		//https://www.euclideanspace.com/maths/geometry/rotations/conversions/quaternionToEuler/
 
 		double qYaw, qPitch, qRoll;
+		bool atPole = true;
 		double singularity = q.w * q.y - q.x * q.z;
 		if (singularity > 0.4999)
 		{
@@ -1020,6 +1024,7 @@ extend class FishyPlatform
 		}
 		else
 		{
+			atPole = false;
 			double ySquared = q.y * q.y;
 
 			double angY = 2 * (q.w * q.z + q.x * q.y);
@@ -1032,7 +1037,7 @@ extend class FishyPlatform
 			angX = 1.0 - 2 * (q.x * q.x + ySquared);
 			qRoll = atan2(angY, angX);
 		}
-		return qYaw, qPitch, qRoll;
+		return qYaw, qPitch, qRoll, atPole;
 	}
 
 	//============================
@@ -2247,7 +2252,12 @@ extend class FishyPlatform
 
 		//Move our passengers (platform rotation is taken into account)
 		double top = endPos.z + height;
-		double c = cos(delta), s = sin(delta);
+		double c, s;
+		if (delta)
+		{
+			c = cos(delta);
+			s = sin(delta);
+		}
 		vector2 piAndRoOffset = (0, 0);
 		if ((piDelta || roDelta) && !(options & OPTFLAG_NOPITCHROLL))
 		{
@@ -3664,7 +3674,7 @@ extend class FishyPlatform
 
 				if (changeAng || changePi || changeRo)
 				{
-					let [qYaw, qPitch, qRoll] = AnglesFromQuat(qRot * plat.groupRotAngDiff);
+					let [qYaw, qPitch, qRoll, atPole] = AnglesFromQuat(qRot * plat.groupRotAngDiff);
 
 					//When the quat-to-euler angles cross the north/south pole,
 					//the yaw/roll difference is suddenly 180 degrees.
@@ -3672,10 +3682,11 @@ extend class FishyPlatform
 					//and passengers get flung around in unexpected ways.
 					//To handle that, we set the angles right here then clear interpolations.
 					//
-					//The 180 degrees difference sometimes doesn't happen in one tic,
-					//so check if both angles have a close to 45 degrees difference.
-					//(Should be good enough for most cases.)
-					bool extremeQuatAngDiff = (AbsAngle(plat.angle, qYaw) > 44.5 && AbsAngle(plat.roll, qRoll) > 44.5);
+					//This will affect MovePassengers() so yaw/pitch/roll changes
+					//don't influence passenger movement; this is intentional.
+
+					bool extremeQuatAngDiff = (plat.bQuatAngsAtPole != atPole);
+					plat.bQuatAngsAtPole = atPole;
 
 					if (changeAng)
 					{
