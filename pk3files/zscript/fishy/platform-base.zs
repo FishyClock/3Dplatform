@@ -543,7 +543,6 @@ extend class FishyPlatform
 	transient int lastGetBmapTime; //Same deal for GetNewBmapResults()
 	transient bool bPlatPorted; //Set by PostTeleport() and checked by various routines (The pre-existing 'bTeleport' flag isn't good enough)
 	transient int platTeleFlags; //Ditto
-	transient bool bExtremeQuatAngDiff;
 	int options;
 	int crushDamage;
 
@@ -2235,7 +2234,7 @@ extend class FishyPlatform
 		if (!passengers.Size())
 			return true; //No passengers? Nothing to do
 
-		if (bNoPassOrbit || bExtremeQuatAngDiff)
+		if (bNoPassOrbit)
 		{
 			delta = 0;
 			piDelta = 0;
@@ -3387,7 +3386,7 @@ extend class FishyPlatform
 		{
 			if (pos != newPos)
 			{
-				SetOrigin(newPos, !bExtremeQuatAngDiff);
+				SetOrigin(newPos, true);
 				let oldPrev = prev;
 				CheckPortalTransition(); //Handle sector portals properly
 				prev = oldPrev;
@@ -3594,9 +3593,6 @@ extend class FishyPlatform
 			}
 			bMoved = true;
 		}
-
-		if (bMoved && bExtremeQuatAngDiff)
-			ClearInterpolation();
 		return true;
 	}
 
@@ -3671,16 +3667,31 @@ extend class FishyPlatform
 					let [qYaw, qPitch, qRoll] = AnglesFromQuat(qRot * plat.groupRotAngDiff);
 
 					//When the quat-to-euler angles cross the north/south pole, the yaw/roll difference is suddenly 180.
-					//This causes the render interpolation to visibly "glitch."
-					//To eliminate the "glitch" we clear the interpolation after moving.
-					plat.bExtremeQuatAngDiff = (AbsAngle(plat.angle, qYaw) ~== 180 || AbsAngle(plat.roll, qRoll) ~== 180);
+					//This causes the render interpolation to visibly "glitch"
+					//and passengers get flung around in unexpected ways.
+					//To handle that, we set the angles right here then clear interpolations.
+					bool extremeQuatAngDiff = (AbsAngle(plat.angle, qYaw) ~== 180 || AbsAngle(plat.roll, qRoll) ~== 180);
 
 					if (changeAng)
+					{
 						newAngle = qYaw;
+						if (extremeQuatAngDiff)
+							plat.angle = qYaw;
+					}
 					if (changePi)
+					{
 						newPitch = qPitch;
+						if (extremeQuatAngDiff)
+							plat.pitch = qPitch;
+					}
 					if (changeRo)
+					{
 						newRoll = qRoll;
+						if (extremeQuatAngDiff)
+							plat.roll = qRoll;
+					}
+					if (extremeQuatAngDiff)
+						plat.ClearInterpolation();
 				}
 			}
 
@@ -3690,10 +3701,7 @@ extend class FishyPlatform
 				plat.platTeleFlags = platTeleFlags;
 			}
 
-			bool moveFailed = (!plat.DoMove(newPos, newAngle, newPitch, newRoll, moveType) && moveType > MOVE_QUICK);
-			if (!plat.bDestroyed)
-				plat.bExtremeQuatAngDiff = false;
-			if (moveFailed)
+			if (!plat.DoMove(newPos, newAngle, newPitch, newRoll, moveType) && moveType > MOVE_QUICK)
 				return false;
 		}
 		return true;
@@ -4566,8 +4574,6 @@ extend class FishyPlatform
 
 		if (IsFrozen())
 			return;
-
-		bExtremeQuatAngDiff = false;
 
 		//Any of the copy's received velocities are passed on to the non-copy twin
 		if (portTwin && portTwin.bPortCopy)
