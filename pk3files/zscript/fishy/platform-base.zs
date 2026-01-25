@@ -1104,6 +1104,15 @@ extend class FishyPlatform
 	}
 
 	//============================
+	// CollidedWith (override)
+	//============================
+	override void CollidedWith (Actor other, bool passive)
+	{
+		if (nearbyActors.Find(other) >= nearbyActors.Size())
+			nearbyActors.Push(other);
+	}
+
+	//============================
 	// CollisionFlagChecks
 	//============================
 	static bool CollisionFlagChecks (Actor a, Actor b)
@@ -2924,10 +2933,6 @@ extend class FishyPlatform
 		SetZ(newPos.z);
 		bool moved = bPortCopy ? FitsAtPosition(self, newPos) : TryMove(newPos.xy, 1);
 		let mo = blockingMobj;
-
-		//Remember 'blockingMobj' as a "nearby actor" if it isn't one already
-		if (mo && nearbyActors.Find(mo) >= nearbyActors.Size())
-			nearbyActors.Push(mo);
 
 		if (!moved && mo)
 		{
