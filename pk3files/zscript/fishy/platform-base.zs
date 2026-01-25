@@ -928,6 +928,7 @@ extend class FishyPlatform
 
 		groupRotOffset = q * level.Vec3Diff(ori.groupRotPos, groupRotPos);
 		groupRotAngDiff = q * quat.FromAngles(groupAngle, groupPitch, groupRoll);
+		bQuatAngsAtPole = false;
 	}
 
 	//============================
@@ -941,8 +942,6 @@ extend class FishyPlatform
 			let plat = group.GetMember(i);
 			if (plat)
 			{
-				plat.bQuatAngsAtPole = false;
-
 				if (setMirrorPos)
 					plat.groupMirrorPos = plat.pos;
 
@@ -993,6 +992,8 @@ extend class FishyPlatform
 			//Note: this cannot be done by relying on DeltaAngle() results and feeding those results into a quat! (I've tried.)
 			groupRotAngDiff = qOriAngsInv * quat.FromAngles(angle, pitch, roll);
 			[groupAngle, groupPitch, groupRoll] = AnglesFromQuat(qOriGrpAngs * groupRotAngDiff);
+
+			bQuatAngsAtPole = false;
 		}
 	}
 
@@ -2612,7 +2613,7 @@ extend class FishyPlatform
 		{
 			let mo = passengers[i];
 
-			if (mo.bOnMobj) //Standing on platform or on another passenger?
+			if (mo.bOnMobj && delta) //Standing on platform or on another passenger?
 				mo.vel.xy = (mo.vel.x*c - mo.vel.y*s, mo.vel.x*s + mo.vel.y*c); //Rotate its velocity
 
 			//Hack: force UpdateWaterLevel() to make a splash if platform movement isn't too slow and going down
