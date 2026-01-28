@@ -3624,6 +3624,7 @@ extend class FishyPlatform
 		double piDelta = double.nan;
 		double roDelta = double.nan;
 		vector3 mirOfs = (double.nan, 0, 0);
+		quat axisYaw, axisPitch, axisRoll;
 		quat qRot = quat(double.nan, 0, 0, 0);
 
 		for (int iPlat = 0; iPlat < group.members.Size(); ++iPlat)
@@ -3675,45 +3676,54 @@ extend class FishyPlatform
 			else //Non-mirror movement. Rotation happens here.
 			{
 				if (qRot != qRot) //NaN check
-					qRot = quat.FromAngles(angle, pitch, roll);
+				{
+					axisYaw   = quat.AxisAngle((0, 0, 1), angle);
+					axisPitch = quat.AxisAngle((0, 1, 0), pitch);
+					axisRoll  = quat.AxisAngle((1, 0, 0), roll);
+					qRot = axisYaw * axisPitch * axisRoll;
+				}
 				newPos = level.Vec3Offset(pos, qRot * plat.groupRotOffset);
 
 				if (changeAng || changePi || changeRo)
 				{
-					let [qYaw, qPitch, qRoll, atPole] = AnglesFromQuat(qRot * plat.groupRotAngDiff);
+					bool atPole;
+					if (changeAng && changePi && changeRo)
+					{
+						[newAngle, newPitch, newRoll, atPole] = AnglesFromQuat(qRot * plat.groupRotAngDiff);
+					}
+					else
+					{
+						//When the quat-singularity crosses one of its poles, pitch will
+						//never go over +/-90 while yaw and roll will suddenly make a 180 turn.
+						//Because of this fact, if we only want some euler angles rotated
+						//then only the relevant axis rotations should take effect.
+						//The end result is applied to all three angles regardless.
+						//
+						//This matters if you only want the pitch rotated
+						//and one of the two poles gets crossed.
+						quat qSelectiveRot = (changeAng) ? axisYaw : quat(0, 0, 0, 1);
+						if (changePi)
+							qSelectiveRot *= axisPitch;
+						if (changeRo)
+							qSelectiveRot *= axisRoll;
+						[newAngle, newPitch, newRoll, atPole] = AnglesFromQuat(qSelectiveRot * plat.groupRotAngDiff);
+					}
 
-					//When the quat-to-euler angles cross the north/south pole,
-					//the yaw/roll difference is suddenly 180 degrees.
-					//This causes the render interpolation to visibly "glitch"
+					//When the aforementioned yaw/roll make that sudden 180 turn,
+					//the render interpolation briefly "glitches" for a fraction of a second
 					//and passengers get flung around in unexpected ways.
 					//To handle that, we set the angles right here then clear interpolations.
 					//
 					//This will affect MovePassengers() so yaw/pitch/roll changes
 					//don't influence passenger movement; this is intentional.
-
-					bool extremeQuatAngDiff = (plat.bQuatAngsAtPole != atPole);
-					plat.bQuatAngsAtPole = atPole;
-
-					if (changeAng)
+					if (plat.bQuatAngsAtPole != atPole)
 					{
-						newAngle = qYaw;
-						if (extremeQuatAngDiff)
-							plat.angle = qYaw;
-					}
-					if (changePi)
-					{
-						newPitch = qPitch;
-						if (extremeQuatAngDiff)
-							plat.pitch = qPitch;
-					}
-					if (changeRo)
-					{
-						newRoll = qRoll;
-						if (extremeQuatAngDiff)
-							plat.roll = qRoll;
-					}
-					if (extremeQuatAngDiff)
+						plat.angle = newAngle;
+						plat.pitch = newPitch;
+						plat.roll = newRoll;
 						plat.ClearInterpolation();
+					}
+					plat.bQuatAngsAtPole = atPole;
 				}
 			}
 
