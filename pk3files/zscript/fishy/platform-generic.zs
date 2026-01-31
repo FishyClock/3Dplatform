@@ -28,7 +28,7 @@ class FishyPlatformGeneric : FishyPlatform
 	//Reference: https://zdoom.org/wiki/A_ChangeModel
 
 	//The flag (bit) values for 'user_cm_flags':
-	//https://github.com/ZDoom/gzdoom/blob/f30fc8dd00a620227756ff0df25d3eb209ce5ebc/wadsrc/static/zscript/constants.zs#L385-L391
+	//https://github.com/UZDoom/UZDoom/blob/c34025d88b8cfa19c6140a00cd0c8919ce7cd4d7/wadsrc/static/zscript/constants.zs#L404-L410
 
 	// While you can use this however you want, the usual intended practice is
 	// set 'user_cm_modelpath' to the path (if any) where your models are
