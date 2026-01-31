@@ -546,6 +546,7 @@ extend class FishyPlatform
 	transient int platTeleFlags; //Ditto
 	int options;
 	int crushDamage;
+	transient bool bCallingMonsterMove;
 	Array<Actor> restoreMoveDirActors; //These 3 arrays are part of a CollidedWith() ~*Gross Hack*~ :3
 	Array<int> restoreMoveDirDirs;
 	Array<int> restoreMoveDirCounts;
@@ -1113,10 +1114,6 @@ extend class FishyPlatform
 		if (other.moveDir < 0 || other.moveDir > 7) //After 7 is "DI_NODIR"
 			return;
 
-		let moveSpeed = min(other.speed, other.radius - 1); //Avoid collision problems and doing multiple TryMove() calls
-		if (moveSpeed <= 0)
-			return;
-
 		double top = pos.z + height;
 		if (top <= other.pos.z || //It can't already be above/on us (could be a passenger)
 			top - other.pos.z > other.maxStepHeight || //Its 'maxStepHeight' determines if it can step up on us
@@ -1138,21 +1135,24 @@ extend class FishyPlatform
 		//And all this has to be done if I want to avoid using blockmap iterators
 		//when the platform is idle and not moving.
 
+		//Avoid recursions that can happen if MonsterMove()
+		//returns false and bumps into us again.
+		if (bCallingMonsterMove)
+			return;
+		bCallingMonsterMove = true;
+
+		//For MonsterMove() to work here we need to set both the Z pos and floorZ
 		let oldZ = other.pos.z;
-		let moveAngle = other.moveDir * 45;
-		vector2 tryPos = other.pos.xy + (moveSpeed * cos(moveAngle), moveSpeed * sin(moveAngle));
+		let oldFloorZ = other.floorZ;
 		other.SetZ(top);
-		bool moved = other.TryMove(tryPos, 0);
+		other.floorZ = top;
+		bool moved = other.MonsterMove();
+		bCallingMonsterMove = false;
 		if (!other || other.bDestroyed)
 			return; //"other" got Thing_Remove()'d
 
 		if (moved)
 		{
-			if (OverlapXY(self, other))
-				other.floorZ = top;
-			else if (!other.bNoGravity && other.pos.z - oldZ <= other.maxDropoffHeight)
-				other.SetZ(oldZ);
-
 			if (restoreMoveDirActors.Find(other) >= restoreMoveDirActors.Size())
 			{
 				restoreMoveDirActors.Push(other);
@@ -1170,6 +1170,7 @@ extend class FishyPlatform
 		else
 		{
 			other.SetZ(oldZ);
+			other.floorZ = oldFloorZ;
 		}
 	}
 
