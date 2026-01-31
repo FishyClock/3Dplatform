@@ -546,6 +546,9 @@ extend class FishyPlatform
 	transient int platTeleFlags; //Ditto
 	int options;
 	int crushDamage;
+	Array<Actor> restoreMoveDirActors; //These 3 arrays are part of a CollidedWith() ~*Gross Hack*~ :3
+	Array<int> restoreMoveDirDirs;
+	Array<int> restoreMoveDirCounts;
 
 	//Unlike PathFollower classes, our interpolations are done with
 	//vector3 coordinates instead of checking InterpolationPoint positions.
@@ -1062,20 +1065,8 @@ extend class FishyPlatform
 				return false; //Don't collide with any platform in general
 		}
 
-		if (passive)
-		{
-			if (stuckActors.Find(other) < stuckActors.Size())
-				return false; //Let stuck things move out/move through us - also makes pushing them away easier
-
-			//Allow the other actor to step up on us.
-			//Well, they'd actually noclip into us but GetStuckActors() and HandleStuckActors() should take care of that.
-			if (!other.bMissile && !other.bSkullFly && IsCarriable(other) && //Ignore missiles, charging monsters, and non-carriables
-				other.bInChase && //This thing must be calling A_Chase or A_Wander
-				(pos.z + height) - other.pos.z <= other.maxStepHeight ) //Its 'maxStepHeight' allows it to step up on us
-			{
-				return false;
-			}
-		}
+		if (passive && stuckActors.Find(other) < stuckActors.Size())
+			return false; //Let stuck things move out/move through us - also makes pushing them away easier
 
 		if (bInMove || (portTwin && portTwin.bInMove))
 		{
@@ -1110,6 +1101,76 @@ extend class FishyPlatform
 	{
 		if (nearbyActors.Find(other) >= nearbyActors.Size())
 			nearbyActors.Push(other);
+
+		if (!passive)
+			return;
+
+		//This thing must be calling A_Chase or A_Wander and
+		//it cannot be a missile, a charging monster, or a non-carriable
+		if (!other.bInChase || other.bMissile || other.bSkullFly || !IsCarriable(other))
+			return;
+
+		if (other.moveDir < 0 || other.moveDir > 7) //After 7 is "DI_NODIR"
+			return;
+
+		let moveSpeed = min(other.speed, other.radius - 1); //Avoid collision problems and doing multiple TryMove() calls
+		if (moveSpeed <= 0)
+			return;
+
+		double top = pos.z + height;
+		if (top <= other.pos.z || //It can't already be above/on us (could be a passenger)
+			top - other.pos.z > other.maxStepHeight || //Its 'maxStepHeight' determines if it can step up on us
+			OverlapXY(self, other) ) //It can't already overlap on the XY plane (could be a passenger)
+		{
+			return;
+		}
+
+		//Since I'm not allowed to modify anything in CanCollideWith()
+		//all the magic hack work has to happen here.
+		//At this point we know a monster's A_Chase/A_Wander call
+		//has caused it to bump into us.
+		//After CollidedWith() is done the monster's moveDir will be
+		//changed, but we have to hack this so it looks like it wasn't blocked.
+		//
+		//Moving the monster is easy, but in order to keep its direction
+		//it has to be recorded here and restored later in our Tick() override.
+		//
+		//And all this has to be done if I want to avoid using blockmap iterators
+		//when the platform is idle and not moving.
+
+		let oldZ = other.pos.z;
+		let moveAngle = other.moveDir * 45;
+		vector2 tryPos = other.pos.xy + (moveSpeed * cos(moveAngle), moveSpeed * sin(moveAngle));
+		other.SetZ(top);
+		bool moved = other.TryMove(tryPos, 0);
+		if (!other || other.bDestroyed)
+			return; //"other" got Thing_Remove()'d
+
+		if (moved)
+		{
+			if (OverlapXY(self, other))
+				other.floorZ = top;
+			else if (!other.bNoGravity && other.pos.z - oldZ <= other.maxDropoffHeight)
+				other.SetZ(oldZ);
+
+			if (restoreMoveDirActors.Find(other) >= restoreMoveDirActors.Size())
+			{
+				restoreMoveDirActors.Push(other);
+				restoreMoveDirDirs.Push(other.moveDir);
+				restoreMoveDirCounts.Push(other.moveCount);
+
+				//Grind everything to a halt if this delicate "house of cards" isn't perfectly stacked
+				if (restoreMoveDirActors.Size() != restoreMoveDirDirs.Size() ||
+					restoreMoveDirActors.Size() != restoreMoveDirCounts.Size())
+				{
+					ThrowAbortException("Array size mismatch");
+				}
+			}
+		}
+		else
+		{
+			other.SetZ(oldZ);
+		}
 	}
 
 	//============================
@@ -4598,6 +4659,27 @@ extend class FishyPlatform
 			return;
 		}
 
+		//Handle the CollidedWith() restore-moveDir-hack now
+		for (int iTwins = 0; iTwins < 2; ++iTwins)
+		{
+			let plat = (iTwins == 0) ? self : portTwin;
+			if (plat)
+			{
+				for (let i = plat.restoreMoveDirActors.Size(); i-- > 0;)
+				{
+					let mo = plat.restoreMoveDirActors[i];
+					if (mo)
+					{
+						mo.moveDir = plat.restoreMoveDirDirs[i];
+						mo.moveCount = plat.restoreMoveDirCounts[i];
+					}
+					plat.restoreMoveDirActors.Pop();
+					plat.restoreMoveDirDirs.Pop();
+					plat.restoreMoveDirCounts.Pop();
+				}
+			}
+		}
+
 		if (freezeTics > 0)
 		{
 			--freezeTics;
@@ -4691,9 +4773,20 @@ extend class FishyPlatform
 				{
 					--plat.noBmapSearchTics;
 				}
-				else
+				else if (!inactive)
 				{
 					plat.GetNewBmapResults();
+				}
+				else
+				{
+					plat.noBmapSearchTics = BMAP_SEARCH_INTERVAL;
+					for (let iNearby = plat.nearbyActors.Size(); iNearby-- > 0;)
+					{
+						//Keep the size low in idle mode
+						let mo = plat.nearbyActors[iNearby];
+						if (!mo || !OverlapXY(plat, mo))
+							plat.nearbyActors.Delete(iNearby);
+					}
 				}
 				plat.bOnMobj = false; //Aside from standing on an actor, this can also be "true" later if hitting a lower obstacle while going down or we have stuck actors
 				plat.HandleOldPassengers(inactive);
