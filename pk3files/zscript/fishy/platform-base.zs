@@ -526,16 +526,15 @@ extend class FishyPlatform
 	InterpolationPoint prevNode, firstPrevNode;
 	bool bGoToNode;
 	Array<Actor> nearbyActors; //The actors detected in the last blockmap search
-	Array<Line> nearbyUPorts; //The unlinked line portals detected in the last blockmap search
 	int noBmapSearchTics;
 	vector2 oldBmapSearchPos;
 	Array<Actor> passengers;
 	Array<Actor> stuckActors;
 	bool bPushStuckActors; //Do not push away stuck actors until we try moving for the first time
+	private Array<Line> uPorts; //A list of unlinked (not static) line portals on the map
 	Line lastUPort;
 	private FishyPlatform portTwin; //Helps with collision when dealing with unlinked line portals
 	private bool bPortCopy;
-	private bool bSearchForUPorts;
 	double portDelta;
 	int acsFlags;
 	transient int lastGetNPTime; //Make sure GetNewPassengers() doesn't run its routine more than once per tic
@@ -632,16 +631,13 @@ extend class FishyPlatform
 			return;
 		}
 
-		//Only do BlockLinesIterator searches if there are unlinked line portals on the map
 		for (uint iPorts = level.linePortals.Size(); iPorts-- > 0;)
 		{
 			let port = level.linePortals[iPorts];
-			if (port.mType == LinePortal.PORTT_TELEPORT || port.mType == LinePortal.PORTT_INTERACTIVE)
-			{
-				bSearchForUPorts = true;
-				break;
-			}
+			if (port.mType == LinePortal.PORTT_TELEPORT || port.mType == LinePortal.PORTT_INTERACTIVE) //Not static, not visual-only
+				uPorts.Push(port.mOrigin);
 		}
+		uPorts.ShrinkToFit();
 
 		//Setting the scale through UDB affects collision size
 		if (user_scalesize)
@@ -1848,18 +1844,18 @@ extend class FishyPlatform
 	//============================
 	// GetNewBmapResults
 	//============================
-	private void GetNewBmapResults (bool forceRun = false)
+	private void GetNewBmapResults ()
 	{
-		// Just creating one BTI or one BLI per tic takes up unnecessary processing time (according to "profilethinkers")
+		// Just creating one BlockThingsIterator per tic takes up unnecessary processing time (according to "profilethinkers")
 		// and creates a lot of garbage for the GC (according to "stat gc").
-		// To mitigate that, the iterators will be created once per some arbitrary number of tics.
+		// To mitigate that, the iterator will be created once per some arbitrary number of tics.
 		//
 		// Since this is done at an interval the search radius should be larger too
 		// to give a better chance of catching things.
 		//
 		// ...Unless of course fetching blockmap results every tic (ie. "in realtime") is desired.
 
-		if (level.mapTime == lastGetBmapTime && !forceRun)
+		if (level.mapTime == lastGetBmapTime)
 			return; //Already called in this tic
 		lastGetBmapTime = level.mapTime;
 
@@ -1872,7 +1868,7 @@ extend class FishyPlatform
 		bool realtime = (options & OPTFLAG_REALTIMEBMAP);
 
 		let iteratorRadius = radius;
-		if (!realtime || pos ~== oldPos) //If idle, still use a bigger radius for the sake of GetStuckActors()
+		if (!realtime || pos ~== oldPos)
 			iteratorRadius *= BMAP_RADIUS_MULTIPLIER;
 
 		let bti = BlockThingsIterator.Create(self, iteratorRadius);
@@ -1894,7 +1890,7 @@ extend class FishyPlatform
 
 			//Otherwise, only accept this actor if it has certain attributes
 			if (mo.bCanPass || //Can move by itself (relevant for GetStuckActors())
-				(mo.bCorpse && !mo.bDontGib) || //A corpse (relevant for corpse grinding)
+				(mo.bCorpse && !mo.bDontGib && !bNoCorpseGib) || //A corpse (relevant for corpse grinding)
 				(mo.bSpecial && mo is "Inventory") || //Item that can be picked up (relevant for Z position correction)
 				IsCarriable(mo) || //A potential passenger
 				(CollisionFlagChecks(self, mo) && self.CanCollideWith(mo, false) && mo.CanCollideWith(self, true) ) ) //A solid actor
@@ -1905,22 +1901,6 @@ extend class FishyPlatform
 				double blockDist = iteratorRadius + mo.radius + mo.speed + mo.vel.xy.Length();
 				if (abs(bti.position.x - mo.pos.x) < blockDist && abs(bti.position.y - mo.pos.y) < blockDist)
 					nearbyActors.Push(mo);
-			}
-		}
-
-		if (bSearchForUPorts) //Only do a search if there's something to look for (and we're not a portal copy)
-		{
-			nearbyUPorts.Clear();
-
-			if (realtime)
-				iteratorRadius = radius + EXTRA_SIZE;
-
-			let bli = BlockLinesIterator.Create(self, iteratorRadius);
-			while (bli.Next())
-			{
-				let type = bli.curLine.GetPortalType();
-				if (type == LinePortal.PORTT_TELEPORT || type == LinePortal.PORTT_INTERACTIVE) //We don't want static (linked) portals
-					nearbyUPorts.Push(bli.curLine);
 			}
 		}
 
@@ -2816,14 +2796,11 @@ extend class FishyPlatform
 		double minY1 = pos.y - size;
 		double maxY1 = pos.y + size;
 
-		for (uint iPorts = nearbyUPorts.Size(); iPorts-- > 0;)
+		for (uint iPorts = uPorts.Size(); iPorts-- > 0;)
 		{
-			let port = nearbyUPorts[iPorts];
-			if (!port.IsLinePortal()) //Make sure it's still a line portal
-			{
-				nearbyUPorts.Delete(iPorts);
-				continue;
-			}
+			let port = uPorts[iPorts];
+			if (!port.GetPortalDestination())
+				continue; //Currently disabled -- might get enabled later so just skip it
 
 			//Line bounding box.
 			//Reference for order: https://github.com/uzdoom/uzdoom/blob/trunk/src/common/utility/m_bbox.h
@@ -2849,9 +2826,9 @@ extend class FishyPlatform
 				lastUPort = port;
 
 				//Swap entries so next time 'lastUPort' is checked first
-				uint lastIndex = nearbyUPorts.Size() - 1;
-				nearbyUPorts[iPorts] = nearbyUPorts[lastIndex];
-				nearbyUPorts[lastIndex] = port;
+				uint lastIndex = uPorts.Size() - 1;
+				uPorts[iPorts] = uPorts[lastIndex];
+				uPorts[lastIndex] = port;
 			}
 			return;
 		}
@@ -3272,7 +3249,7 @@ extend class FishyPlatform
 
 			if (moveType == MOVE_NORMAL || moveType == MOVE_REPEAT)
 			{
-				if (plat.bSearchForUPorts)
+				if (plat.uPorts.Size())
 					plat.GetUnlinkedPortal();
 
 				if (plat.lastUPort && !plat.portTwin)
@@ -3664,11 +3641,9 @@ extend class FishyPlatform
 
 			ExchangePassengersWithTwin();
 			CheckPortalTransition(); //Handle sector portals properly
-			if (crossedPortal && bSearchForUPorts && step < maxSteps - 1)
-			{
-				GetNewBmapResults(true);
+			if (crossedPortal && uPorts.Size() && step < maxSteps - 1)
 				GetUnlinkedPortal(true);
-			}
+
 			bMoved = true;
 		}
 		return true;
