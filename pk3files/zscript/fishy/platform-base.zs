@@ -387,6 +387,7 @@ class FishyPlatformGroup play
 	FishyPlatform origin;	//The member that thinks for the other members when it ticks.
 	FishyPlatform carrier;	//A non-member that carries one member of this group. Used for passenger theft checks.
 	transient int lastZFixTime; //Keep the Z fixing once per tic when doing whole groups. See DoPlatZFix().
+	bool bMoveComplete; //If last group move was a success, allow a simpler next move with no quat computations.
 
 	static FishyPlatformGroup Create ()
 	{
@@ -400,6 +401,7 @@ class FishyPlatformGroup play
 		plat.group = self;
 		if (members.Find(plat) >= members.Size())
 			members.Push(plat);
+		bMoveComplete = false;
 	}
 
 	FishyPlatform GetMember (int index)
@@ -662,6 +664,7 @@ extend class FishyPlatform
 		//already moved and some might have not.
 		if (group && group.origin)
 		{
+			group.bMoveComplete = false;
 			let ori = group.origin;
 			if (!(options & OPTFLAG_MIRROR))
 				SetGroupRotationInfo();
@@ -937,6 +940,7 @@ extend class FishyPlatform
 	private void SetGroupOrigin (FishyPlatform ori, bool setMirrorPos = true, bool setNonOriginNoFollow = false)
 	{
 		group.origin = ori;
+		group.bMoveComplete = false;
 		for (int i = 0; i < group.members.Size(); ++i)
 		{
 			let plat = group.GetMember(i);
@@ -965,6 +969,7 @@ extend class FishyPlatform
 		//origin. Or when a group member's mirror flag changes.
 
 		let ori = group.origin;
+		group.bMoveComplete = false;
 
 		if (options & OPTFLAG_MIRROR)
 		{
@@ -3657,6 +3662,37 @@ extend class FishyPlatform
 		if (bPlatPorted)
 			moveType = MOVE_TRUETELE;
 
+		//If our last MoveGroup() call was a success and
+		//this is just a "normal" move with no angle changes on the origin
+		//then we can get away with a simplified offset move for each groupmate.
+		if (group.bMoveComplete && moveType == MOVE_NORMAL &&
+			angle == oldAngle && pitch == oldPitch && roll == oldRoll)
+		{
+			if (pos == oldPos)
+				return true; //Better yet, we don't need to do anything
+
+			vector3 offset = level.Vec3Diff(oldPos, pos);
+
+			int iPlat;
+			for (iPlat = 0; iPlat < group.members.Size(); ++iPlat)
+			{
+				let plat = group.GetMember(iPlat);
+				if (!plat || plat == self)
+					continue;
+
+				vector3 newPos;
+				if (plat.options & OPTFLAG_MIRROR)
+					newPos = level.Vec3Offset(plat.pos, -offset);
+				else
+					newPos = level.Vec3Offset(plat.pos, offset);
+
+				if (!plat.DoMove(newPos, plat.angle, plat.pitch, plat.roll, MOVE_NORMAL))
+					break;
+			}
+			group.bMoveComplete = (iPlat >= group.members.Size()); //Not == because GetMember() could delete the last entry if it's null
+			return group.bMoveComplete;
+		}
+
 		double delta = double.nan;
 		double piDelta = double.nan;
 		double roDelta = double.nan;
@@ -3664,7 +3700,8 @@ extend class FishyPlatform
 		quat axisYaw, axisPitch, axisRoll;
 		quat qRot = quat(double.nan, 0, 0, 0);
 
-		for (int iPlat = 0; iPlat < group.members.Size(); ++iPlat)
+		int iPlat;
+		for (iPlat = 0; iPlat < group.members.Size(); ++iPlat)
 		{
 			let plat = group.GetMember(iPlat);
 			if (!plat || plat == self)
@@ -3771,9 +3808,10 @@ extend class FishyPlatform
 			}
 
 			if (!plat.DoMove(newPos, newAngle, newPitch, newRoll, moveType) && moveType > MOVE_QUICK)
-				return false;
+				break;
 		}
-		return true;
+		group.bMoveComplete = (iPlat >= group.members.Size()); //Not == because GetMember() could delete the last entry if it's null
+		return group.bMoveComplete;
 	}
 
 	//============================
