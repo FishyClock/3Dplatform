@@ -3680,11 +3680,7 @@ extend class FishyPlatform
 				if (!plat || plat == self)
 					continue;
 
-				vector3 newPos;
-				if (plat.options & OPTFLAG_MIRROR)
-					newPos = level.Vec3Offset(plat.pos, -offset);
-				else
-					newPos = level.Vec3Offset(plat.pos, offset);
+				vector3 newPos = plat.pos + ((plat.options & OPTFLAG_MIRROR) ? -offset : offset);
 
 				if (!plat.DoMove(newPos, plat.angle, plat.pitch, plat.roll, MOVE_NORMAL))
 					break;
@@ -3699,6 +3695,15 @@ extend class FishyPlatform
 		vector3 mirOfs = (double.nan, 0, 0);
 		quat axisYaw, axisPitch, axisRoll;
 		quat qRot = quat(double.nan, 0, 0, 0);
+
+		//level.Vec3Diff() gives an offset between two positions. It handles the internal portal-groups.
+		//While level.Vec3Offset() shoots a trace from the given pos and travels the given offset.
+		//Any line portals it finds will be crossed.
+		//
+		//DoMove() with MOVE_NORMAL already does a level.Vec3Diff() call followed by TryMove()
+		//so we don't need to do any of that here.
+		//Otherwise we need Vec3Offset() and Vec3Diff()
+		//and the start position must be from "plat" and not from self (the origin).
 
 		int iPlat;
 		for (iPlat = 0; iPlat < group.members.Size(); ++iPlat)
@@ -3726,7 +3731,10 @@ extend class FishyPlatform
 				//using 'groupMirrorPos' as a reference point.
 				if (mirOfs != mirOfs) //NaN check
 					mirOfs = level.Vec3Diff(pos, groupMirrorPos);
-				newPos = level.Vec3Offset(plat.groupMirrorPos, mirOfs);
+
+				newPos = plat.groupMirrorPos + mirOfs;
+				if (moveType != MOVE_NORMAL)
+					newPos = level.Vec3Offset(plat.pos, level.Vec3Diff(plat.pos, newPos));
 
 				if (changeAng)
 				{
@@ -3756,7 +3764,9 @@ extend class FishyPlatform
 					axisRoll  = quat.AxisAngle((1, 0, 0), roll);
 					qRot = axisYaw * axisPitch * axisRoll;
 				}
-				newPos = level.Vec3Offset(pos, qRot * plat.groupRotOffset);
+				newPos = pos + (qRot * plat.groupRotOffset);
+				if (moveType != MOVE_NORMAL)
+					newPos = level.Vec3Offset(plat.pos, level.Vec3Diff(plat.pos, newPos));
 
 				if (changeAng || changePi || changeRo)
 				{
@@ -3792,12 +3802,12 @@ extend class FishyPlatform
 					//don't influence passenger movement; this is intentional.
 					if (plat.bQuatAngsAtPole != atPole)
 					{
+						plat.bQuatAngsAtPole = atPole;
 						plat.angle = newAngle;
 						plat.pitch = newPitch;
 						plat.roll = newRoll;
 						plat.ClearInterpolation();
 					}
-					plat.bQuatAngsAtPole = atPole;
 				}
 			}
 
