@@ -387,7 +387,7 @@ class FishyPlatformGroup play
 	FishyPlatform origin;	//The member that thinks for the other members when it ticks.
 	FishyPlatform carrier;	//A non-member that carries one member of this group. Used for passenger theft checks.
 	transient int lastZFixTime; //Keep the Z fixing once per tic when doing whole groups. See DoPlatZFix().
-	bool bMoveComplete; //If last group move was a success, allow a simpler next move with no quat computations.
+	bool bCanDoSimpleMove; //If last group move was a success, allow a simpler next move with no quat computations.
 
 	static FishyPlatformGroup Create ()
 	{
@@ -401,7 +401,7 @@ class FishyPlatformGroup play
 		plat.group = self;
 		if (members.Find(plat) >= members.Size())
 			members.Push(plat);
-		bMoveComplete = false;
+		bCanDoSimpleMove = false;
 	}
 
 	FishyPlatform GetMember (int index)
@@ -664,7 +664,7 @@ extend class FishyPlatform
 		//already moved and some might have not.
 		if (group && group.origin)
 		{
-			group.bMoveComplete = false;
+			group.bCanDoSimpleMove = false;
 			let ori = group.origin;
 			if (!(options & OPTFLAG_MIRROR))
 				SetGroupRotationInfo();
@@ -940,7 +940,7 @@ extend class FishyPlatform
 	private void SetGroupOrigin (FishyPlatform ori, bool setMirrorPos = true, bool setNonOriginNoFollow = false)
 	{
 		group.origin = ori;
-		group.bMoveComplete = false;
+		group.bCanDoSimpleMove = false;
 		for (int i = 0; i < group.members.Size(); ++i)
 		{
 			let plat = group.GetMember(i);
@@ -969,7 +969,7 @@ extend class FishyPlatform
 		//origin. Or when a group member's mirror flag changes.
 
 		let ori = group.origin;
-		group.bMoveComplete = false;
+		group.bCanDoSimpleMove = false;
 
 		if (options & OPTFLAG_MIRROR)
 		{
@@ -3665,7 +3665,7 @@ extend class FishyPlatform
 		//If our last MoveGroup() call was a success and
 		//this is just a "normal" move with no angle changes on the origin
 		//then we can get away with a simplified offset move for each groupmate.
-		if (group.bMoveComplete && moveType == MOVE_NORMAL &&
+		if (group.bCanDoSimpleMove && moveType == MOVE_NORMAL &&
 			angle == oldAngle && pitch == oldPitch && roll == oldRoll)
 		{
 			if (pos == oldPos)
@@ -3685,8 +3685,8 @@ extend class FishyPlatform
 				if (!plat.DoMove(newPos, plat.angle, plat.pitch, plat.roll, MOVE_NORMAL))
 					break;
 			}
-			group.bMoveComplete = (iPlat >= group.members.Size()); //Not == because GetMember() could delete the last entry if it's null
-			return group.bMoveComplete;
+			group.bCanDoSimpleMove = (iPlat >= group.members.Size()); //Not == because GetMember() could delete the last entry if it's null
+			return group.bCanDoSimpleMove;
 		}
 
 		double delta = double.nan;
@@ -3820,8 +3820,8 @@ extend class FishyPlatform
 			if (!plat.DoMove(newPos, newAngle, newPitch, newRoll, moveType) && moveType > MOVE_QUICK)
 				break;
 		}
-		group.bMoveComplete = (iPlat >= group.members.Size()); //Not == because GetMember() could delete the last entry if it's null
-		return group.bMoveComplete;
+		group.bCanDoSimpleMove = (iPlat >= group.members.Size()); //Not == because GetMember() could delete the last entry if it's null
+		return group.bCanDoSimpleMove;
 	}
 
 	//============================
@@ -3888,6 +3888,11 @@ extend class FishyPlatform
 				//We only care if self fits or not
 				if (plat == self && !fits)
 					return false; //If it doesn't fit, abort the whole thing
+
+				//Guarantee the expected Z distances between groupmates is the same
+				//by forcing the next group-move to not be "simple."
+				if (group)
+					group.bCanDoSimpleMove = false;
 
 				//If we're the mover then each platform in the group
 				//moves their own passengers. If we're not the mover
