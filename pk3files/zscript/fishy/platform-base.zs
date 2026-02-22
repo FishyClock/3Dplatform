@@ -3886,13 +3886,16 @@ extend class FishyPlatform
 					mover.PassengerPostMove(plat, fits);
 
 				//We only care if self fits or not
-				if (plat == self && !fits)
-					return false; //If it doesn't fit, abort the whole thing
+				if (plat == self)
+				{
+					if (!fits)
+						return false; //If it doesn't fit, abort the whole thing
 
-				//Guarantee the expected Z distances between groupmates is the same
-				//by forcing the next group-move to not be "simple."
-				if (group)
-					group.bCanDoSimpleMove = false;
+					//Guarantee the expected Z distances between groupmates is the same
+					//by forcing the next group-move to not be "simple."
+					if (group)
+						group.bCanDoSimpleMove = false;
+				}
 
 				//If we're the mover then each platform in the group
 				//moves their own passengers. If we're not the mover
