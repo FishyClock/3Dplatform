@@ -3665,34 +3665,16 @@ extend class FishyPlatform
 		//If our last MoveGroup() call was a success and
 		//this is just a "normal" move with no angle changes on the origin
 		//then we can get away with a simplified offset move for each groupmate.
-		if (group.bCanDoSimpleMove && moveType == MOVE_NORMAL &&
-			angle == oldAngle && pitch == oldPitch && roll == oldRoll)
-		{
-			if (pos == oldPos)
-				return true; //Better yet, we don't need to do anything
+		if (moveType != MOVE_NORMAL || angle != oldAngle || pitch != oldPitch || roll != oldRoll)
+			group.bCanDoSimpleMove = false;
 
-			vector3 offset = level.Vec3Diff(oldPos, pos);
-
-			int iPlat;
-			for (iPlat = 0; iPlat < group.members.Size(); ++iPlat)
-			{
-				let plat = group.GetMember(iPlat);
-				if (!plat || plat == self)
-					continue;
-
-				vector3 newPos = plat.pos + ((plat.options & OPTFLAG_MIRROR) ? -offset : offset);
-
-				if (!plat.DoMove(newPos, plat.angle, plat.pitch, plat.roll, MOVE_NORMAL))
-					break;
-			}
-			group.bCanDoSimpleMove = (iPlat >= group.members.Size()); //Not == because GetMember() could delete the last entry if it's null
-			return group.bCanDoSimpleMove;
-		}
+		if (group.bCanDoSimpleMove && pos == oldPos)
+			return true; //Better yet, we don't need to do anything
 
 		double delta = double.nan;
 		double piDelta = double.nan;
 		double roDelta = double.nan;
-		vector3 mirOfs = (double.nan, 0, 0);
+		vector3 offset = (group.bCanDoSimpleMove) ? level.Vec3Diff(oldPos, pos) : (double.nan, 0, 0);
 		quat axisYaw, axisPitch, axisRoll;
 		quat qRot = quat(double.nan, 0, 0, 0);
 
@@ -3712,16 +3694,16 @@ extend class FishyPlatform
 			if (!plat || plat == self)
 				continue;
 
-			bool changeAng = (plat.options & OPTFLAG_ANGLE);
-			bool changePi = (plat.options & OPTFLAG_PITCH);
-			bool changeRo = (plat.options & OPTFLAG_ROLL);
-
 			vector3 newPos;
 			double newAngle = plat.angle;
 			double newPitch = plat.pitch;
 			double newRoll = plat.roll;
 
-			if (plat.options & OPTFLAG_MIRROR)
+			if (group.bCanDoSimpleMove)
+			{
+				newPos = plat.pos + ((plat.options & OPTFLAG_MIRROR) ? -offset : offset);
+			}
+			else if (plat.options & OPTFLAG_MIRROR)
 			{
 				//The way we mirror movement is by getting the offset going
 				//from the origin's current position to its 'groupMirrorPos'
@@ -3729,26 +3711,26 @@ extend class FishyPlatform
 				//the attached platform's 'groupMirrorPos'.
 				//So we pretty much always go in the opposite direction
 				//using 'groupMirrorPos' as a reference point.
-				if (mirOfs != mirOfs) //NaN check
-					mirOfs = level.Vec3Diff(pos, groupMirrorPos);
+				if (offset != offset) //NaN check
+					offset = level.Vec3Diff(pos, groupMirrorPos);
 
-				newPos = plat.groupMirrorPos + mirOfs;
+				newPos = plat.groupMirrorPos + offset;
 				if (moveType != MOVE_NORMAL)
 					newPos = level.Vec3Offset(plat.pos, level.Vec3Diff(plat.pos, newPos));
 
-				if (changeAng)
+				if (plat.options & OPTFLAG_ANGLE)
 				{
 					if (delta != delta) //NaN check
 						delta = DeltaAngle(angle, groupAngle);
 					newAngle = plat.groupAngle + delta;
 				}
-				if (changePi)
+				if (plat.options & OPTFLAG_PITCH)
 				{
 					if (piDelta != piDelta) //NaN check
 						piDelta = DeltaAngle(pitch, groupPitch);
 					newPitch = plat.groupPitch + piDelta;
 				}
-				if (changeRo)
+				if (plat.options & OPTFLAG_ROLL)
 				{
 					if (roDelta != roDelta) //NaN check
 						roDelta = DeltaAngle(roll, groupRoll);
@@ -3767,6 +3749,10 @@ extend class FishyPlatform
 				newPos = pos + (qRot * plat.groupRotOffset);
 				if (moveType != MOVE_NORMAL)
 					newPos = level.Vec3Offset(plat.pos, level.Vec3Diff(plat.pos, newPos));
+
+				bool changeAng = (plat.options & OPTFLAG_ANGLE);
+				bool changePi = (plat.options & OPTFLAG_PITCH);
+				bool changeRo = (plat.options & OPTFLAG_ROLL);
 
 				if (changeAng || changePi || changeRo)
 				{
@@ -3819,8 +3805,19 @@ extend class FishyPlatform
 
 			if (!plat.DoMove(newPos, newAngle, newPitch, newRoll, moveType) && moveType > MOVE_QUICK)
 				break;
+
+			if (!bPlatPorted && plat.bPlatPorted) //Did our groupmate trigger a teleport special but we haven't?
+			{
+				let thisPos = pos;
+				let thisAng = angle;
+				SetGroupOrigin(plat, setMirrorPos: false);
+				bool result = plat.MoveGroup(MOVE_TRUETELE);
+				if (bFollowingPath)
+					AdjustInterpolationCoordinates(thisPos, pos, 0);//DeltaAngle(thisAng, angle));
+				return result;
+			}
 		}
-		group.bCanDoSimpleMove = (iPlat >= group.members.Size()); //Not == because GetMember() could delete the last entry if it's null
+		group.bCanDoSimpleMove = (iPlat >= group.members.Size()); //Not == because GetMember() will delete the last entry if it's null
 		return group.bCanDoSimpleMove;
 	}
 
