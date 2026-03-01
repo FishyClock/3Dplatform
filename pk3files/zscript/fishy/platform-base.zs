@@ -3808,12 +3808,18 @@ extend class FishyPlatform
 
 			if (!bPlatPorted && plat.bPlatPorted) //Did our groupmate trigger a teleport special but we haven't?
 			{
-				let thisPos = pos;
-				let thisAng = angle;
+				//Temporarily swap some options with our groupmate
+				int tempOptions = OPTFLAG_ANGLE | OPTFLAG_PITCH | OPTFLAG_ROLL | OPTFLAG_MIRROR | OPTFLAG_DIFFPASSCOLL;
+				int myTempOpt = options & tempOptions;
+				int platTempOpt = plat.options & tempOptions;
+
+				options = (options & ~myTempOpt) | platTempOpt;
+				plat.options = (plat.options & ~platTempOpt) | myTempOpt;
 				SetGroupOrigin(plat, setMirrorPos: false);
 				bool result = plat.MoveGroup(MOVE_TRUETELE);
-				if (bFollowingPath)
-					AdjustInterpolationCoordinates(thisPos, pos, 0);//DeltaAngle(thisAng, angle));
+				options = (options & ~platTempOpt) | myTempOpt;
+				plat.options = (plat.options & ~myTempOpt) | platTempOpt;
+				SetGroupOrigin(self, setMirrorPos: false);
 				return result;
 			}
 		}
