@@ -3806,20 +3806,40 @@ extend class FishyPlatform
 			if (!plat.DoMove(newPos, newAngle, newPitch, newRoll, moveType) && moveType > MOVE_QUICK)
 				break;
 
-			if (!bPlatPorted && plat.bPlatPorted) //Did our groupmate trigger a teleport special but we haven't?
+			//Did our groupmate trigger a teleport special but we haven't?
+			if (!bPlatPorted && plat.bPlatPorted && group.members.Size() > 1)
 			{
-				//Temporarily swap some options with our groupmate
+				//Temporarily swap some options with our groupmate "plat"
 				int tempOptions = OPTFLAG_ANGLE | OPTFLAG_PITCH | OPTFLAG_ROLL | OPTFLAG_MIRROR | OPTFLAG_DIFFPASSCOLL;
 				int myTempOpt = options & tempOptions;
 				int platTempOpt = plat.options & tempOptions;
-
 				options = (options & ~myTempOpt) | platTempOpt;
 				plat.options = (plat.options & ~platTempOpt) | myTempOpt;
-				SetGroupOrigin(plat, setMirrorPos: false);
+
+				//Temporarily put away the group list so it's just self and "plat" as the origin.
+				//We need to orient self to where "plat" just teleported.
+				group.members.Delete(iPlat); //Avoid teleporting "plat" twice. See below.
+				Array<FishyPlatform> savedMembers;
+				savedMembers.Move(group.members);
+				group.members.Push(self);
+				group.origin = plat;
+				if (!(options & OPTFLAG_MIRROR))
+					SetGroupRotationInfo();
 				bool result = plat.MoveGroup(MOVE_TRUETELE);
+
+				//Restore options
 				options = (options & ~platTempOpt) | myTempOpt;
 				plat.options = (plat.options & ~myTempOpt) | platTempOpt;
-				SetGroupOrigin(self, setMirrorPos: false);
+
+				//Restore self origin and member list,
+				//don't add back "plat" until after the 2nd MoveGroup() call.
+				//(Now we can teleport everyone else except "plat" because it already did it.)
+				group.origin = self;
+				group.members.Move(savedMembers);
+				if (result && group.members.Size() > 1)
+					result = MoveGroup(MOVE_TRUETELE);
+				group.members.Push(plat);
+
 				return result;
 			}
 		}
