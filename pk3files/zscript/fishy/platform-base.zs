@@ -3417,7 +3417,6 @@ extend class FishyPlatform
 
 				CheckPortalTransition(); //Handle sector portals properly
 				newPos = pos; //Don't let CheckPortalTransition() confuse the (pos != newPos) if condition below
-				moveType = MOVE_QUICKTELE;
 			}
 
 			angle = newAngle;
@@ -3426,8 +3425,8 @@ extend class FishyPlatform
 
 			//For MovePassengers()
 			delta = DeltaAngle(startAngle, newAngle);
-			piDelta = (moveType == MOVE_TELEPORT) ? 0 : DeltaAngle(startPitch, newPitch);
-			roDelta = (moveType == MOVE_TELEPORT) ? 0 : DeltaAngle(startRoll, newRoll);
+			piDelta = (moveType == MOVE_TELEPORT || bPlatPorted) ? 0 : DeltaAngle(startPitch, newPitch);
+			roDelta = (moveType == MOVE_TELEPORT || bPlatPorted) ? 0 : DeltaAngle(startRoll, newRoll);
 
 			if (lastUPort)
 			{
@@ -3442,17 +3441,21 @@ extend class FishyPlatform
 			}
 		}
 
-		if (moveType <= MOVE_QUICK || moveType == MOVE_REPEAT)
+		if (moveType <= MOVE_QUICK || moveType == MOVE_REPEAT || moveType == MOVE_TRUETELE)
 		{
 			if (pos != newPos)
 			{
+				//For "quick moves" we want it to be portal-aware.
+				//While teleportation and "repeat moves" should accept any absolute position.
+				if (moveType <= MOVE_QUICK)
+					newPos = level.Vec3Offset(pos, level.Vec3Diff(pos, newPos));
 				SetOrigin(newPos, true);
 				let oldPrev = prev;
 				CheckPortalTransition(); //Handle sector portals properly
 				prev = oldPrev;
 			}
 
-			bool telePass = (moveType == MOVE_QUICKTELE);
+			bool telePass = (moveType == MOVE_QUICKTELE || bPlatPorted);
 
 			MovePassengers(startPos, pos, angle, delta, piDelta, roDelta, telePass);
 			if (lastUPort)
@@ -3554,7 +3557,7 @@ extend class FishyPlatform
 				newAngle = angle;
 				portDelta += DeltaAngle(startAngle, angle); //For SetInterpolationCoordinates()
 				GoBack(startPos, startAngle, startPitch, startRoll);
-				return DoMove(newPos, newAngle, newPitch, newRoll, MOVE_QUICKTELE);
+				return DoMove(newPos, newAngle, newPitch, newRoll, MOVE_REPEAT);
 			}
 
 			//For MovePassengers().
@@ -3678,15 +3681,6 @@ extend class FishyPlatform
 		quat axisYaw, axisPitch, axisRoll;
 		quat qRot = quat(double.nan, 0, 0, 0);
 
-		//level.Vec3Diff() gives an offset between two positions. It handles the internal portal-groups.
-		//While level.Vec3Offset() shoots a trace from the given pos and travels the given offset.
-		//Any line portals it finds will be crossed.
-		//
-		//DoMove() with MOVE_NORMAL already does a level.Vec3Diff() call followed by TryMove()
-		//so we don't need to do any of that here.
-		//Otherwise we need Vec3Offset() and Vec3Diff()
-		//and the start position must be from "plat" and not from self (the origin).
-
 		int iPlat;
 		for (iPlat = 0; iPlat < group.members.Size(); ++iPlat)
 		{
@@ -3701,7 +3695,7 @@ extend class FishyPlatform
 
 			if (group.bCanDoSimpleMove)
 			{
-				newPos = plat.pos + ((plat.options & OPTFLAG_MIRROR) ? -offset : offset);
+				newPos = plat.pos + ((plat.options & OPTFLAG_MIRROR) ? -offset : offset); //Portal awareness is handled in DoMove()
 			}
 			else if (plat.options & OPTFLAG_MIRROR)
 			{
@@ -3713,10 +3707,7 @@ extend class FishyPlatform
 				//using 'groupMirrorPos' as a reference point.
 				if (offset != offset) //NaN check
 					offset = level.Vec3Diff(pos, groupMirrorPos);
-
-				newPos = plat.groupMirrorPos + offset;
-				if (moveType != MOVE_NORMAL)
-					newPos = level.Vec3Offset(plat.pos, level.Vec3Diff(plat.pos, newPos));
+				newPos = plat.groupMirrorPos + offset; //Portal awareness is handled in DoMove()
 
 				if (plat.options & OPTFLAG_ANGLE)
 				{
@@ -3746,9 +3737,7 @@ extend class FishyPlatform
 					axisRoll  = quat.AxisAngle((1, 0, 0), roll);
 					qRot = axisYaw * axisPitch * axisRoll;
 				}
-				newPos = pos + (qRot * plat.groupRotOffset);
-				if (moveType != MOVE_NORMAL)
-					newPos = level.Vec3Offset(plat.pos, level.Vec3Diff(plat.pos, newPos));
+				newPos = pos + (qRot * plat.groupRotOffset); //Portal awareness is handled in DoMove()
 
 				bool changeAng = (plat.options & OPTFLAG_ANGLE);
 				bool changePi = (plat.options & OPTFLAG_PITCH);
