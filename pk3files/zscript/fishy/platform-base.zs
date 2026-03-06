@@ -3232,7 +3232,7 @@ extend class FishyPlatform
 		if (group && group.origin != self)
 			SetGroupOrigin(self);
 
-		bool teleMove = (moveType == MOVE_TELEPORT || moveType == MOVE_TRUETELE);
+		bool teleMove = (moveType == MOVE_TELEPORT || bPlatPorted);
 
 		if (moveType != MOVE_TELEPORT)
 			bPushStuckActors = true;
@@ -4449,12 +4449,36 @@ extend class FishyPlatform
 	}
 
 	//============================
+	// PreTeleport (override)
+	//============================
+	override bool PreTeleport (Vector3 destPos, double destAngle, int flags)
+	{
+		if (!bInMove) //Not in the middle of a PlatMove() call? Can happen if we've been teleported by TeleportOther()
+			UpdateOldInfo();
+		return true;
+	}
+
+	//============================
 	// PostTeleport (override)
 	//============================
 	override void PostTeleport (vector3 destPos, double destAngle, int flags)
 	{
 		bPlatPorted = true;
 		platTeleFlags = flags;
+		if (!bInMove) //Not in the middle of a PlatMove() call? Can happen if we've been teleported by TeleportOther()
+		{
+			if (bFollowingPath)
+				AdjustInterpolationCoordinates(oldPos, pos, DeltaAngle(oldAngle, angle));
+
+			//This is needed if we want our passengers and our groupmates
+			//to teleport along with us.
+			let thisPos = pos;
+			let thisAng = angle;
+			let thisPi = pitch;
+			let thisRo = roll;
+			GoBack();
+			PlatMove(thisPos, thisAng, thisPi, thisRo, MOVE_REPEAT);
+		}
 	}
 
 	//============================
