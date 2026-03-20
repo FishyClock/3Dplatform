@@ -160,6 +160,9 @@ class FishyPlatform : Actor abstract
 	double user_turnspeed_roll_onpath;
 	double user_turnspeed_roll_withvel;
 	double user_turnspeed_roll_idle;
+
+	int user_tid_bindparent;
+	int user_tid_bindchildren;
 }
 
 class FishyPlatformNode : InterpolationPoint
@@ -509,6 +512,9 @@ extend class FishyPlatform
 	vector3 groupRotOffset;  //Precalculated offset from origin's groupRotPos to rotator's groupRotPos - changes when origin changes.
 	quat groupRotAngDiff; //Precalculated deltas from origin's groupAngle/Pitch/Roll to rotator's groupAngle/Pitch/Roll as a quaternion - changes when origin changes.
 	bool bQuatAngsAtPole; //Only relevant when our yaw, pitch and roll were converted from a quat.
+	FishyPlatform parent;
+	Array<FishyPlatform> children;
+	transient Array<FishyPlatform> platItList; //A collection of all groupmates, their children, their children's children, their children's groupmates etc etc
 	double time;
 	double reachedTime;
 	double timeFrac;
@@ -633,7 +639,7 @@ extend class FishyPlatform
 			return;
 		}
 
-		for (uint iPorts = level.linePortals.Size(); iPorts-- > 0;)
+		for (let iPorts = level.linePortals.Size(); iPorts-- > 0;)
 		{
 			let port = level.linePortals[iPorts];
 			if (port.mType == LinePortal.PORTT_TELEPORT || port.mType == LinePortal.PORTT_INTERACTIVE) //Not static, not visual-only
@@ -656,6 +662,51 @@ extend class FishyPlatform
 		GetNewPassengers(true);
 
 		bool noPrefix = (args[ARG_GROUPTID] && !SetUpGroup(args[ARG_GROUPTID], false));
+
+		//Set parent-child bindings
+		if (user_tid_bindparent)
+		foreach (FishyPlatform plat : level.CreateActorIterator(user_tid_bindparent, "FishyPlatform"))
+		{
+			if (plat == parent)
+				break; //Already set
+
+			if (plat == self)
+				continue;
+
+			if (parent)
+			{
+				//Cut ties with old parent
+				let index = parent.children.Find(self);
+				if (index < parent.children.Size())
+					parent.children.Delete(index);
+				parent.platItList.Clear();
+			}
+
+			parent = plat;
+			parent.children.Push(self);
+			parent.platItList.Clear();
+			break;
+		}
+
+		if (user_tid_bindchildren)
+		foreach (FishyPlatform plat : level.CreateActorIterator(user_tid_bindchildren, "FishyPlatform"))
+		{
+			if (plat == self || plat.parent == self)
+				continue;
+
+			if (plat.parent)
+			{
+				//Cut ties with old parent
+				let index = plat.parent.children.Find(plat);
+				if (index < plat.parent.children.Size())
+					plat.parent.children.Delete(index);
+				plat.parent.platItList.Clear();
+			}
+
+			plat.parent = self;
+			children.Push(plat);
+			platItList.Clear();
+		}
 
 		//Having a group origin at this point implies the group is already on the move.
 		//We need to call PlatMove() on the origin here to move us along with the rest
@@ -878,6 +929,8 @@ extend class FishyPlatform
 				newGroup.Add(self);
 				newGroup.Add(plat);
 			}
+			if (gotOrigin)
+				group.origin.platItList.Clear();
 		}
 
 		if (!foundOne)
@@ -3219,6 +3272,41 @@ extend class FishyPlatform
 	}
 
 	//============================
+	// MakeIterationList
+	//============================
+	private void MakeIterationList (out Array<FishyPlatform> workingList)
+	{
+		workingList.Push(self);
+
+		for (let index = children.Size(); index-- > 0;)
+		{
+			let child = children[index];
+			if (!child)
+			{
+				children.Delete(index);
+				continue;
+			}
+
+			if (workingList.Find(child) >= workingList.Size())
+				child.MakeIterationList(workingList);
+		}
+
+		if (group)
+		for (let index = group.members.Size(); index-- > 0;)
+		{
+			let member = group.members[index];
+			if (!member)
+			{
+				group.members.Delete(index);
+				continue;
+			}
+
+			if (workingList.Find(member) >= workingList.Size())
+				member.MakeIterationList(workingList);
+		}
+	}
+
+	//============================
 	// PlatMove
 	//============================
 	private int PlatMove (vector3 newPos, double newAngle, double newPitch, double newRoll, PMoveTypes moveType)
@@ -3230,7 +3318,14 @@ extend class FishyPlatform
 
 		FishyPlatform plat;
 		if (group && group.origin != self)
+		{
+			if (group.origin && group.origin.platItList.Size())
+				platItList.Move(group.origin.platItList);
 			SetGroupOrigin(self);
+		}
+
+		if (!platItList.Size())
+			MakeIterationList(platItList);
 
 		bool teleMove = (moveType == MOVE_TELEPORT || bPlatPorted);
 
@@ -3238,11 +3333,19 @@ extend class FishyPlatform
 			bPushStuckActors = true;
 
 		if (moveType > MOVE_QUICK) //Not a quick move?
-		for (int i = -1; i == -1 || (group && i < group.members.Size()); ++i)
+		/*for (int i = -1; i == -1 || (group && i < group.members.Size()); ++i)
 		{
 			plat = (i == -1) ? self : group.GetMember(i);
 			if (i > -1 && (!plat || plat == self)) //Already handled self
+				continue;*/
+		for (let index = platItList.Size(); index-- > 0;)
+		{
+			plat = platItList[index];
+			if (!plat)
+			{
+				platItList.Delete(index);
 				continue;
+			}
 
 			//More often than not "teleport moves" involve warping to
 			//our first interpolation point.
@@ -3328,11 +3431,19 @@ extend class FishyPlatform
 		}
 
 		if (moveType > MOVE_QUICK) //Not a quick move?
-		for (int i = -1; i == -1 || (group && i < group.members.Size()); ++i)
+		/*for (int i = -1; i == -1 || (group && i < group.members.Size()); ++i)
 		{
 			plat = (i == -1) ? self : group.GetMember(i);
 			if (i > -1 && (!plat || plat == self)) //Already handled self
+				continue;*/
+		for (let index = platItList.Size(); index-- > 0;)
+		{
+			plat = platItList[index];
+			if (!plat)
+			{
+				platItList.Delete(index);
 				continue;
+			}
 
 			for (int iTwins = 0; iTwins < 2; ++iTwins)
 			{
@@ -3359,11 +3470,19 @@ extend class FishyPlatform
 			}
 		}
 
-		for (int i = -1; i == -1 || (group && i < group.members.Size()); ++i)
+		/*for (int i = -1; i == -1 || (group && i < group.members.Size()); ++i)
 		{
 			plat = (i == -1) ? self : group.GetMember(i);
 			if (i > -1 && (!plat || plat == self)) //Already handled self
+				continue;*/
+		for (let index = platItList.Size(); index-- > 0;)
+		{
+			plat = platItList[index];
+			if (!plat)
+			{
+				platItList.Delete(index);
 				continue;
+			}
 
 			plat.bMoved = false;
 			plat.bInMove = true;
@@ -3374,13 +3493,21 @@ extend class FishyPlatform
 
 		int result = DoMove(newPos, newAngle, newPitch, newRoll, moveType) ? 1 : 0;
 		if (result)
-			result = (!group || MoveGroup(moveType)) ? 2 : 1;
+			result = (platItList.Size() < 2 || MoveGroup(moveType)) ? 2 : 1;
 
-		for (int i = -1; i == -1 || (group && i < group.members.Size()); ++i)
+		/*for (int i = -1; i == -1 || (group && i < group.members.Size()); ++i)
 		{
 			plat = (i == -1) ? self : group.GetMember(i);
 			if (i > -1 && (!plat || plat == self)) //Already handled self
+				continue;*/
+		for (let index = platItList.Size(); index-- > 0;)
+		{
+			plat = platItList[index];
+			if (!plat)
+			{
+				platItList.Delete(index);
 				continue;
+			}
 
 			plat.bInMove = false;
 
@@ -3681,11 +3808,22 @@ extend class FishyPlatform
 		quat axisYaw, axisPitch, axisRoll;
 		quat qRot = quat(double.nan, 0, 0, 0);
 
-		int iPlat;
+		/*int iPlat;
 		for (iPlat = 0; iPlat < group.members.Size(); ++iPlat)
 		{
 			let plat = group.GetMember(iPlat);
 			if (!plat || plat == self)
+				continue;*/
+		bool result = true;
+		for (let index = platItList.Size(); index-- > 0;)
+		{
+			let plat = platItList[index];
+			if (!plat)
+			{
+				platItList.Delete(index);
+				continue;
+			}
+			if (plat == self)
 				continue;
 
 			vector3 newPos;
@@ -3693,7 +3831,7 @@ extend class FishyPlatform
 			double newPitch = plat.pitch;
 			double newRoll = plat.roll;
 
-			if (group.bCanDoSimpleMove)
+			if (group && group.bCanDoSimpleMove)
 			{
 				newPos = plat.pos + ((plat.options & OPTFLAG_MIRROR) ? -offset : offset); //Portal awareness is handled in DoMove()
 			}
@@ -3793,8 +3931,12 @@ extend class FishyPlatform
 			}
 
 			if (!plat.DoMove(newPos, newAngle, newPitch, newRoll, moveType) && moveType > MOVE_QUICK)
+			{
+				result = false;
 				break;
+			}
 
+			/* SELF-NOTE: DISABLED UNTIL I FINISH REDESIGNING THE ITERATION SYSTEM!
 			//Did our groupmate trigger a teleport special but we haven't?
 			if (!bPlatPorted && plat.bPlatPorted && group.members.Size() > 1)
 			{
@@ -3831,9 +3973,12 @@ extend class FishyPlatform
 
 				return result;
 			}
+			*/
 		}
-		group.bCanDoSimpleMove = (iPlat >= group.members.Size()); //Not == because GetMember() will delete the last entry if it's null
-		return group.bCanDoSimpleMove;
+
+		if (group)
+			group.bCanDoSimpleMove = result;
+		return result;
 	}
 
 	//============================
