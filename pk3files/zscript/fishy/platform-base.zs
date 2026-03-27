@@ -991,7 +991,7 @@ extend class FishyPlatform
 
 			//Compute the position offsets and save into 'groupRotPos' so SetGroupRotationInfo() works consistently.
 			groupRotOffset = qOriAngsInv * level.Vec3Diff(ori.pos, pos);
-			groupRotPos = level.Vec3Offset(ori.groupRotPos, qOriGrpAngs * groupRotOffset);
+			groupRotPos = ori.groupRotPos + (qOriGrpAngs * groupRotOffset);
 
 			//Compute the angle deltas and save into all "group angles" so SetGroupRotationInfo() works consistently.
 			//Note: this cannot be done by relying on DeltaAngle() results and feeding those results into a quat! (I've tried.)
