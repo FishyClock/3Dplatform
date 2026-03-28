@@ -508,7 +508,7 @@ extend class FishyPlatform
 	double groupRoll;  //The roll when this platform joins a group - doesn't change when origin changes.
 	vector3 groupRotOffset;  //Precalculated offset from origin's groupRotPos to rotator's groupRotPos - changes when origin changes.
 	quat groupRotAngDiff; //Precalculated deltas from origin's groupAngle/Pitch/Roll to rotator's groupAngle/Pitch/Roll as a quaternion - changes when origin changes.
-	bool bQuatAngsAtPole; //Only relevant when our yaw, pitch and roll were converted from a quat.
+	bool bQuatAngsAtPole; //Only relevant when our angles came from AnglesFromQuat() and to compare with previous AnglesFromQuat() results.
 	double time;
 	double reachedTime;
 	double timeFrac;
@@ -931,7 +931,7 @@ extend class FishyPlatform
 
 		groupRotOffset = q * level.Vec3Diff(ori.groupRotPos, groupRotPos);
 		groupRotAngDiff = q * quat.FromAngles(groupAngle, groupPitch, groupRoll);
-		bQuatAngsAtPole = false;
+		bQuatAngsAtPole = (Normalize180(roll) == 0 && abs(Normalize180(pitch)) == 90);
 	}
 
 	//============================
@@ -998,7 +998,7 @@ extend class FishyPlatform
 			groupRotAngDiff = qOriAngsInv * quat.FromAngles(angle, pitch, roll);
 			[groupAngle, groupPitch, groupRoll] = AnglesFromQuat(qOriGrpAngs * groupRotAngDiff);
 
-			bQuatAngsAtPole = false;
+			bQuatAngsAtPole = (Normalize180(roll) == 0 && abs(Normalize180(pitch)) == 90);
 		}
 	}
 
@@ -3678,7 +3678,6 @@ extend class FishyPlatform
 		double piDelta = double.nan;
 		double roDelta = double.nan;
 		vector3 offset = (group.bCanDoSimpleMove) ? level.Vec3Diff(oldPos, pos) : (double.nan, 0, 0);
-		quat axisYaw, axisPitch, axisRoll;
 		quat qRot = quat(double.nan, 0, 0, 0);
 
 		int iPlat;
@@ -3731,12 +3730,7 @@ extend class FishyPlatform
 			else //Non-mirror movement. Rotation happens here.
 			{
 				if (qRot != qRot) //NaN check
-				{
-					axisYaw   = quat.AxisAngle((0, 0, 1), angle);
-					axisPitch = quat.AxisAngle((0, 1, 0), pitch);
-					axisRoll  = quat.AxisAngle((1, 0, 0), roll);
-					qRot = axisYaw * axisPitch * axisRoll;
-				}
+					qRot = quat.FromAngles(angle, pitch, roll);
 				newPos = pos + (qRot * plat.groupRotOffset); //Portal awareness is handled in DoMove()
 
 				bool changeAng = (plat.options & OPTFLAG_ANGLE);
@@ -3745,44 +3739,32 @@ extend class FishyPlatform
 
 				if (changeAng || changePi || changeRo)
 				{
-					bool atPole;
-					if (changeAng && changePi && changeRo)
-					{
-						[newAngle, newPitch, newRoll, atPole] = AnglesFromQuat(qRot * plat.groupRotAngDiff);
-					}
-					else
-					{
-						//When the quat-singularity crosses one of its poles, pitch will
-						//never go over +/-90 while yaw and roll will suddenly make a 180 turn.
-						//Because of this fact, if we only want some euler angles rotated
-						//then only the relevant axis rotations should take effect.
-						//The end result is applied to all three angles regardless.
-						//
-						//This matters if you only want the pitch rotated
-						//and one of the two poles gets crossed.
-						quat qSelectiveRot = (changeAng) ? axisYaw : quat(0, 0, 0, 1);
-						if (changePi)
-							qSelectiveRot *= axisPitch;
-						if (changeRo)
-							qSelectiveRot *= axisRoll;
-						[newAngle, newPitch, newRoll, atPole] = AnglesFromQuat(qSelectiveRot * plat.groupRotAngDiff);
-					}
+					let [qYaw, qPitch, qRoll, atPole] = AnglesFromQuat(qRot * plat.groupRotAngDiff);
 
-					//When the aforementioned yaw/roll make that sudden 180 turn,
-					//the render interpolation briefly "glitches" for a fraction of a second
-					//and passengers get flung around in unexpected ways.
+					if (changeAng)
+						newAngle = qYaw;
+					if (changePi)
+						newPitch = qPitch;
+					if (changeRo)
+						newRoll = qRoll;
+
+					//When the quat's pitch-singularity/pole is crossed, the resulting yaw and roll
+					//make a sudden 180 turn. (While the result pitch stays in the range of -90, +90).
+					//When that happens the render interpolation
+					//briefly "glitches" for a fraction of a second and passengers get
+					//flung around in unexpected ways.
 					//To handle that, we set the angles right here then clear interpolations.
 					//
 					//This will affect MovePassengers() so yaw/pitch/roll changes
 					//don't influence passenger movement; this is intentional.
-					if (plat.bQuatAngsAtPole != atPole)
+					if (plat.bQuatAngsAtPole != atPole && (changeAng || changeRo))
 					{
-						plat.bQuatAngsAtPole = atPole;
 						plat.angle = newAngle;
 						plat.pitch = newPitch;
 						plat.roll = newRoll;
 						plat.ClearInterpolation();
 					}
+					plat.bQuatAngsAtPole = atPole;
 				}
 			}
 
