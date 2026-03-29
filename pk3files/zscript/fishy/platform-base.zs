@@ -2309,6 +2309,7 @@ extend class FishyPlatform
 
 		//Move our passengers (platform rotation is taken into account)
 		double top = endPos.z + height;
+		double twinTop = (portTwin) ? portTwin.pos.z + portTwin.height : top;
 		double c, s;
 		if (delta)
 		{
@@ -2372,6 +2373,7 @@ extend class FishyPlatform
 				moNewPos.z = top;
 
 			bool moved;
+			bool lostMo = false;
 			if (plat)
 			{
 				mo.bNoDropoff = false;
@@ -2395,6 +2397,9 @@ extend class FishyPlatform
 					ForgetPassenger(i);
 					continue;
 				}
+
+				//If 'plat' teleported on its own then don't move it back
+				lostMo = (!self.bPlatPorted && plat.bPlatPorted);
 
 				moved = (result == 2); //2 == this plat and its groupmates moved. 1 == plat moved but not all groupmates moved.
 				if (plat.bFollowingPath)
@@ -2434,7 +2439,11 @@ extend class FishyPlatform
 				if (moved)
 					moNewAngle = plat.angle; //In case a portal was crossed that had an angle difference
 
-				if (!mo.bNoBlockmap)
+				//The context of 'moved' changes if 'plat' was lost because of independent teleporting
+				if (lostMo)
+					moved = (result >= 1);
+
+				if (!mo.bNoBlockmap && !lostMo)
 					mo.A_ChangeLinkFlags(NO_BMAP); //Undo SetActorFlag() shenanigans
 
 				mo.bNoDropoff = moOldNoDropoff;
@@ -2508,11 +2517,45 @@ extend class FishyPlatform
 					if (!mo || mo.bDestroyed)
 						break;
 
-					if (!mo.bNoBlockmap)
-						mo.A_ChangeLinkFlags(NO_BMAP); //Undo SetActorFlag() shenanigans
+					mo.CheckPortalTransition(); //Handle sector portals properly
+
+					//Attempting to detect if a teleport occurred...
+					//(We check our twin in case it was a portal line)
+					//At the moment, this isn't easy to detect with generic actors, so we go with naive assumptions instead
+					if ((mo.pos.z < top - TOP_EPSILON && mo.pos.z < twinTop - TOP_EPSILON) || //'mo' is suddenly below us
+						mo.floorZ > top + TOP_EPSILON && mo.floorZ > twinTop + TOP_EPSILON) //'mo' is above/on a 3D floor that's above us
+					{
+						//I'm aware this won't detect if the passenger just teleported higher
+						//and there's no 3D floor in between. :(
+						lostMo = true;
+						break;
+					}
 
 					if (tryPos != mo.pos.xy)
 					{
+						//Make sure it's still within XY reach.
+						//Otherwise assume it teleported and forget about it. Unless...
+						if (!OverlapXY(self, mo) && (!portTwin || !OverlapXY(portTwin, mo)))
+						{
+							lostMo = true;
+
+							//See if it's overlapping with or standing on any of the other passengers
+							foreach (otherPass : passengers)
+							{
+								if (mo == otherPass)
+									continue;
+
+								if ( ( abs(mo.pos.z - (otherPass.pos.z + otherPass.height)) <= TOP_EPSILON || OverlapZ(mo, otherPass) ) &&
+									OverlapXY(mo, otherPass) )
+								{
+									lostMo = false; //Not lost after all
+									break;
+								}
+							}
+							if (lostMo)
+								break;
+						}
+
 						//If 'mo' has passed through a portal then
 						//adjust 'stepMove' if its angle changed.
 						double angDiff = DeltaAngle(moOldAngle, mo.angle);
@@ -2528,7 +2571,9 @@ extend class FishyPlatform
 								mo.moveDir = (mo.moveDir + int(angDiff / 45)) & 7;
 						}
 					}
-					mo.CheckPortalTransition(); //Handle sector portals properly
+
+					if (!mo.bNoBlockmap)
+						mo.A_ChangeLinkFlags(NO_BMAP); //Undo SetActorFlag() shenanigans
 				}
 
 				//Take into account passengers getting Thing_Remove()'d
@@ -2542,6 +2587,15 @@ extend class FishyPlatform
 				mo.bNoGravity = moOldNoGrav;
 				if (usingCompatCrossDropoff) //Only do this if really necessary
 					mo.bScrollMove = moOldScrollMove;
+			}
+
+			if (lostMo) //It teleported on its own so don't try moving it back
+			{
+				if (mo.bNoBlockmap)
+					mo.A_ChangeLinkFlags(YES_BMAP);
+				PassengerPostMove(mo, moved);
+				ForgetPassenger(i);
+				continue;
 			}
 
 			if (moved)
