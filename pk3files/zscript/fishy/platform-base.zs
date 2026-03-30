@@ -2523,7 +2523,7 @@ extend class FishyPlatform
 					//(We check our twin in case it was a portal line)
 					//At the moment, this isn't easy to detect with generic actors, so we go with naive assumptions instead
 					if ((mo.pos.z < top - TOP_EPSILON && mo.pos.z < twinTop - TOP_EPSILON) || //'mo' is suddenly below us
-						mo.floorZ > top + TOP_EPSILON && mo.floorZ > twinTop + TOP_EPSILON) //'mo' is above/on a 3D floor that's above us
+						(mo.floorZ > top + TOP_EPSILON && mo.floorZ > twinTop + TOP_EPSILON) ) //'mo' is above/on a 3D floor that's above us
 					{
 						//I'm aware this won't detect if the passenger just teleported higher
 						//and there's no 3D floor in between. :(
