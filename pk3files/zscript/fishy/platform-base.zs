@@ -2309,7 +2309,6 @@ extend class FishyPlatform
 
 		//Move our passengers (platform rotation is taken into account)
 		double top = endPos.z + height;
-		double twinTop = (portTwin) ? portTwin.pos.z + portTwin.height : top;
 		double c, s;
 		if (delta)
 		{
@@ -2505,8 +2504,14 @@ extend class FishyPlatform
 					let moOldAngle = mo.angle;
 					mo.AddZ(stepMove.z);
 					vector2 tryPos = mo.pos.xy + stepMove.xy;
+					bool zeroVel = (mo.vel == (0, 0, 0));
+					if (zeroVel)
+						mo.vel = (1, 0, 0); //Temporarily force a non-zero velocity so we can do the teleport test
+
 					if (!mo.TryMove(tryPos, 1))
 					{
+						if (zeroVel && (mo.vel == (1, 0, 0) || mo.vel.Length() == 1)) //Check length in case it was rotated
+							mo.vel = (0, 0, 0);
 						mo.AddZ(-stepMove.z);
 						moved = false;
 						break;
@@ -2519,43 +2524,19 @@ extend class FishyPlatform
 
 					mo.CheckPortalTransition(); //Handle sector portals properly
 
-					//Attempting to detect if a teleport occurred...
-					//(We check our twin in case it was a portal line)
-					//At the moment, this isn't easy to detect with generic actors, so we go with naive assumptions instead
-					if ((mo.pos.z < top - TOP_EPSILON && mo.pos.z < twinTop - TOP_EPSILON) || //'mo' is suddenly below us
-						(mo.floorZ > top + TOP_EPSILON && mo.floorZ > twinTop + TOP_EPSILON) ) //'mo' is above/on a 3D floor that's above us
+					//If TryMove() caused velocity to be triple zero despite our previous setting,
+					//assume 'mo' has teleported.
+					if (mo.vel == (0, 0, 0))
 					{
-						//I'm aware this won't detect if the passenger just teleported higher
-						//and there's no 3D floor in between. :(
 						lostMo = true;
 						break;
 					}
 
+					if (zeroVel && (mo.vel == (1, 0, 0) || mo.vel.Length() == 1)) //Check length in case it was rotated
+						mo.vel = (0, 0, 0);
+
 					if (tryPos != mo.pos.xy)
 					{
-						//Make sure it's still within XY reach.
-						//Otherwise assume it teleported and forget about it. Unless...
-						if (!OverlapXY(self, mo) && (!portTwin || !OverlapXY(portTwin, mo)))
-						{
-							lostMo = true;
-
-							//See if it's overlapping with or standing on any of the other passengers
-							foreach (otherPass : passengers)
-							{
-								if (mo == otherPass)
-									continue;
-
-								if ( ( abs(mo.pos.z - (otherPass.pos.z + otherPass.height)) <= TOP_EPSILON || OverlapZ(mo, otherPass) ) &&
-									OverlapXY(mo, otherPass) )
-								{
-									lostMo = false; //Not lost after all
-									break;
-								}
-							}
-							if (lostMo)
-								break;
-						}
-
 						//If 'mo' has passed through a portal then
 						//adjust 'stepMove' if its angle changed.
 						double angDiff = DeltaAngle(moOldAngle, mo.angle);
