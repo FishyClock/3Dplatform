@@ -4889,6 +4889,7 @@ extend class FishyPlatform
 			plat.bActivatePCross = false;
 			plat.bThruActors = true;
 
+			let oldVel = plat.vel; //Don't allow it to nullify this velocity; leave that to PlatVelMove()
 			let oldState = plat.curState;
 			let oldTics = plat.tics;
 			plat.tics = -1; //And don't advance states either
@@ -4899,7 +4900,10 @@ extend class FishyPlatform
 			if (!plat.CallActorTick())
 				continue; //Destroyed
 			plat.bCallingActorTick = false;
-			plat.GoBack();
+			plat.GoBack(); //PlatMove() should handle the actual move because we want our passengers and groupmates to come along with us
+
+			if (plat.vel ~== (0, 0, 0))
+				plat.vel = oldVel;
 
 			plat.bNoFriction = oldNoFric;
 			plat.bNoTrigger = oldNoTrig;
