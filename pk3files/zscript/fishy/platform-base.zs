@@ -548,6 +548,7 @@ extend class FishyPlatform
 	int options;
 	int crushDamage;
 	transient bool bCallingMonsterMove;
+	transient bool bCallingActorTick;
 	Array<Actor> restoreMoveDirActors; //These 3 arrays are part of a CollidedWith() ~*Gross Hack*~ :3
 	Array<int> restoreMoveDirDirs;
 	Array<int> restoreMoveDirCounts;
@@ -4731,6 +4732,17 @@ extend class FishyPlatform
 	}
 
 	//============================
+	// CallActorTick
+	//============================
+	private bool CallActorTick ()
+	{
+		//This exists because ZScript can't compile
+		//"plat.Actor.Tick();" nor "plat.Super.Tick();"
+		Actor.Tick();
+		return (!bDestroyed);
+	}
+
+	//============================
 	// Tick (override)
 	//============================
 	override void Tick ()
@@ -4774,16 +4786,134 @@ extend class FishyPlatform
 		if (IsFrozen())
 			return;
 
-		//Any of the copy's received velocities are passed on to the non-copy twin
-		if (portTwin && portTwin.bPortCopy)
+		double oldFloorZ = floorZ;
+
+		// The group origin, if there is one, thinks for the whole group.
+		// That means the order in which they think depends on where
+		// they are in the group array and not where they are in the thinker list.
+		// (In other words, the others think when the origin thinks/ticks.)
+		//
+		// The intent behind this is to keep the whole group in sync.
+		// Especially when playing user var sounds as a group.
+		// Like the moving bridge construct in map01.
+
+		bool inactive;
+
+		if (!group || !group.origin || group.origin == self)
+		for (int i = -1; i == -1 || (group && group.origin == self && i < group.members.Size()); ++i)
 		{
-			vector3 pVel = portTwin.vel;
-			portTwin.vel = (0, 0, 0);
+			let plat = (i == -1) ? self : group.GetMember(i);
+			if (i > -1 && (!plat || plat == self)) //Already handled self
+				continue;
 
-			if (lastUPort && pVel.xy != (0, 0))
-				pVel = TranslatePortalVector(pVel, lastUPort, false, true);
+			//Any of the copy's received velocities are passed on to the non-copy twin
+			if (plat.portTwin && plat.portTwin.bPortCopy)
+			{
+				vector3 pVel = plat.portTwin.vel;
+				plat.portTwin.vel = (0, 0, 0);
 
-			vel += pVel;
+				if (plat.lastUPort && pVel.xy != (0, 0))
+					pVel = TranslatePortalVector(pVel, plat.lastUPort, false, true);
+
+				plat.vel += pVel;
+			}
+
+			if (i == -1)
+				inactive = (holdTime - 1 > 0 || !IsActive());
+
+			for (int iTwins = 0; iTwins < 2; ++iTwins)
+			{
+				if (iTwins > 0 && !(plat = plat.portTwin))
+					break;
+
+				//Don't update the blockmap results while...
+				if (plat.noBmapSearchTics > 0 && //The interval isn't over and...
+					abs(plat.pos.x - plat.oldBmapSearchPos.x) < plat.radius && abs(plat.pos.y - plat.oldBmapSearchPos.y) < plat.radius ) //Not too far away from where the last blockmap search was done
+				{
+					--plat.noBmapSearchTics;
+				}
+				else if (!inactive)
+				{
+					plat.GetNewBmapResults();
+				}
+				else
+				{
+					plat.noBmapSearchTics = BMAP_SEARCH_INTERVAL;
+					for (let iNearby = plat.nearbyActors.Size(); iNearby-- > 0;)
+					{
+						//Keep the size low in idle mode
+						let mo = plat.nearbyActors[iNearby];
+						if (!mo || !OverlapXY(plat, mo))
+							plat.nearbyActors.Delete(iNearby);
+					}
+				}
+				plat.bOnMobj = false; //Aside from standing on an actor, this can also be "true" later if hitting a lower obstacle while going down or we have stuck actors
+				plat.HandleOldPassengers(inactive);
+				plat.UpdateOldInfo();
+				plat.bPlatPorted = false;
+			}
+		}
+
+		if (!group || !group.origin || group.origin == self)
+		for (int i = -1; i == -1 || (group && group.origin == self && i < group.members.Size()); ++i)
+		{
+			let plat = (i == -1) ? self : group.GetMember(i);
+			if (i > -1 && (!plat || plat == self)) //Already handled self
+				continue;
+
+			if (!plat.bUseActorTick)
+				continue;
+
+			//We're about to call the native Actor Tick() function in order to
+			//handle things that are otherwise hard to replicate in ZScript.
+			//Things such as scrolling floors, morph logic, bounce logic and so on.
+			//In order for this to work along with PlatVelMove() and our own handling
+			//of setting gravity and friction, many flags are temp set to prevent a lot
+			//of unwanted behavior.
+			let oldNoFric = plat.bNoFriction;
+			let oldNoTrig = plat.bNoTrigger;   //You'd think this flag would be enough, but Sector Action things get triggered anyway! -_-
+			let oldNoTele = plat.bNoTeleport;  //In which case just set all the relevant flags.
+			let oldCanUse = plat.bCanUseWalls; //We don't want to trigger specials or teleport in this case.
+			let oldCanPush = plat.bCanPushWalls;
+			let oldImpact = plat.bActivateImpact;
+			let oldMCross = plat.bActivateMCross;
+			let oldPCross = plat.bActivatePCross;
+			let oldThruActors = plat.bThruActors; //Also don't collide with any actors.
+			plat.bNoFriction = true;
+			plat.bNoTrigger = true;
+			plat.bNoTeleport = true;
+			plat.bCanUseWalls = false;
+			plat.bCanPushWalls = false;
+			plat.bActivateImpact = false;
+			plat.bActivateMCross = false;
+			plat.bActivatePCross = false;
+			plat.bThruActors = true;
+
+			let oldState = plat.curState;
+			let oldTics = plat.tics;
+			plat.tics = -1; //And don't advance states either
+
+			//Handling scrollers and bounce logic sets the velocity
+			//which is the entire point behind this particular hack.
+			plat.bCallingActorTick = true; //Prevent FallAndSink() from doing anything.
+			if (!plat.CallActorTick())
+				continue; //Destroyed
+			plat.bCallingActorTick = false;
+			plat.GoBack();
+
+			plat.bNoFriction = oldNoFric;
+			plat.bNoTrigger = oldNoTrig;
+			plat.bNoTeleport = oldNoTele;
+			plat.bCanUseWalls = oldCanUse;
+			plat.bCanPushWalls = oldCanPush;
+			plat.bActivateImpact = oldImpact;
+			plat.bActivateMCross = oldMCross;
+			plat.bActivatePCross = oldPCross;
+			plat.bThruActors = oldThruActors;
+
+			//Only restore tics if nothing has actually changed
+			if (plat.tics == -1 && plat.curState == oldState)
+				plat.tics = oldTics;
 		}
 
 		if (group)
@@ -4824,140 +4954,12 @@ extend class FishyPlatform
 			}
 		}
 
-		double oldFloorZ = floorZ;
-
-		// The group origin, if there is one, thinks for the whole group.
-		// That means the order in which they think depends on where
-		// they are in the group array and not where they are in the thinker list.
-		// (In other words, the others think when the origin thinks/ticks.)
-		//
-		// The intent behind this is to keep the whole group in sync.
-		// Especially when playing user var sounds as a group.
-		// Like the moving bridge construct in map01.
-
-		bool inactive;
-
 		if (!group || !group.origin || group.origin == self)
-		for (int i = -1; i == -1 || (group && group.origin == self && i < group.members.Size()); ++i)
-		{
-			let plat = (i == -1) ? self : group.GetMember(i);
-			if (i > -1 && (!plat || plat == self)) //Already handled self
-				continue;
-
-			if (i == -1)
-				inactive = (holdTime - 1 > 0 || !IsActive());
-
-			for (int iTwins = 0; iTwins < 2; ++iTwins)
-			{
-				if (iTwins > 0 && !(plat = plat.portTwin))
-					break;
-
-				//Don't update the blockmap results while...
-				if (plat.noBmapSearchTics > 0 && //The interval isn't over and...
-					abs(plat.pos.x - plat.oldBmapSearchPos.x) < plat.radius && abs(plat.pos.y - plat.oldBmapSearchPos.y) < plat.radius ) //Not too far away from where the last blockmap search was done
-				{
-					--plat.noBmapSearchTics;
-				}
-				else if (!inactive)
-				{
-					plat.GetNewBmapResults();
-				}
-				else
-				{
-					plat.noBmapSearchTics = BMAP_SEARCH_INTERVAL;
-					for (let iNearby = plat.nearbyActors.Size(); iNearby-- > 0;)
-					{
-						//Keep the size low in idle mode
-						let mo = plat.nearbyActors[iNearby];
-						if (!mo || !OverlapXY(plat, mo))
-							plat.nearbyActors.Delete(iNearby);
-					}
-				}
-				plat.bOnMobj = false; //Aside from standing on an actor, this can also be "true" later if hitting a lower obstacle while going down or we have stuck actors
-				plat.HandleOldPassengers(inactive);
-				plat.UpdateOldInfo();
-				plat.bPlatPorted = false;
-			}
-		}
-
-		// The group logic is incompatible with the native Tick() function.
-		// For sanity's sake, I'm not going to bother to make it compatible.
-		// Because being in a group affects gravity and friction.
-		// And making that work with Actor.Tick() will give me a headache.
-		// Besides that, movement in the world has to happen first before
-		// any path following happens.
-		// But calling Actor.Tick() will also change actor states.
-		//
-		// As it turns out, there's more to actor movement
-		// besides checking velocity, handling gravity, friction.
-		// Such as scrolling floors and bounce logic.
-		// If you want bouncyness or scrolling or whatever else
-		// is already handled natively then use Actor.Tick().
-		//
-		bool callActorTick = (!group && bUseActorTick);
-
-		if (callActorTick)
-		{
-			vector3 startVel = vel;
-			if (startVel != (0, 0, 0) && startVel.LengthSquared() <= MISCUSERVAR_LOWVEL)
-				startVel = (0, 0, 0);
-
-			if (lastGetBmapTime == level.mapTime)
-				GetNewPassengers(false); //Call this early if we just did a blockmap search
-
-			let oldPGroup = curSector.portalGroup;
-			bInMove = true; //Don't collide with passengers
-			Actor.Tick();
-			if (bDestroyed)
-				return; //Abort if we got Thing_Remove()'d
-			bInMove = false;
-
-			//If our position/angles have actually changed then go back and try to get here via PlatMove()
-			if (pos != oldPos || angle != oldAngle || pitch != oldPitch || roll != oldRoll)
-			{
-				if (bFollowingPath && (pos != oldPos || angle != oldAngle))
-				{
-					if (bPlatPorted || curSector.portalGroup != oldPGroup)
-						AdjustInterpolationCoordinates(oldPos, pos, DeltaAngle(oldAngle, angle));
-					else
-						pCurr += pos - oldPos; //Adjust for interpolation moves
-				}
-				let thisPos = pos;
-				let thisAng = angle;
-				let thisPi = pitch;
-				let thisRo = roll;
-				GoBack();
-				PlatMove(thisPos, thisAng, thisPi, thisRo, MOVE_REPEAT);
-			}
-			else if (portTwin && portTwin.bNoBlockmap && portTwin.bPortCopy && !IsActive())
-			{
-				portTwin.Destroy(); //If we're not moving then remove our non-solid portal copy
-			}
-
-			if (!bOnMobj && pos.z > floorZ && vel != (0, 0, 0))
-			{
-				vel *= platAirFric;
-
-				//For some reason Actor.Tick() doesn't take care of this(?)
-				//so the 'minVel' check is necessary here, too
-				//otherwise too much time is spent with a combined "zero velocity."
-				if (abs(vel.x) < minVel) vel.x = 0;
-				if (abs(vel.y) < minVel) vel.y = 0;
-				if (abs(vel.z) < minVel) vel.z = 0;
-			}
-
-			if (vel == (0, 0, 0) && startVel != (0, 0, 0))
-				bUserSoundsShouldMove = true; //Play "blocked" sound
-		}
-		else if (!group || group.origin == self)
 		{
 			if (!PlatVelMove())
-				return; //Abort if we got Thing_Remove()'d
-		}
+				return; //We got destroyed
 
-		//Path following and idle turning (both influenced by pivot behavior)
-		if (!group || !group.origin || group.origin == self)
-		{
+			//Path following and idle turning (both influenced by pivot behavior)
 			if (bFollowingPath && !HandlePathFollowing())
 				return; //We got destroyed
 
@@ -4970,13 +4972,6 @@ extend class FishyPlatform
 			}
 		}
 		bInterpolateSuccess = false;
-
-		if (callActorTick)
-		{
-			let [shouldMove, hasMoved] = CheckUserSoundsMovement();
-			HandleUserSounds(shouldMove, hasMoved);
-			return;
-		}
 
 		//Handle friction, gravity, and other misc things
 		if (!group || !group.origin || group.origin == self)
@@ -5122,11 +5117,51 @@ extend class FishyPlatform
 
 				plat.HandleUserSounds(shouldMove, hasMoved);
 
+				let startPos = plat.pos;
+				let startAngle = plat.angle;
+				let startPitch = plat.pitch;
+				let startRoll = plat.roll;
+				let oldPGroup = plat.curSector.portalGroup;
+
 				if (!plat.CheckNoDelay())
 					continue; //Freed itself (ie got destroyed)
 
 				if (plat.tics != -1 && --plat.tics <= 0)
-					plat.SetState(plat.curState.nextState);
+				{
+					if (!plat.SetState(plat.curState.nextState))
+						continue; //Freed itself (ie got destroyed)
+				}
+
+				if (plat.pos != startPos ||
+					plat.angle != startAngle ||
+					plat.pitch != startPitch ||
+					plat.roll != startRoll)
+				{
+					if (plat.bFollowingPath && plat.pos != startPos)
+					{
+						if (plat.curSector.portalGroup != oldPGroup)
+						{
+							vector3 offset = level.Vec3Diff(startPos, plat.pos);
+							plat.pCurr += offset;
+							plat.AdjustInterpolationCoordinates(startPos + offset, plat.pos, 0);
+						}
+						else
+						{
+							plat.pCurr += plat.pos - startPos;
+						}
+					}
+					FishyPlatform oldOri = (group) ? group.origin : null;
+
+					let thisPos = plat.pos;
+					let thisAngle = plat.angle;
+					let thisPitch = plat.pitch;
+					let thisRoll = plat.roll;
+					plat.GoBack(startPos, startAngle, startPitch, startRoll);
+					plat.PlatMove(thisPos, thisAngle, thisPitch, thisRoll, MOVE_REPEAT);
+
+					if (oldOri && plat != oldOri)
+						SetGroupOrigin(oldOri);
+				}
 			}
 		}
 	}
@@ -5158,7 +5193,7 @@ extend class FishyPlatform
 	override void FallAndSink (double grav, double oldFloorZ)
 	{
 		//This is a modified version of the original function
-		if (!grav)
+		if (!grav || bCallingActorTick)
 			return;
 
 		double startVelZ = vel.z;
@@ -5191,7 +5226,7 @@ extend class FishyPlatform
 		}
 		else if (wLevel >= 1)
 		{
-			double sinkSpeed = -0.5; // -WATER_SINK_SPEED;
+			double sinkSpeed = -WATER_SINK_SPEED;
 
 			// Scale sinkSpeed by mass (m), with
 			// 100 being equivalent to a player.
