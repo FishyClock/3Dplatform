@@ -494,7 +494,7 @@ extend class FishyPlatform
 	const BMAP_SEARCH_INTERVAL = 35; //See GetNewBmapResults() for comments about this
 	const BMAP_RADIUS_MULTIPLIER = 2; //Ditto
 	const CHAN_USERSND = 50; //Sound channel for user var sounds
-	const MISCUSERVAR_LOWVEL = 0.1; //For user var sounds and turn speeds, we're "not moving" if velocity square length is below this
+	const MISCUSERVAR_LOWVEL = 0.1; //For user var sounds and turn speeds, we're "not moving" if velocity square length is equal to or shorter than this
 
 	vector3 oldPos;
 	double oldAngle;
@@ -587,9 +587,8 @@ extend class FishyPlatform
 		// would appear to be partially stuck inside the ceiling/3D floor
 		// as it moves.
 		//
-		// Feel free to comment-out or remove this if it's causing
-		// problems for you and you don't have platforms that get
-		// in the way of moving ceilings or 3D floors.
+		// If you're considering removing this, do note that FishyPlatformPivot also references STAT_FPLAT.
+		// The pivot spot's PostBeginPlay() must be called before any platform's PostBeginPlay().
 		ChangeStatNum(STAT_FPLAT); //This is STAT_SECTOREFFECT + 1
 
 		oldPos = pos;
