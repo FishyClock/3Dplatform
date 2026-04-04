@@ -2624,6 +2624,27 @@ extend class FishyPlatform
 				if (!plat && (options & OPTFLAG_PASSCANPUSH) && mo.blockingMobj)
 					PushObstacle(mo.blockingMobj, pushForce, mo);
 
+				//Before we check if 'mo' is going to block this platform and have PushObstacle() called on it,
+				//try to see if we can correct its Z position.
+				if (mo.pos.z < moNewPos.z && moNewPos.z - mo.pos.z <= mo.maxStepHeight)
+				{
+					if (plat)
+					{
+						plat.DoPlatZFix(moNewPos.z, self, false);
+					}
+					else
+					{
+						PassengerPreMove(mo);
+						bool fits = FitsAtPosition(mo, (mo.pos.xy, moNewPos.z));
+						if (fits)
+						{
+							mo.SetZ(moNewPos.z);
+							mo.CheckPortalTransition(); //Handle sector portals properly
+						}
+						PassengerPostMove(mo, fits);
+					}
+				}
+
 				Array<Actor> movedBack = { mo };
 				for (int iMovedBack = 0; iMovedBack < movedBack.Size(); ++iMovedBack)
 				{
@@ -3856,18 +3877,15 @@ extend class FishyPlatform
 	//============================
 	// DoPlatZFix
 	//============================
-	private bool DoPlatZFix (double newZ, FishyPlatform mover)
+	private bool DoPlatZFix (double newZ, FishyPlatform mover, bool ignoreActors = true)
 	{
 		// In most cases, this is called by other platforms to do
 		// quick Z position corrections on potential platform passengers.
 		// This isn't meant as a typical movement routine.
-		// 
-		// Keep in mind the position checks done here ignore actors on purpose.
-		// We only care about geometry.
 
 		double zOff = newZ - pos.z;
 		if (bPortCopy)
-			return portTwin.DoPlatZFix(portTwin.pos.z + zOff, mover); //Let the non-copy handle it
+			return portTwin.DoPlatZFix(portTwin.pos.z + zOff, mover, ignoreActors); //Let the non-copy handle it
 
 		if (group)
 		{
@@ -3897,7 +3915,8 @@ extend class FishyPlatform
 				if (mover != self)
 					mover.PassengerPreMove(plat);
 
-				bool fits = FitsAtPosition(plat, (plat.pos.xy, newZ), true);
+				plat.bInMove = true; //Don't collide with passengers
+				bool fits = FitsAtPosition(plat, (plat.pos.xy, newZ), ignoreActors);
 				if (fits)
 				{
 					let savedPos = plat.pos.xy;
@@ -3910,6 +3929,7 @@ extend class FishyPlatform
 							plat.AdjustInterpolationCoordinates((savedPos, plat.pos.z), plat.pos, 0);
 					}
 				}
+				plat.bInMove = false; //Enough for FitsAtPosition()
 
 				if (mover != self)
 					mover.PassengerPostMove(plat, fits);
@@ -3932,6 +3952,7 @@ extend class FishyPlatform
 				let passMover = (mover != self) ? mover : plat;
 
 				//Now move the platform's passengers
+				plat.bInMove = true; //Enable again now that we're moving its passengers
 				for (uint iPass = plat.passengers.Size(); iPass-- > 0;)
 				{
 					let mo = plat.passengers[iPass];
@@ -3942,13 +3963,13 @@ extend class FishyPlatform
 					let platPass = FishyPlatform(mo);
 					if (platPass)
 					{
-						platPass.DoPlatZFix(newZ, passMover);
+						platPass.DoPlatZFix(newZ, passMover, ignoreActors);
 						continue;
 					}
 
 					passMover.PassengerPreMove(mo);
 
-					fits = FitsAtPosition(mo, (mo.pos.xy, newZ), true);
+					fits = FitsAtPosition(mo, (mo.pos.xy, newZ), ignoreActors);
 					if (fits)
 					{
 						mo.SetZ(newZ);
@@ -3957,6 +3978,7 @@ extend class FishyPlatform
 
 					passMover.PassengerPostMove(mo, fits);
 				}
+				plat.bInMove = false;
 			}
 		}
 		return true;
