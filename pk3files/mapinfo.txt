@@ -29,6 +29,7 @@ DoomEdNums
 	15509 = TESTNoDeathSeq	//Ditto
 	15510 = TESTNastyHeart
 	15511 = TESTCybie
+	15512 = TESTTree	//Ditto
 }
 
 defaultmap

@@ -48,3 +48,12 @@ class TESTNoDeathSeq : ZombieMan
 		Stop;
 	}
 }
+
+class TESTTree : BigTree
+{
+	Default
+	{
+		+BUMPSPECIAL;
+		Activation THINGSPEC_Default|THINGSPEC_MonsterTrigger|THINGSPEC_MissileTrigger;
+	}
+}
