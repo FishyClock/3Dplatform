@@ -1353,7 +1353,6 @@ extend class FishyPlatform
 
 		bool deliveredOuchies = false;
 		bool fits = false;
-		double pushAng, angToPushed;
 
 		//Don't accept close-to-zero velocity
 		if (abs(pushForce.x) < minVel) pushForce.x = 0;
@@ -1391,33 +1390,8 @@ extend class FishyPlatform
 					return; //Actor 'pushed' was destroyed
 				deliveredOuchies = true;
 
-				if (pushForce.xy == (0, 0))
-				{
-					pushForce.x = max(0.2, abs(pushForce.z)); //Need some meaningful velocity
-					pushAng = 0;
-				}
-				else
-				{
-					pushAng = VectorAngle(pushForce.x, pushForce.y);
-				}
 				vector2 diff = level.Vec2Diff(pushPoint, pushed.pos.xy);
-				angToPushed = VectorAngle(diff.x, diff.y);
-
-				//Try to push away obstacle from 'pushPoint' in a cardinal direction
-				int carDir;
-				if (abs(angToPushed) <= 45)
-					carDir = 0;
-				else if (abs(angToPushed) <= 135)
-					carDir = (angToPushed < 0) ? -90 : 90;
-				else
-					carDir = 180;
-
-				double delta = DeltaAngle(pushAng, carDir);
-				if (delta)
-				{
-					pushAng += delta;
-					pushForce.xy = RotateVector(pushForce.xy, delta);
-				}
+				pushForce.xy = (diff != (0, 0)) ? diff.Unit() * pushForce.Length() : (pushForce.Length(), 0);
 				pushForce.z = 0;
 			}
 		}
@@ -1445,15 +1419,39 @@ extend class FishyPlatform
 					if (crushDamage > 0 && !CrushObstacle(pushed, false, false, pusher))
 						return; //Actor 'pushed' was destroyed
 					deliveredOuchies = true;
-
-					pushAng = VectorAngle(pushForce.x, pushForce.y);
-					vector2 diff = level.Vec2Diff(pushPoint, pushed.pos.xy);
-					angToPushed = VectorAngle(diff.x, diff.y);
 				}
 
-				//Can't push obstacle in the direction we're going, so try to move it aside instead
-				double delta = DeltaAngle(pushAng, angToPushed);
-				pushForce.xy = RotateVector(pushForce.xy, (delta >= 0) ? 90 : -90);
+				Actor bMo = pushed.blockingMobj;
+				vector2 blockVec = (0, 0);
+				if (bLine)
+				{
+					blockVec = bLine.delta;
+				}
+				else if (bMo)
+				{
+					//If the 'blockVec' in the above case is just the line's delta then
+					//with AABB collision we need to get one of the 4 sides of 'bMo'
+					//and treat it like it was another line that was bumped into.
+					//All we need in this case is a direction on the X or Y plane.
+					vector2 diff = level.Vec2Diff(pushed.pos.xy, bMo.pos.xy);
+					double dist = pushed.radius + bMo.radius;
+					if (abs(diff.x) < dist) //X overlap. That means 'pushed' is hitting 'bMo' vertically.
+						blockVec = (1, 0);
+					else //Otherwise we can safely assume it's a Y overlap; horizontal hit.
+						blockVec = (0, 1);
+				}
+
+				if (blockVec != (0, 0)) //Does obstacle have a blocking line or mobj?
+				{
+					vector2 diff = level.Vec2Diff(pushPoint, pushed.pos.xy);
+					if (diff != (0, 0))
+					{
+						double d0t = diff dot blockVec;
+						pushForce.xy = blockVec.Unit() * pushForce.xy.Length();
+						if (d0t < 0)
+							pushForce.xy = -pushForce.xy;
+					}
+				}
 			}
 		}
 
