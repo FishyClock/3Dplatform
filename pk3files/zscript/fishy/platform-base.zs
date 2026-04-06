@@ -1421,14 +1421,14 @@ extend class FishyPlatform
 					deliveredOuchies = true;
 				}
 
-				Actor bMo = pushed.blockingMobj;
 				vector2 blockVec = (0, 0);
 				if (bLine)
 				{
-					blockVec = bLine.delta;
+					blockVec = bLine.delta.Unit();
 				}
-				else if (bMo)
+				else if (pushed.blockingMobj)
 				{
+					Actor bMo = pushed.blockingMobj;
 					//If the 'blockVec' in the above case is just the line's delta then
 					//with AABB collision we need to get one of the 4 sides of 'bMo'
 					//and treat it like it was another line that was bumped into.
@@ -1440,14 +1440,31 @@ extend class FishyPlatform
 					else //Otherwise we can safely assume it's a Y overlap; horizontal hit.
 						blockVec = (0, 1);
 				}
+				else
+				{
+					//Check for blocking floors/ceilings. We want slopes.
+					vector2 planeNormalXY = (0, 0); //Zero-zero means it's not a slope.
 
-				if (blockVec != (0, 0)) //Does obstacle have a blocking line or mobj?
+					if (pushed.blockingFloor)
+						planeNormalXY = pushed.blockingFloor.floorPlane.normal.xy;
+
+					if (planeNormalXY == (0, 0) && pushed.blockingCeiling)
+						planeNormalXY = pushed.blockingCeiling.ceilingPlane.normal.xy;
+
+					if (planeNormalXY != (0, 0))
+						blockVec = RotateVector(planeNormalXY.Unit(), 90);
+				}
+
+				//if (pushed.blockingFloor) Console.Printf("confirmed hit floor");
+				//if (pushed.blockingCeiling) Console.Printf("confirmed hit ceiling");
+
+				if (blockVec != (0, 0)) //Blocked by a line, mobj, floor slope or ceiling slope?
 				{
 					vector2 diff = level.Vec2Diff(pushPoint, pushed.pos.xy);
 					if (diff != (0, 0))
 					{
 						double d0t = diff dot blockVec;
-						pushForce.xy = blockVec.Unit() * pushForce.xy.Length();
+						pushForce.xy = blockVec * pushForce.xy.Length();
 						if (d0t < 0)
 							pushForce.xy = -pushForce.xy;
 					}
