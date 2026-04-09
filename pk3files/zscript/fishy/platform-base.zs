@@ -1313,6 +1313,144 @@ extend class FishyPlatform
 	}
 
 	//============================
+	// GetBlockingPlaneNormalXY
+	//============================
+	static vector2 GetBlockingPlaneNormalXY (vector3 testPos, double testRadius, double testHeight)
+	{
+		//Helper function for PushObstacle().
+		//Finds a floor/ceiling plane and returns the XY parts of its normal vector
+		//which is used to determine/reorient push direction.
+
+		Array<Sector> checked;
+		BlockLinesIterator it = null; //First iteration we start with the center sector. If that fails, use a BLI.
+		Sector startSec = level.PointInSector(testPos.xy);
+
+		do
+		{
+			Sector itSecs [2];
+			if (it)
+			{
+				//Make sure we haven't already checked these sectors
+				for (int i = 0; i < 2; ++i)
+				{
+					itSecs[i] = (!it.curLine.sideDef[i] || !it.curLine.sideDef[i].sector ||
+						checked.Find(it.curLine.sideDef[i].sector) < checked.Size()) ? null : it.curLine.sideDef[i].sector;
+				}
+				if (!itSecs[0] && !itSecs[1])
+					continue;
+			}
+			vector2 itPos = (it) ? it.position.xy : testPos.xy;
+
+			//Our bounding box.
+			//We use the iterator's position because that is adjusted for portal displacement.
+			double minX1 = itPos.x - testRadius;
+			double maxX1 = itPos.x + testRadius;
+			double minY1 = itPos.y - testRadius;
+			double maxY1 = itPos.y + testRadius;
+
+			int thisSide, otherSide;
+			if (it)
+			{
+				//Line bounding box.
+				//Reference for order: https://github.com/uzdoom/uzdoom/blob/trunk/src/common/utility/m_bbox.h
+				double minX2 = it.curLine.bbox[2]; //left
+				double maxX2 = it.curLine.bbox[3]; //right
+				double minY2 = it.curLine.bbox[1]; //bottom
+				double maxY2 = it.curLine.bbox[0]; //top
+
+				if (minX1 >= maxX2 || minX2 >= maxX1 ||
+					minY1 >= maxY2 || minY2 >= maxY1)
+				{
+					continue; //BBoxes not intersecting
+				}
+
+				thisSide = level.PointOnLineSide(itPos, it.curLine);
+				otherSide = thisSide ^ 1;
+			}
+
+			for (int i = 0; i < 2; ++i)
+			{
+				Sector sec;
+				if (it)
+				{
+					sec = (i == 0) ? itSecs[thisSide] : itSecs[otherSide];
+					if (!sec || (i == 1 && itSecs[thisSide] == itSecs[otherSide]))
+						continue; //No sector or two-sided line whose front and back sectors are the same
+
+					if (i == 1 && level.BoxOnLineSide(itPos, testRadius, it.curLine) != -1)
+						continue; //Box not intersecting with line; no point checking other side
+				}
+				else
+				{
+					sec = startSec;
+					if (!sec)
+						break;
+					i = 1;
+				}
+				checked.Push(sec);
+
+				for (int j = 0; j < 2; ++j)
+				{
+					double atZ;
+					Sector atSec;
+					F3DFloor at3DF;
+					SecPlane atPlane;
+					if (j == 0) //Look for floors first
+					{
+						[atZ, atSec, at3DF] = sec.NextLowestFloorAt(itPos.x, itPos.y, testPos.z, 0, testHeight);
+
+						if (at3DF)
+							atPlane = at3DF.top; //The ? operator won't work with these two
+						else
+							atPlane = atSec.floorPlane;
+
+						if (testPos.z < atZ)
+							return atPlane.normal.xy;
+					}
+					else //Look for ceilings second
+					{
+						[atZ, atSec, at3DF] = sec.NextHighestCeilingAt(itPos.x, itPos.y, testPos.z, testPos.z + testHeight);
+
+						if (at3DF)
+							atPlane = at3DF.bottom; //The ? operator won't work with these two
+						else
+							atPlane = atSec.ceilingPlane;
+
+						if (testPos.z + testHeight > atZ)
+							return atPlane.normal.xy;
+					}
+
+					//PointOnSide() results: 0 = on it; 1 = in front; -1 = behind it.
+					//For 3D floors the meaning of 1 and -1 is flipped.
+					int behind = (at3DF) ? 1 : -1;
+					atZ = testPos.z + ((j == 1) ? testHeight : 0);
+
+					//If this plane is a slope then check all corners and edges.
+					//If any of these points end up behind the plane then it's blocking.
+					if (atPlane.normal.xy != (0, 0) && (
+						atPlane.PointOnSide((minX1, itPos.y, atZ)) == behind ||
+						atPlane.PointOnSide((maxX1, itPos.y, atZ)) == behind ||
+						atPlane.PointOnSide((itPos.x, minY1, atZ)) == behind ||
+						atPlane.PointOnSide((itPos.x, maxY1, atZ)) == behind ||
+						atPlane.PointOnSide((minX1, minY1, atZ)) == behind ||
+						atPlane.PointOnSide((maxX1, minY1, atZ)) == behind ||
+						atPlane.PointOnSide((minX1, maxY1, atZ)) == behind ||
+						atPlane.PointOnSide((maxX1, maxY1, atZ)) == behind ) )
+					{
+						return atPlane.normal.xy;
+					}
+				}
+			}
+
+			if (!it)
+				it = BlockLinesIterator.CreateFromPos(testPos, testHeight, testRadius, startSec);
+
+		} while (it.Next());
+
+		return (0, 0);
+	}
+
+	//============================
 	// PushObstacle
 	//============================
 	private void PushObstacle (Actor pushed, vector3 pushForce = (double.nan, 0, 0), Actor pusher = null, vector2 pushPoint = (double.nan, 0))
@@ -1403,7 +1541,8 @@ extend class FishyPlatform
 		if (!fits && pushForce.xy != (0, 0))
 		{
 			//Handle horizontal obstacle pushing - (what happens if it can't be pushed because a wall or a solid actor is in the way)
-			fits = FitsAtPosition(pushed, level.Vec3Offset(pushed.pos, pushForce), false, true);
+			vector3 testPos = level.Vec3Offset(pushed.pos, pushForce);
+			fits = FitsAtPosition(pushed, testPos, false, true);
 			if (!fits)
 			{
 				Line bLine = pushed.blockingLine;
@@ -1443,20 +1582,12 @@ extend class FishyPlatform
 				else
 				{
 					//Check for blocking floors/ceilings. We want slopes.
-					vector2 planeNormalXY = (0, 0); //Zero-zero means it's not a slope.
+					vector2 planeNormalXY = GetBlockingPlaneNormalXY(testPos, pushed.radius, pushed.height);
 
-					if (pushed.blockingFloor)
-						planeNormalXY = pushed.blockingFloor.floorPlane.normal.xy;
-
-					if (planeNormalXY == (0, 0) && pushed.blockingCeiling)
-						planeNormalXY = pushed.blockingCeiling.ceilingPlane.normal.xy;
-
+					//Zero-zero means it's not a slope.
 					if (planeNormalXY != (0, 0))
 						blockVec = RotateVector(planeNormalXY.Unit(), 90);
 				}
-
-				//if (pushed.blockingFloor) Console.Printf("confirmed hit floor");
-				//if (pushed.blockingCeiling) Console.Printf("confirmed hit ceiling");
 
 				if (blockVec != (0, 0)) //Blocked by a line, mobj, floor slope or ceiling slope?
 				{
