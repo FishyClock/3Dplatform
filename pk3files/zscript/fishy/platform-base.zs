@@ -5129,8 +5129,19 @@ extend class FishyPlatform
 			}
 			else if (group.origin && group.origin != self)
 			{
-				group.origin.vel += vel; //Any member's received velocity is passed on to the origin
-				vel = (0, 0, 0);
+				if (vel != (0, 0, 0))
+				{
+					//If the velocities between self and our group origin share the same direction
+					//then set the length from which ever is the longest.
+					//(If they share the same length then effectively nothing changes.)
+					//Otherwise just pass on self velocity to origin.
+					vector3 dir;
+					if (group.origin.vel != (0, 0, 0) && (dir = vel.Unit()) ~== group.origin.vel.Unit())
+						group.origin.vel = dir * max(vel.Length(), group.origin.vel.Length());
+					else
+						group.origin.vel += vel;
+					vel = (0, 0, 0);
+				}
 				bFollowingPath = false; //Non-origin members aren't supposed to be "active"
 			}
 
