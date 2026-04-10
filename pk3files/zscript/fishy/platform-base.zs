@@ -1364,7 +1364,7 @@ extend class FishyPlatform
 					continue; //BBoxes not intersecting
 				}
 
-				thisSide = level.PointOnLineSide(itPos, it.curLine);
+				thisSide = level.PointOnLineSide(itPos, it.curLine); //0 = not behind line; 1 = behind line
 				otherSide = thisSide ^ 1;
 			}
 
@@ -1510,6 +1510,7 @@ extend class FishyPlatform
 			pusher.SetXYZ(pusherPos);
 		}
 
+		bool doTempNoBmap = false;
 		if (doZPushTest)
 		{
 			//Handle vertical obstacle pushing first - (what happens if it can't be pushed up or down)
@@ -1534,24 +1535,25 @@ extend class FishyPlatform
 				{
 					//Check for blocking floors/ceilings. We want slopes.
 					planeNormalXY = GetBlockingPlaneNormalXY(testPos, pushed.radius, pushed.height);
-
-					//Zero-zero means it's not a slope.
-					if (planeNormalXY != (0, 0))
-					{
-						//Attempt to push away from slope
-						pushForce.xy = planeNormalXY.Unit() * pushForce.Length();
-						pushForce.z = 0;
-						fits = true; //Ignore the lower horizontal check
-					}
 				}
 
-				if (planeNormalXY == (0, 0))
+				//Zero-zero means it's not a slope.
+				if (planeNormalXY != (0, 0))
+				{
+					//Attempt to push away from slope
+					pushForce.xy = planeNormalXY.Unit() * pushForce.Length();
+				}
+				else
 				{
 					//Attempt to push away from platform's center
 					vector2 diff = level.Vec2Diff(pushPoint, pushed.pos.xy);
 					pushForce.xy = (diff != (0, 0)) ? diff.Unit() * pushForce.Length() : (pushForce.Length(), 0);
-					pushForce.z = 0;
 				}
+				pushForce.z = 0;
+
+				//This is needed because at this point it's possible for 'pushed' to collide with 'pusher'
+				//when doing the below FitsAtPosition() test.
+				doTempNoBmap = !pusher.bNoBlockmap;
 			}
 		}
 		else
@@ -1563,7 +1565,13 @@ extend class FishyPlatform
 		{
 			//Handle horizontal obstacle pushing - (what happens if it can't be pushed because a wall or a solid actor is in the way)
 			vector3 testPos = level.Vec3Offset(pushed.pos, pushForce);
+
+			if (doTempNoBmap)
+				pusher.A_ChangeLinkFlags(NO_BMAP);
 			fits = FitsAtPosition(pushed, testPos, false, true);
+			if (doTempNoBmap)
+				pusher.A_ChangeLinkFlags(YES_BMAP);
+
 			if (!fits)
 			{
 				Line bLine = pushed.blockingLine;
