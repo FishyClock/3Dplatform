@@ -1513,7 +1513,8 @@ extend class FishyPlatform
 		if (doZPushTest)
 		{
 			//Handle vertical obstacle pushing first - (what happens if it can't be pushed up or down)
-			fits = FitsAtPosition(pushed, level.Vec3Offset(pushed.pos, pushForce));
+			vector3 testPos = level.Vec3Offset(pushed.pos, pushForce);
+			fits = FitsAtPosition(pushed, testPos);
 			if (!fits)
 			{
 				Line bLine = pushed.blockingLine;
@@ -1528,9 +1529,29 @@ extend class FishyPlatform
 					return; //Actor 'pushed' was destroyed
 				deliveredOuchies = true;
 
-				vector2 diff = level.Vec2Diff(pushPoint, pushed.pos.xy);
-				pushForce.xy = (diff != (0, 0)) ? diff.Unit() * pushForce.Length() : (pushForce.Length(), 0);
-				pushForce.z = 0;
+				vector2 planeNormalXY = (0, 0);
+				if (!bLine && !pushed.blockingMobj)
+				{
+					//Check for blocking floors/ceilings. We want slopes.
+					planeNormalXY = GetBlockingPlaneNormalXY(testPos, pushed.radius, pushed.height);
+
+					//Zero-zero means it's not a slope.
+					if (planeNormalXY != (0, 0))
+					{
+						//Attempt to push away from slope
+						pushForce.xy = planeNormalXY.Unit() * pushForce.Length();
+						pushForce.z = 0;
+						fits = true; //Ignore the lower horizontal check
+					}
+				}
+
+				if (planeNormalXY == (0, 0))
+				{
+					//Attempt to push away from platform's center
+					vector2 diff = level.Vec2Diff(pushPoint, pushed.pos.xy);
+					pushForce.xy = (diff != (0, 0)) ? diff.Unit() * pushForce.Length() : (pushForce.Length(), 0);
+					pushForce.z = 0;
+				}
 			}
 		}
 		else
@@ -1594,6 +1615,8 @@ extend class FishyPlatform
 					vector2 diff = level.Vec2Diff(pushPoint, pushed.pos.xy);
 					if (diff != (0, 0))
 					{
+						//Push along the blocking vector.
+						//The dot product ensures the direction is correct.
 						double d0t = diff dot blockVec;
 						pushForce.xy = blockVec * pushForce.xy.Length();
 						if (d0t < 0)
