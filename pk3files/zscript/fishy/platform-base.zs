@@ -1453,16 +1453,30 @@ extend class FishyPlatform
 	//============================
 	// PushObstacle
 	//============================
-	private void PushObstacle (Actor pushed, vector3 pushForce = (double.nan, 0, 0), Actor pusher = null, vector2 pushPoint = (double.nan, 0))
+	private void PushObstacle (Actor pushed, vector3 pushForce = (double.nan, 0, 0), Actor pusher = null, vector2 pushPoint = (double.nan, 0), bool noZPush = false)
 	{
 		//Under certain cases, 'pusher' can be a generic non-platform actor
 		if (!pusher)
 			pusher = self;
 
+		//The 'pushPoint' may not be where 'pusher' is right now
+		if (pushPoint != pushPoint) //NaN check
+			pushPoint = pusher.pos.xy;
+
 		if ((pusher.bCannotPush && (pusher != self || stuckActors.Find(pushed) >= stuckActors.Size() ) ) || //Can't push it if we have CANNOTPUSH and this isn't an actor that's stuck in us.
 			(!pushed.bPushable && //Always push actors that have PUSHABLE.
 			(pushed.bDontThrust || pushed is "FishyPlatform") ) ) //Otherwise, only push it if it's a non-platform and doesn't have DONTTHRUST.
 		{
+			if (noZPush && abs(pushForce.z) >= minVel)
+			{
+				let pusherPos = pusher.pos;
+				pusher.SetXYZ((pushPoint, pusher.pos.z)); //Needed for OverlapXY()
+				bool overlap = OverlapXY(pusher, pushed);
+				pusher.SetXYZ(pusherPos);
+				if (overlap)
+					return; //No pain if this would have been a Z velocity push
+			}
+
 			if (crushDamage > 0 && (options & OPTFLAG_HURTFULPUSH))
 				CrushObstacle(pushed, true, true, pusher); //Handle OPTFLAG_HURTFULPUSH
 			return; //No velocity modification
@@ -1485,10 +1499,6 @@ extend class FishyPlatform
 				pushForce = pushForce.Unit() * len;
 		}
 
-		//The 'pushPoint' may not be where 'pusher' is right now
-		if (pushPoint != pushPoint) //NaN check
-			pushPoint = pusher.pos.xy;
-
 		bool deliveredOuchies = false;
 		bool fits = false;
 
@@ -1496,10 +1506,6 @@ extend class FishyPlatform
 		if (abs(pushForce.x) < minVel) pushForce.x = 0;
 		if (abs(pushForce.y) < minVel) pushForce.y = 0;
 		if (abs(pushForce.z) < minVel) pushForce.z = 0;
-
-		//If there's gonna be a push attempt and this is a +PUSHABLE thing, play its push sound
-		if (pushForce != (0, 0, 0) && pushed.bPushable)
-			pushed.PlayPushSound();
 
 		bool doZPushTest = false;
 		if (pushForce.z)
@@ -1510,9 +1516,17 @@ extend class FishyPlatform
 			pusher.SetXYZ(pusherPos);
 		}
 
+		//If there's gonna be a push attempt and this is a +PUSHABLE thing, play its push sound.
+		//Unless this would be a Z velocity push and that's unwanted.
+		if (pushForce != (0, 0, 0) && pushed.bPushable && (!noZPush || !doZPushTest))
+			pushed.PlayPushSound();
+
 		bool doTempNoBmap = false;
 		if (doZPushTest)
 		{
+			if (noZPush)
+				return; //Do nothing
+
 			//Handle vertical obstacle pushing first - (what happens if it can't be pushed up or down)
 			vector3 testPos = level.Vec3Offset(pushed.pos, pushForce);
 			fits = FitsAtPosition(pushed, testPos);
@@ -1603,6 +1617,8 @@ extend class FishyPlatform
 					//All we need in this case is a direction on the X or Y plane.
 					vector2 diff = level.Vec2Diff(pushed.pos.xy, bMo.pos.xy);
 					double dist = pushed.radius + bMo.radius;
+
+					//In this context "horizontal" and "vertical" are in a 2D top-down view. Like in a map editor.
 					if (abs(diff.x) < dist) //X overlap. That means 'pushed' is hitting 'bMo' vertically.
 						blockVec = (1, 0);
 					else //Otherwise we can safely assume it's a Y overlap; horizontal hit.
@@ -3455,7 +3471,7 @@ extend class FishyPlatform
 	//============================
 	// PlatMove
 	//============================
-	private int PlatMove (vector3 newPos, double newAngle, double newPitch, double newRoll, PMoveTypes moveType)
+	private int PlatMove (vector3 newPos, double newAngle, double newPitch, double newRoll, PMoveTypes moveType, bool noZPush = false)
 	{
 		// "Quick move" is used to correct the position/angles and it is assumed
 		// that 'newPos/Angle/Pitch/Roll' is only marginally different from
@@ -3615,9 +3631,9 @@ extend class FishyPlatform
 				plat.UnlinkPassengers();
 		}
 
-		int result = DoMove(newPos, newAngle, newPitch, newRoll, moveType) ? 1 : 0;
+		int result = DoMove(newPos, newAngle, newPitch, newRoll, moveType, noZPush) ? 1 : 0;
 		if (result)
-			result = (!group || MoveGroup(moveType)) ? 2 : 1;
+			result = (!group || MoveGroup(moveType, noZPush)) ? 2 : 1;
 
 		for (int i = -1; i == -1 || (group && i < group.members.Size()); ++i)
 		{
@@ -3636,7 +3652,7 @@ extend class FishyPlatform
 	//============================
 	// DoMove
 	//============================
-	private bool DoMove (vector3 newPos, double newAngle, double newPitch, double newRoll, PMoveTypes moveType)
+	private bool DoMove (vector3 newPos, double newAngle, double newPitch, double newRoll, PMoveTypes moveType, bool noZPush = false)
 	{
 		if (pos == newPos && angle == newAngle && pitch == newPitch && roll == newRoll)
 			return true;
@@ -3773,11 +3789,11 @@ extend class FishyPlatform
 					if (portTwin && !portTwin.bNoBlockmap && lastUPort &&
 						mo.Distance3D(portTwin) < mo.Distance3D(self))
 					{
-						portTwin.PushObstacle(mo, TranslatePortalVector(pushForce, lastUPort, false, false));
+						portTwin.PushObstacle(mo, TranslatePortalVector(pushForce, lastUPort, false, false), noZPush: noZPush);
 					}
 					else
 					{
-						PushObstacle(mo, pushForce);
+						PushObstacle(mo, pushForce, noZPush: noZPush);
 					}
 				}
 				return false;
@@ -3871,7 +3887,7 @@ extend class FishyPlatform
 						vector3 twinPushForce = pushForce;
 						if (angDiff)
 							twinPushForce.xy = RotateVector(twinPushForce.xy, angDiff);
-						portTwin.PushObstacle(portTwin.blockingMobj, twinPushForce);
+						portTwin.PushObstacle(portTwin.blockingMobj, twinPushForce, noZPush: noZPush);
 					}
 					return false;
 				}
@@ -3903,7 +3919,7 @@ extend class FishyPlatform
 	//============================
 	// MoveGroup
 	//============================
-	private bool MoveGroup (PMoveTypes moveType)
+	private bool MoveGroup (PMoveTypes moveType, bool noZPush = false)
 	{
 		if (bPlatPorted)
 			moveType = MOVE_TRUETELE;
@@ -4017,7 +4033,7 @@ extend class FishyPlatform
 				plat.platTeleFlags = platTeleFlags;
 			}
 
-			if (!plat.DoMove(newPos, newAngle, newPitch, newRoll, moveType) && moveType > MOVE_QUICK)
+			if (!plat.DoMove(newPos, newAngle, newPitch, newRoll, moveType, noZPush) && moveType > MOVE_QUICK)
 				break;
 
 			//Did our groupmate trigger a teleport special but we haven't?
@@ -4632,7 +4648,7 @@ extend class FishyPlatform
 		double startAngle = angle;
 		vector3 startPos = pos;
 		vector3 newPos = pos + vel;
-		int result = PlatMove(newPos, angle, pitch, roll, MOVE_NORMAL);
+		int result = PlatMove(newPos, angle, pitch, roll, MOVE_NORMAL, true);
 		if (bDestroyed)
 			return false; //Abort if we got Thing_Remove()'d
 
@@ -4648,7 +4664,7 @@ extend class FishyPlatform
 				//Try again but without the Z component
 				vel.z = 0;
 				newPos.z = startPos.z;
-				if (vel.xy == (0, 0) || (result = PlatMove(newPos, angle, pitch, roll, MOVE_NORMAL)) != 2)
+				if (vel.xy == (0, 0) || (result = PlatMove(newPos, angle, pitch, roll, MOVE_NORMAL, true)) != 2)
 				{
 					if (bDestroyed)
 						return false; //Abort if we got Thing_Remove()'d
