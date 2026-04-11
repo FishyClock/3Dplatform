@@ -3300,6 +3300,7 @@ extend class FishyPlatform
 						}
 					}
 				}
+				blockingMobj = mo; //In case FitsAtPosition() nulls it which is unwanted
 			}
 		}
 
