@@ -3468,8 +3468,17 @@ extend class FishyPlatform
 
 		bool teleMove = (moveType == MOVE_TELEPORT || bPlatPorted);
 
-		if (moveType != MOVE_TELEPORT)
-			bPushStuckActors = true;
+		if (moveType != MOVE_TELEPORT && !bPushStuckActors)
+		for (int i = -1; i == -1 || (group && i < group.members.Size()); ++i)
+		{
+			plat = (i == -1) ? self : group.GetMember(i);
+			if (i > -1 && (!plat || plat == self)) //Already handled self
+				continue;
+
+			plat.bPushStuckActors = true;
+			if (plat.portTwin)
+				plat.portTwin.bPushStuckActors = true;
+		}
 
 		if (moveType > MOVE_QUICK) //Not a quick move?
 		for (int i = -1; i == -1 || (group && i < group.members.Size()); ++i)
@@ -4072,8 +4081,6 @@ extend class FishyPlatform
 			group.lastZFixTime = level.mapTime;
 		}
 
-		bPushStuckActors = true;
-
 		//We're going to try moving the entire group and everyone's passengers
 		for (int i = -1; i == -1 || (group && i < group.members.Size()); ++i)
 		{
@@ -4085,6 +4092,8 @@ extend class FishyPlatform
 			{
 				if (iTwins > 0 && !(plat = plat.portTwin))
 					break;
+
+				plat.bPushStuckActors = true;
 
 				//First move this platform
 				newZ = plat.pos.z + zOff;
@@ -5222,9 +5231,6 @@ extend class FishyPlatform
 
 					plat.CheckFloorCeiling();
 					plat.UpdateWaterLevel();
-
-					if (group && group.origin)
-						plat.bPushStuckActors |= group.origin.bPushStuckActors;
 
 					if (plat.lastGetNPTime != level.mapTime) //Call it only if GetNewPassengers() wasn't called
 						plat.GetStuckActors();
