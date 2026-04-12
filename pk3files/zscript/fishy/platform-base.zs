@@ -1559,7 +1559,7 @@ extend class FishyPlatform
 				}
 				else
 				{
-					//Attempt to push away from platform's center
+					//Attempt to push away from push point
 					vector2 diff = level.Vec2Diff(pushPoint, pushed.pos.xy);
 					pushForce.xy = (diff != (0, 0)) ? diff.Unit() * pushForce.Length() : (pushForce.Length(), 0);
 				}
