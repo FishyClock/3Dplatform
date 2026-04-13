@@ -497,6 +497,10 @@ extend class FishyPlatform
 	double oldAngle;
 	double oldPitch;
 	double oldRoll;
+	vector3 lastSetPos;
+	double lastSetAngle;
+	double lastSetPitch;
+	double lastSetRoll;
 	FishyPlatformGroup group;
 	vector3 groupMirrorPos; //The position when this platform joins a group - used for mirroring behaviour - changes when origin changes.
 	vector3 groupRotPos;  //The position when this platform joins a group - used for rotation behaviour - doesn't change when origin changes.
@@ -592,6 +596,10 @@ extend class FishyPlatform
 		oldAngle = angle;
 		oldPitch = pitch;
 		oldRoll = roll;
+		lastSetPos = pos;
+		lastSetAngle = angle;
+		lastSetPitch = pitch;
+		lastSetRoll = roll;
 		groupMirrorPos = pos;
 		groupRotPos = pos;
 		groupAngle = angle;
@@ -3642,6 +3650,11 @@ extend class FishyPlatform
 
 			if (group && group.origin && (group.origin.options & OPTFLAG_DIFFPASSCOLL))
 				plat.LinkPassengers(plat.bMoved);
+
+			plat.lastSetPos = plat.pos;
+			plat.lastSetAngle = plat.angle;
+			plat.lastSetPitch = plat.pitch;
+			plat.lastSetRoll = plat.roll;
 		}
 		return result;
 	}
@@ -4128,6 +4141,10 @@ extend class FishyPlatform
 						if (savedPos != plat.pos.xy) //Crossed a sector portal?
 							plat.AdjustInterpolationCoordinates((savedPos, plat.pos.z), plat.pos, 0);
 					}
+					plat.lastSetPos = plat.pos;
+					plat.lastSetAngle = plat.angle;
+					plat.lastSetPitch = plat.pitch;
+					plat.lastSetRoll = plat.roll;
 				}
 				plat.bInMove = false; //Enough for FitsAtPosition()
 
@@ -4998,6 +5015,21 @@ extend class FishyPlatform
 			}
 		}
 
+		//Check if we've been moved by ACS stuff like SetActorPosition or Warp or another ZScript actor moved us etc etc etc.
+		//This should take effect before the freeze stuff.
+		if (lastSetPos != pos || lastSetAngle != angle || lastSetPitch != pitch || lastSetRoll != roll)
+		{
+			if (bFollowingPath && (lastSetPos != pos || lastSetAngle != angle))
+				AdjustInterpolationCoordinates(lastSetPos, pos, DeltaAngle(lastSetAngle, angle));
+
+			let thisPos = pos;
+			let thisAng = angle;
+			let thisPi = pitch;
+			let thisRo = roll;
+			GoBack(lastSetPos, lastSetAngle, lastSetPitch, lastSetRoll);
+			PlatMove(thisPos, thisAng, thisPi, thisRo, MOVE_TELEPORT); //Bring our passengers and our groupmates with us
+		}
+
 		if (freezeTics > 0)
 		{
 			--freezeTics;
@@ -5418,6 +5450,9 @@ extend class FishyPlatform
 			SetZ(ceilingZ - height);
 
 		pCurr.z += pos.z - oldZ;
+
+		if (pos.z != oldZ)
+			lastSetPos.z = pos.z;
 	}
 
 	//============================
