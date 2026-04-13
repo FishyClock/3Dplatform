@@ -44,9 +44,6 @@
  as well as having a interpolation path made up of
  both InterpolationPoints and FishyPlatformNodes.
 
- It is recommended you replace the "Fishy" prefix to avoid conflicts with
- other people's projects.
-
  Regarding custom actors. Platforms can generally handle moving
  ordinary actors just fine, but if you have complex enemies/players/etc
  that are made up of multiple actors or otherwise need special treatment
