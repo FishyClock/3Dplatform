@@ -5424,7 +5424,10 @@ extend class FishyPlatform
 					plat.GoBack(startPos, startAngle, startPitch, startRoll);
 					plat.PlatMove(thisPos, thisAngle, thisPitch, thisRoll, MOVE_REPEAT);
 
-					if (oldOri && plat != oldOri)
+					//If group origin was null, it needs to stay null to not disrupt the expected for loop behavior
+					if (!oldOri && group)
+						group.origin = null;
+					else if (oldOri && plat != oldOri)
 						SetGroupOrigin(oldOri);
 				}
 			}
