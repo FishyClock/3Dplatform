@@ -5131,7 +5131,6 @@ extend class FishyPlatform
 			let oldImpact = plat.bActivateImpact;
 			let oldMCross = plat.bActivateMCross;
 			let oldPCross = plat.bActivatePCross;
-			let oldThruActors = plat.bThruActors; //Also don't collide with any actors.
 			plat.bNoFriction = true;
 			plat.bNoTrigger = true;
 			plat.bNoTeleport = true;
@@ -5140,7 +5139,6 @@ extend class FishyPlatform
 			plat.bActivateImpact = false;
 			plat.bActivateMCross = false;
 			plat.bActivatePCross = false;
-			plat.bThruActors = true;
 
 			let oldVel = plat.vel; //Don't allow it to nullify this velocity; leave that to PlatVelMove()
 			let oldState = plat.curState;
@@ -5150,9 +5148,11 @@ extend class FishyPlatform
 			//Handling scrollers and bounce logic sets the velocity
 			//which is the entire point behind this particular hack.
 			plat.bCallingActorTick = true; //Prevent FallAndSink() from doing anything.
+			plat.bInMove = true; //Don't collide with passengers.
 			if (!plat.CallActorTick())
 				continue; //Destroyed
 			plat.bCallingActorTick = false;
+			plat.bInMove = false;
 			plat.GoBack(); //PlatMove() should handle the actual move because we want our passengers and groupmates to come along with us
 
 			if (plat.vel ~== (0, 0, 0))
@@ -5166,7 +5166,6 @@ extend class FishyPlatform
 			plat.bActivateImpact = oldImpact;
 			plat.bActivateMCross = oldMCross;
 			plat.bActivatePCross = oldPCross;
-			plat.bThruActors = oldThruActors;
 
 			//Only restore tics if nothing has actually changed
 			if (plat.tics == -1 && plat.curState == oldState)
