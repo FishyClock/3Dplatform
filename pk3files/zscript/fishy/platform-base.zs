@@ -5153,7 +5153,12 @@ extend class FishyPlatform
 				continue; //Destroyed
 			plat.bCallingActorTick = false;
 			plat.bInMove = false;
-			plat.GoBack(); //PlatMove() should handle the actual move because we want our passengers and groupmates to come along with us
+
+			//PlatMove() should handle the actual move because we want our passengers and groupmates to come along with us.
+			//It's fine if the angles have changed because of bounce logic.
+			//The sudden angle change should not affect passenger movement anyway.
+			if (plat.pos != plat.oldPos)
+				plat.SetOrigin(plat.oldPos, true);
 
 			if (plat.vel ~== (0, 0, 0))
 				plat.vel = oldVel;
@@ -5186,7 +5191,7 @@ extend class FishyPlatform
 				if (vel != (0, 0, 0))
 				{
 					//If the velocities between self and our group origin share the same direction
-					//then set the length from which ever is the longest.
+					//then set the length from whichever is the longest.
 					//(If they share the same length then effectively nothing changes.)
 					//Otherwise just pass on self velocity to origin.
 					vector3 dir;
