@@ -117,7 +117,7 @@ class FishyPlatform : Actor abstract
 	//===New flags===//
 	int platFlags;
 	flagdef Carriable: platFlags, 0; //Let's this platform be carried (like a passenger) by other platforms
-	flagdef UseActorTick: platFlags, 1; //If we're not in a group, call Actor.Tick() in our Tick() override to handle world interaction
+	flagdef UseActorTick: platFlags, 1; //Call Actor.Tick() in our Tick() override to handle world interaction
 	flagdef NoPassOrbit: platFlags, 2; //Passengers are unaffected by platform angle/pitch/roll changes
 	flagdef NoCorpseGib: platFlags, 3; //Don't gib corpses when touching them
 
