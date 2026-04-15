@@ -5119,7 +5119,7 @@ extend class FishyPlatform
 
 			//We're about to call the native Actor Tick() function in order to
 			//handle things that are otherwise hard to replicate in ZScript.
-			//Things such as scrolling floors, morph logic, bounce logic and so on.
+			//Things such as scrolling floors and bounce logic.
 			//In order for this to work along with PlatVelMove() and our own handling
 			//of setting gravity and friction, many flags are temp set to prevent a lot
 			//of unwanted behavior.
