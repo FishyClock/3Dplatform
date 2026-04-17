@@ -1616,17 +1616,15 @@ extend class FishyPlatform
 				else if (pushed.blockingMobj)
 				{
 					Actor bMo = pushed.blockingMobj;
-					//If the 'blockVec' in the above case is just the line's delta then
-					//with AABB collision we need to get one of the 4 sides of 'bMo'
-					//and treat it like it was another line that was bumped into.
-					//All we need in this case is a direction on the X or Y plane.
+
+					//With AABB collision all we need in this case is a direction on the X or Y plane.
 					vector2 diff = level.Vec2Diff(pushed.pos.xy, bMo.pos.xy);
 					double dist = pushed.radius + bMo.radius;
 
 					//In this context "horizontal" and "vertical" are in a 2D top-down view. Like in a map editor.
 					if (abs(diff.x) < dist) //X overlap. That means 'pushed' is hitting 'bMo' vertically.
 						blockVec = (1, 0);
-					else //Otherwise we can safely assume it's a Y overlap; horizontal hit.
+					else //Otherwise we can assume it's a Y overlap; horizontal hit.
 						blockVec = (0, 1);
 				}
 				else
@@ -1646,10 +1644,45 @@ extend class FishyPlatform
 					{
 						//Push along the blocking vector.
 						//The dot product ensures the direction is correct.
-						double d0t = diff dot blockVec;
+						if (diff dot blockVec < 0)
+							blockVec = -blockVec;
+
+						if (bLine)
+						for (int i = 0; i < 2; ++i)
+						{
+							//We need to check if we hit one of the line's vertexes
+							Vertex v = (i == 0) ? bLine.v1 : bLine.v2;
+							if (!v)
+								continue;
+
+							vector2 vertBlockVec = (0, 0);
+							vector2 testVec;
+							vector2 vertDiff = level.Vec2Diff(testPos.xy, v.p);
+							vector2 abzVertDiff = (abs(vertDiff.x), abs(vertDiff.y));
+							if (abzVertDiff.x < pushed.radius && abzVertDiff.y < pushed.radius)
+							{//Console.Printf(pushed.GetClassName().." "..level.mapTime.." hit vertex "..(i+1));
+								if (abzVertDiff.y > abzVertDiff.x)
+								{//Console.Printf("hitting from north/south");
+									vertBlockVec = (1, 0);
+									testVec = (0, (vertDiff.y > 0) ? 1 : -1);
+								}
+								else if (abzVertDiff.x > abzVertDiff.y)
+								{//Console.Printf("hitting from east/west");
+									vertBlockVec = (0, 1);
+									testVec = ((vertDiff.x > 0) ? 1 : -1, 0);
+								}
+								//else no 'blockVec' change
+
+								if (vertBlockVec != (0, 0) && testVec dot blockVec > 0)
+								{//Console.Printf("using testVec: "..testVec);
+									blockVec = vertBlockVec;
+									if (diff dot blockVec < 0)
+										blockVec = -blockVec;
+								}
+								break;
+							}
+						}
 						pushForce.xy = blockVec * pushForce.xy.Length();
-						if (d0t < 0)
-							pushForce.xy = -pushForce.xy;
 					}
 				}
 			}
