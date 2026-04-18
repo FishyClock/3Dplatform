@@ -1318,6 +1318,32 @@ extend class FishyPlatform
 	}
 
 	//============================
+	// GetBoundingBoxAtPosition
+	//============================
+	static double, double, double, double GetBoundingBoxAtPosition (vector2 boxPos, double boxSize)
+	{
+		double minX = boxPos.x - boxSize; //left
+		double maxX = boxPos.x + boxSize; //right
+		double minY = boxPos.y - boxSize; //bottom
+		double maxY = boxPos.y + boxSize; //top
+		return minX, maxX, minY, maxY;
+	}
+
+	//============================
+	// GetBoundingBoxFromLine
+	//============================
+	static double, double, double, double GetBoundingBoxFromLine (Line l)
+	{
+		//Reference for order:
+		//https://github.com/UZDoom/UZDoom/blob/8eb9e8c4a8394a09b3d2f7a73755c560106501eb/src/common/utility/m_bbox.h#L30-L36
+		double minX = l.bbox[2]; //left
+		double maxX = l.bbox[3]; //right
+		double minY = l.bbox[1]; //bottom
+		double maxY = l.bbox[0]; //top
+		return minX, maxX, minY, maxY;
+	}
+
+	//============================
 	// GetBlockingPlaneNormalXY
 	//============================
 	static vector2 GetBlockingPlaneNormalXY (vector3 testPos, double testRadius, double testHeight)
@@ -1348,20 +1374,12 @@ extend class FishyPlatform
 
 			//Our bounding box.
 			//We use the iterator's position because that is adjusted for portal displacement.
-			double minX1 = itPos.x - testRadius;
-			double maxX1 = itPos.x + testRadius;
-			double minY1 = itPos.y - testRadius;
-			double maxY1 = itPos.y + testRadius;
+			let [minX1, maxX1, minY1, maxY1] = GetBoundingBoxAtPosition(itPos, testRadius);
 
 			int thisSide, otherSide;
 			if (it)
 			{
-				//Line bounding box.
-				//Reference for order: https://github.com/uzdoom/uzdoom/blob/trunk/src/common/utility/m_bbox.h
-				double minX2 = it.curLine.bbox[2]; //left
-				double maxX2 = it.curLine.bbox[3]; //right
-				double minY2 = it.curLine.bbox[1]; //bottom
-				double maxY2 = it.curLine.bbox[0]; //top
+				let [minX2, maxX2, minY2, maxY2] = GetBoundingBoxFromLine(it.curLine);
 
 				if (minX1 >= maxX2 || minX2 >= maxX1 ||
 					minY1 >= maxY2 || minY2 >= maxY1)
@@ -1654,6 +1672,14 @@ extend class FishyPlatform
 							Vertex v = (i == 0) ? bLine.v1 : bLine.v2;
 							if (!v)
 								continue;
+
+							vector2 testPos2 = pushed.pos.xy;
+							if (pushed.curSector.portalGroup != bLine.frontSector.portalGroup)
+								testPos2 += level.GetDisplacement(pushed.curSector.portalGroup, bLine.frontSector.portalGroup);
+
+							//WARNING!
+							//THIS IS CURRENTLY INCOMPLETE
+							//NEEDED TO SAVE PROGRESS RIGHT NOW
 
 							vector2 vertBlockVec = (0, 0);
 							vector2 testVec;
@@ -3083,10 +3109,7 @@ extend class FishyPlatform
 
 		//Our bounding box
 		double size = radius + EXTRA_SIZE; //Pretend we're a bit bigger
-		double minX1 = pos.x - size;
-		double maxX1 = pos.x + size;
-		double minY1 = pos.y - size;
-		double maxY1 = pos.y + size;
+		let [minX1, maxX1, minY1, maxY1] = GetBoundingBoxAtPosition(pos.xy, size);
 
 		for (uint iPorts = uPorts.Size(); iPorts-- > 0;)
 		{
@@ -3094,12 +3117,7 @@ extend class FishyPlatform
 			if (!port.GetPortalDestination())
 				continue; //Currently disabled -- might get enabled later so just skip it
 
-			//Line bounding box.
-			//Reference for order: https://github.com/uzdoom/uzdoom/blob/trunk/src/common/utility/m_bbox.h
-			double minX2 = port.bbox[2]; //left
-			double maxX2 = port.bbox[3]; //right
-			double minY2 = port.bbox[1]; //bottom
-			double maxY2 = port.bbox[0]; //top
+			let [minX2, maxX2, minY2, maxY2] = GetBoundingBoxFromLine(port);
 
 			if (minX1 >= maxX2 || minX2 >= maxX1 ||
 				minY1 >= maxY2 || minY2 >= maxY1)
