@@ -1505,8 +1505,14 @@ extend class FishyPlatform
 			return; //No velocity modification
 		}
 
-		if (pushForce != pushForce) //NaN check
-			pushForce = level.Vec3Diff(pusher.pos, pushed.pos).Unit();
+		if (pushForce != pushForce /*NaN check*/ || pushForce ~== (0, 0, 0))
+		{
+			pushForce = level.Vec3Diff(pusher.pos, pushed.pos);
+			if (pushForce != (0, 0, 0)) //Don't call Unit() on a triple zero vector (you get a NaN)
+				pushForce = pushForce.Unit();
+			else
+				pushForce = (1, 0, 0);
+		}
 
 		if (pushed.bPushable)
 		{
@@ -1520,6 +1526,8 @@ extend class FishyPlatform
 			double len = pushForce.Length();
 			if (len > 1.1 && (len /= 8) > 1.1)
 				pushForce = pushForce.Unit() * len;
+			else if (len < 0.2)
+				pushForce = pushForce.Unit() * 0.2; //There should be some meaningful push velocity
 		}
 
 		bool deliveredOuchies = false;
