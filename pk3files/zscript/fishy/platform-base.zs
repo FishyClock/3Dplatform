@@ -1318,9 +1318,9 @@ extend class FishyPlatform
 	}
 
 	//============================
-	// GetBoundingBoxAtPosition
+	// MakeBoundingBoxAtPosition
 	//============================
-	static double, double, double, double GetBoundingBoxAtPosition (vector2 boxPos, double boxSize)
+	static double, double, double, double MakeBoundingBoxAtPosition (vector2 boxPos, double boxSize)
 	{
 		double minX = boxPos.x - boxSize; //left
 		double maxX = boxPos.x + boxSize; //right
@@ -1374,7 +1374,7 @@ extend class FishyPlatform
 
 			//Our bounding box.
 			//We use the iterator's position because that is adjusted for portal displacement.
-			let [minX1, maxX1, minY1, maxY1] = GetBoundingBoxAtPosition(itPos, testRadius);
+			let [minX1, maxX1, minY1, maxY1] = MakeBoundingBoxAtPosition(itPos, testRadius);
 
 			int thisSide, otherSide;
 			if (it)
@@ -1629,7 +1629,42 @@ extend class FishyPlatform
 				vector2 blockVec = (0, 0);
 				if (bLine)
 				{
-					blockVec = bLine.delta.Unit();
+					//We need to check if 'pushed' has hit one of the line's vertexes
+					//so we can set the correct block vector. This matters if the blocking line
+					//is actually a line that's adjacent to the line 'pushed' is touching. (Yes, that can happen -_-)
+					vector2 boxPos = pushed.pos.xy;
+
+					//First thing's first, handle any portal displacement before we make the bbox
+					Sector otherSec = (bLine.frontSector) ? bLine.frontSector : bLine.backSector;
+					if (otherSec && pushed.curSector.portalGroup != otherSec.portalGroup)
+						boxPos += level.GetDisplacement(pushed.curSector.portalGroup, otherSec.portalGroup);
+
+					let [minX1, maxX1, minY1, maxY1] = MakeBoundingBoxAtPosition(boxPos, pushed.radius);
+					let [minX2, maxX2, minY2, maxY2] = GetBoundingBoxFromLine(bLine);
+
+					if (
+						(minX1 < maxX2 && maxX1 > maxX2) || //East side X overlap?
+						(minX1 < minX2 && maxX1 > minX2) ) //West side X overlap?
+					{
+						if (minY1 >= maxY2 || maxY1 <= minY2) //Hitting it from north or south? (No Y overlap)
+							blockVec = (1, 0); //Default pick if no adjacent lines
+					}
+					else if (
+						(minY1 < maxY2 && maxY1 > maxY2) || //North side Y overlap?
+						(minY1 < minY2 && maxY1 > minY2) ) //South side Y overlap?
+					{
+						if (minX1 >= maxX2 || maxX1 <= minX2) //Hitting it from east or west? (No X overlap)
+							blockVec = (0, 1); //Default pick if no adjacent lines
+					}
+					/*
+					if (blockVec != (0, 0))
+					{
+						//WARNING! THIS IS INCOMPLETE CODE!
+						//LEFT TO DO: FIND SUITABLE ADJACENT LINE BLOCK VECTOR
+					}
+					*/
+					if (blockVec == (0, 0)) //Didn't hit a vertex?
+						blockVec = bLine.delta.Unit();
 				}
 				else if (pushed.blockingMobj)
 				{
@@ -1639,10 +1674,9 @@ extend class FishyPlatform
 					vector2 diff = level.Vec2Diff(pushed.pos.xy, bMo.pos.xy);
 					double dist = pushed.radius + bMo.radius;
 
-					//In this context "horizontal" and "vertical" are in a 2D top-down view. Like in a map editor.
-					if (abs(diff.x) < dist) //X overlap. That means 'pushed' is hitting 'bMo' vertically.
+					if (abs(diff.x) < dist) //X overlap. That means 'pushed' is hitting 'bMo' from north/south
 						blockVec = (1, 0);
-					else //Otherwise we can assume it's a Y overlap; horizontal hit.
+					else //Otherwise we can assume it's a Y overlap; east/west hit
 						blockVec = (0, 1);
 				}
 				else
@@ -1660,54 +1694,11 @@ extend class FishyPlatform
 					vector2 diff = level.Vec2Diff(pushPoint, pushed.pos.xy);
 					if (diff != (0, 0))
 					{
-						//Push along the blocking vector.
+						//We will push along the blocking vector.
 						//The dot product ensures the direction is correct.
 						if (diff dot blockVec < 0)
 							blockVec = -blockVec;
 
-						if (bLine)
-						for (int i = 0; i < 2; ++i)
-						{
-							//We need to check if we hit one of the line's vertexes
-							Vertex v = (i == 0) ? bLine.v1 : bLine.v2;
-							if (!v)
-								continue;
-
-							vector2 testPos2 = pushed.pos.xy;
-							if (pushed.curSector.portalGroup != bLine.frontSector.portalGroup)
-								testPos2 += level.GetDisplacement(pushed.curSector.portalGroup, bLine.frontSector.portalGroup);
-
-							//WARNING!
-							//THIS IS CURRENTLY INCOMPLETE
-							//NEEDED TO SAVE PROGRESS RIGHT NOW
-
-							vector2 vertBlockVec = (0, 0);
-							vector2 testVec;
-							vector2 vertDiff = level.Vec2Diff(testPos.xy, v.p);
-							vector2 abzVertDiff = (abs(vertDiff.x), abs(vertDiff.y));
-							if (abzVertDiff.x < pushed.radius && abzVertDiff.y < pushed.radius)
-							{//Console.Printf(pushed.GetClassName().." "..level.mapTime.." hit vertex "..(i+1));
-								if (abzVertDiff.y > abzVertDiff.x)
-								{//Console.Printf("hitting from north/south");
-									vertBlockVec = (1, 0);
-									testVec = (0, (vertDiff.y > 0) ? 1 : -1);
-								}
-								else if (abzVertDiff.x > abzVertDiff.y)
-								{//Console.Printf("hitting from east/west");
-									vertBlockVec = (0, 1);
-									testVec = ((vertDiff.x > 0) ? 1 : -1, 0);
-								}
-								//else no 'blockVec' change
-
-								if (vertBlockVec != (0, 0) && testVec dot blockVec > 0)
-								{//Console.Printf("using testVec: "..testVec);
-									blockVec = vertBlockVec;
-									if (diff dot blockVec < 0)
-										blockVec = -blockVec;
-								}
-								break;
-							}
-						}
 						pushForce.xy = blockVec * pushForce.xy.Length();
 					}
 				}
@@ -3109,7 +3100,7 @@ extend class FishyPlatform
 
 		//Our bounding box
 		double size = radius + EXTRA_SIZE; //Pretend we're a bit bigger
-		let [minX1, maxX1, minY1, maxY1] = GetBoundingBoxAtPosition(pos.xy, size);
+		let [minX1, maxX1, minY1, maxY1] = MakeBoundingBoxAtPosition(pos.xy, size);
 
 		for (uint iPorts = uPorts.Size(); iPorts-- > 0;)
 		{
