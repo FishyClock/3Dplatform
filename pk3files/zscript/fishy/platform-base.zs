@@ -1672,9 +1672,6 @@ extend class FishyPlatform
 						else
 							v = bLine.v2;
 
-						//Default pick if no suitable adjacent lines are found
-						blockVec = (abs(hitVertVec.y), abs(hitVertVec.x));
-
 						double bestDot = 1.0;
 						let it = BlockLinesIterator.CreateFromPos((v.p, pushed.pos.z), 4, 4);
 						while (it.Next())
@@ -1698,6 +1695,10 @@ extend class FishyPlatform
 							if (bestDot ~== -1.0) //Can't get better than this
 								break;
 						}
+
+						//Default pick if no suitable adjacent lines were found
+						if (bestDot == 1.0)
+							blockVec = (abs(hitVertVec.y), abs(hitVertVec.x));
 					}
 					else //Didn't hit a vertex
 					{
