@@ -1,5 +1,5 @@
 # 3D platform
- Horizontally and vertically moving platform actor class for GZDoom.
+ Horizontally and vertically moving platform actor class for GZDoom/UZDoom.
  
  The main feature of the platform class is that it's able to carry other actors on top of itself.
  Possibilies include:
