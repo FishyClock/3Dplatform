@@ -1720,7 +1720,7 @@ extend class FishyPlatform
 						if (bVert && !FitsAtPosition(pushed, level.Vec3Offset(pushed.pos, pushForce), false, true))
 						{
 							Array<Line> tryLines;
-							let it = BlockLinesIterator.CreateFromPos((bVert.p, pushed.pos.z), 4, 4);
+							let it = BlockLinesIterator.CreateFromPos((bVert.p, testPos.z), 4, 4);
 							while (it.Next())
 							{
 								//Ignore bLine and any line that isn't connected to this vertex.
