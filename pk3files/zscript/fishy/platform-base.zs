@@ -1635,82 +1635,48 @@ extend class FishyPlatform
 				}
 
 				vector2 blockVec = (0, 0);
+				vector2 blockVecVert = (0, 0);
+				Vertex bVert = null;
 				if (bLine)
 				{
+					blockVec = bLine.delta.Unit();
+
 					//We need to check if 'pushed' has hit one of the line's vertexes
 					//so we can set the correct block vector. This matters if the blocking line
 					//is actually a line that's adjacent to the line 'pushed' is touching. (Yes, that can happen -_-)
+					vector2 v1Diff = level.Vec2Diff(testPos.xy, bLine.v1.p);
+					vector2 v2Diff = level.Vec2Diff(testPos.xy, bLine.v2.p);
+					v1Diff = (abs(v1Diff.x), abs(v1Diff.y));
+					v2Diff = (abs(v2Diff.x), abs(v2Diff.y));
 
-					vector2 boxPos = pushed.pos.xy; //Deliberately not 'testPos' but the obstacle's current position.
-
-					//First thing's first, handle any portal displacement before we make the bbox
-					Sector otherSec = (bLine.frontSector) ? bLine.frontSector : bLine.backSector;
-					if (otherSec && pushed.curSector.portalGroup != otherSec.portalGroup)
-						boxPos += level.GetDisplacement(pushed.curSector.portalGroup, otherSec.portalGroup);
-
-					let [minX1, maxX1, minY1, maxY1] = MakeBoundingBoxAtPosition(boxPos, pushed.radius);
-					let [minX2, maxX2, minY2, maxY2] = GetBoundingBoxFromLine(bLine);
-
-					vector2 hitVertVec = (0, 0);
-					if (
-						(minX1 < maxX2 && maxX1 > maxX2) || //East side X overlap?
-						(minX1 < minX2 && maxX1 > minX2) ) //West side X overlap?
+					int hitCount = 0;
+					for (int i = 0; i < 2; ++i)
 					{
-						if (minY1 >= maxY2) //Hit north side, no Y overlap?
-							hitVertVec = (0, -1);
-						else if (maxY1 <= minY2) //Hit south side, no Y overlap?
-							hitVertVec = (0, 1);
-					}
-					else if (
-						(minY1 < maxY2 && maxY1 > maxY2) || //North side Y overlap?
-						(minY1 < minY2 && maxY1 > minY2) ) //South side Y overlap?
-					{
-						if (minX1 >= maxX2) //Hit east side, no X overlap?
-							hitVertVec = (-1, 0);
-						else if (maxX1 <= minX2) //Hit west side, no X overlap?
-							hitVertVec = (1, 0);
-					}
-
-					if (hitVertVec != (0, 0))
-					{
-						//Keep it simple - assume the closer vertex is the one that was hit
-						Vertex v;
-						if ((bLine.v1.p - boxPos).LengthSquared() < (bLine.v2.p - boxPos).LengthSquared())
-							v = bLine.v1;
-						else
-							v = bLine.v2;
-
-						double bestDot = 1.0;
-						let it = BlockLinesIterator.CreateFromPos((v.p, pushed.pos.z), 4, 4);
-						while (it.Next())
+						vector2 diff = (i == 0) ? v1Diff : v2Diff;
+						if (diff.x <= pushed.radius && diff.y <= pushed.radius)
 						{
-							if (v != it.curLine.v1 && v != it.curLine.v2)
-								continue; //This line isn't connected to this vertex
-
-							Vertex otherV = (v != it.curLine.v1) ? it.curLine.v1 : it.curLine.v2;
-							vector2 vertDiff = (otherV.p - v.p).Unit();
-
-							//From the hit vertex to the other vertex,
-							//the direction must go behind or be perpendicular to 'hitVertVec'
-							//and 'pushed' must not already intersect with this line.
-							double thisDot = vertDiff dot hitVertVec;
-							if (thisDot <= 0 && thisDot < bestDot && level.BoxOnLineSide(pushed.pos.xy, pushed.radius, it.curLine) != -1)
-							{
-								bestDot = thisDot;
-								blockVec = it.curLine.delta.Unit();
-							}
-
-							if (bestDot ~== -1.0) //Can't get better than this
-								break;
+							++hitCount;
+							bVert = (i == 0) ? bLine.v1 : bLine.v2;
 						}
-
-						//Default pick if no suitable adjacent lines were found
-						if (bestDot == 1.0)
-							blockVec = (abs(hitVertVec.y), abs(hitVertVec.x));
 					}
-					else //Didn't hit a vertex
+
+					if (hitCount == 2)
 					{
-						blockVec = bLine.delta.Unit();
+						//Got both; pick the closer one (or take v2 if equal length)
+						if (v1Diff.LengthSquared() < v2Diff.LengthSquared())
+							bVert = bLine.v1;
+						else
+							bVert = bLine.v2;
+					}
+
+					if (bVert)
+					{
+						vector2 diff = (bVert == bLine.v1) ? v1Diff : v2Diff;
+
+						if (diff.x > diff.y) //Hitting vertex from east/west
+							blockVecVert = (0, 1);
+						else //Assume hitting vertex from north/south
+							blockVecVert = (1, 0);
 					}
 				}
 				else if (pushed.blockingMobj)
@@ -1746,7 +1712,49 @@ extend class FishyPlatform
 						if (diff dot blockVec < 0)
 							blockVec = -blockVec;
 
-						pushForce.xy = blockVec * pushForce.xy.Length();
+						double len = pushForce.xy.Length();
+						pushForce.xy = blockVec * len;
+
+						//If we hit a vertex, test the new push velocity now.
+						//If it doesn't fit, check adjacent lines for different push directions.
+						if (bVert && !FitsAtPosition(pushed, level.Vec3Offset(pushed.pos, pushForce), false, true))
+						{
+							Array<Line> tryLines;
+							let it = BlockLinesIterator.CreateFromPos((bVert.p, pushed.pos.z), 4, 4);
+							while (it.Next())
+							{
+								//Ignore bLine and any line that isn't connected to this vertex.
+								//The line must not already intersect with obstacle.
+								if (bLine != it.curLine &&
+									(bVert == it.curLine.v1 || bVert == it.curLine.v2) &&
+									level.BoxOnLineSide(pushed.pos.xy, pushed.radius, it.curLine) != -1)
+								{
+									tryLines.Push(it.curLine); //Gather them all first
+								}
+							}
+
+							for (let iLine = tryLines.Size(); iLine-- > 0;)
+							{
+								blockVec = tryLines[iLine].delta.Unit();
+								if (diff dot blockVec < 0)
+									blockVec = -blockVec;
+
+								pushForce.xy = blockVec * len;
+								fits = FitsAtPosition(pushed, level.Vec3Offset(pushed.pos, pushForce), false, true);
+								if (fits)
+									break;
+							}
+
+							if (!fits)
+							{
+								//Nothing found that works, use vertex itself
+								blockVec = blockVecVert;
+								if (diff dot blockVec < 0)
+									blockVec = -blockVec;
+
+								pushForce.xy = blockVec * len;
+							}
+						}
 					}
 				}
 			}
