@@ -3088,8 +3088,17 @@ extend class FishyPlatform
 			//(In other words 'floorZ' is not another actor's top that's below.)
 
 			//Is 'mo' below our Z? Or is there a 3D floor above our 'top' that's also below 'mo'?
-			if (mo.pos.z < pos.z || mo.floorZ > top + TOP_EPSILON ||
-				!OverlapXY(self, mo)) //Is out of XY range?
+			bool forgetIt = (mo.pos.z < pos.z || mo.floorZ > top + TOP_EPSILON ||
+				!OverlapXY(self, mo)); //Is out of XY range?
+
+			if (!forgetIt && mo.pos.z > top + TOP_EPSILON)
+			{
+				//See if a non-passenger is above us that's below 'mo'
+				let [unwantedVar, otherMo] = mo.TestMobjZ(false);
+				forgetIt = (otherMo && otherMo != self && passengers.Find(otherMo) >= passengers.Size());
+			}
+
+			if (forgetIt)
 			{
 				//Add velocity to the passenger we just lost track of.
 				//It's likely to be a player that has jumped away.
