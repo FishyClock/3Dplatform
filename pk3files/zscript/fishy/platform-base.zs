@@ -1729,7 +1729,17 @@ extend class FishyPlatform
 									(bVert == it.curLine.v1 || bVert == it.curLine.v2) &&
 									level.BoxOnLineSide(pushed.pos.xy, pushed.radius, it.curLine) != -1)
 								{
-									tryLines.Push(it.curLine); //Gather them all first
+									//Gather them all in a array first.
+									//FitsAtPosition() calls CheckMove()
+									//and I don't trust that won't mess up
+									//this iterator.
+									//
+									//BoxOnLineSide() doesn't do blockmap shit,
+									//while CheckMove() does.
+									//In my experience it's not a good idea
+									//to call such a function while you already
+									//have a blockmap iterator iterating.
+									tryLines.Push(it.curLine);
 								}
 							}
 
