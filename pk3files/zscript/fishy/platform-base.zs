@@ -1702,68 +1702,68 @@ extend class FishyPlatform
 						blockVec = RotateVector(planeNormalXY.Unit(), 90);
 				}
 
-				if (blockVec != (0, 0)) //Blocked by a line, mobj, floor slope or ceiling slope?
+				if (blockVec == (0, 0)) //Couldn't detect a blocking line, mobj, floor slope or ceiling slope?
+					blockVec = RotateVector(pushForce.xy.Unit(), 90); //Push it aside
+
+				vector2 diff = level.Vec2Diff(pushPoint, pushed.pos.xy);
+				if (diff != (0, 0))
 				{
-					vector2 diff = level.Vec2Diff(pushPoint, pushed.pos.xy);
-					if (diff != (0, 0))
+					//We will push along the blocking vector.
+					//The dot product ensures the direction is correct.
+					if (diff dot blockVec < 0)
+						blockVec = -blockVec;
+
+					double len = pushForce.xy.Length();
+					pushForce.xy = blockVec * len;
+
+					//If we hit a vertex, test the new push velocity now.
+					//If it doesn't fit, check adjacent lines for different push directions.
+					if (bVert && !FitsAtPosition(pushed, level.Vec3Offset(pushed.pos, pushForce), false, true))
 					{
-						//We will push along the blocking vector.
-						//The dot product ensures the direction is correct.
-						if (diff dot blockVec < 0)
-							blockVec = -blockVec;
-
-						double len = pushForce.xy.Length();
-						pushForce.xy = blockVec * len;
-
-						//If we hit a vertex, test the new push velocity now.
-						//If it doesn't fit, check adjacent lines for different push directions.
-						if (bVert && !FitsAtPosition(pushed, level.Vec3Offset(pushed.pos, pushForce), false, true))
+						Array<Line> tryLines;
+						let it = BlockLinesIterator.CreateFromPos((bVert.p, testPos.z), 4, 4);
+						while (it.Next())
 						{
-							Array<Line> tryLines;
-							let it = BlockLinesIterator.CreateFromPos((bVert.p, testPos.z), 4, 4);
-							while (it.Next())
+							//Ignore bLine and any line that isn't connected to this vertex.
+							//The line must not already intersect with obstacle.
+							if (bLine != it.curLine &&
+								(bVert == it.curLine.v1 || bVert == it.curLine.v2) &&
+								level.BoxOnLineSide(pushed.pos.xy, pushed.radius, it.curLine) != -1)
 							{
-								//Ignore bLine and any line that isn't connected to this vertex.
-								//The line must not already intersect with obstacle.
-								if (bLine != it.curLine &&
-									(bVert == it.curLine.v1 || bVert == it.curLine.v2) &&
-									level.BoxOnLineSide(pushed.pos.xy, pushed.radius, it.curLine) != -1)
-								{
-									//Gather them all in a array first.
-									//FitsAtPosition() calls CheckMove()
-									//and I don't trust that won't mess up
-									//this iterator.
-									//
-									//BoxOnLineSide() doesn't do blockmap shit,
-									//while CheckMove() does.
-									//In my experience it's not a good idea
-									//to call such a function while you already
-									//have a blockmap iterator iterating.
-									tryLines.Push(it.curLine);
-								}
+								//Gather them all in a array first.
+								//FitsAtPosition() calls CheckMove()
+								//and I don't trust that won't mess up
+								//this iterator.
+								//
+								//BoxOnLineSide() doesn't do blockmap shit,
+								//while CheckMove() does.
+								//In my experience it's not a good idea
+								//to call such a function while you already
+								//have a blockmap iterator iterating.
+								tryLines.Push(it.curLine);
 							}
+						}
 
-							for (let iLine = tryLines.Size(); iLine-- > 0;)
-							{
-								blockVec = tryLines[iLine].delta.Unit();
-								if (diff dot blockVec < 0)
-									blockVec = -blockVec;
+						for (let iLine = tryLines.Size(); iLine-- > 0;)
+						{
+							blockVec = tryLines[iLine].delta.Unit();
+							if (diff dot blockVec < 0)
+								blockVec = -blockVec;
 
-								pushForce.xy = blockVec * len;
-								fits = FitsAtPosition(pushed, level.Vec3Offset(pushed.pos, pushForce), false, true);
-								if (fits)
-									break;
-							}
+							pushForce.xy = blockVec * len;
+							fits = FitsAtPosition(pushed, level.Vec3Offset(pushed.pos, pushForce), false, true);
+							if (fits)
+								break;
+						}
 
-							if (!fits)
-							{
-								//Nothing found that works, use vertex itself
-								blockVec = blockVecVert;
-								if (diff dot blockVec < 0)
-									blockVec = -blockVec;
+						if (!fits)
+						{
+							//Nothing found that works, use vertex itself
+							blockVec = blockVecVert;
+							if (diff dot blockVec < 0)
+								blockVec = -blockVec;
 
-								pushForce.xy = blockVec * len;
-							}
+							pushForce.xy = blockVec * len;
 						}
 					}
 				}
