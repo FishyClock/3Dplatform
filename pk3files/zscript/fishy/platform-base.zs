@@ -1637,6 +1637,9 @@ extend class FishyPlatform
 				vector2 blockVec = (0, 0);
 				vector2 blockVecVert = (0, 0);
 				Vertex bVert = null;
+				if (!bLine)
+					bLine = pushed.movementBlockingLine;
+
 				if (bLine)
 				{
 					blockVec = bLine.delta.Unit();
