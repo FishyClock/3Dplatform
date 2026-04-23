@@ -1576,7 +1576,7 @@ extend class FishyPlatform
 				deliveredOuchies = true;
 
 				vector2 planeNormalXY = (0, 0);
-				if (!bLine && !pushed.blockingMobj)
+				if (!bLine && !pushed.movementBlockingLine && !pushed.blockingMobj)
 				{
 					//Check for blocking floors/ceilings. We want slopes.
 					planeNormalXY = GetBlockingPlaneNormalXY(testPos, pushed.radius, pushed.height);
