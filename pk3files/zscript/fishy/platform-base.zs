@@ -1507,7 +1507,7 @@ extend class FishyPlatform
 
 		if (pushForce != pushForce /*NaN check*/ || pushForce ~== (0, 0, 0))
 		{
-			pushForce = level.Vec3Diff(pusher.pos, pushed.pos);
+			pushForce = level.Vec3Diff((pushPoint, pusher.pos.z), pushed.pos);
 			if (pushForce != (0, 0, 0)) //Don't call Unit() on a triple zero vector (you get a NaN)
 				pushForce = pushForce.Unit();
 			else
