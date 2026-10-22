@@ -4,3 +4,4 @@
 *.bat
 *.autosave*
 *exports
+*.sh
